@@ -4,6 +4,7 @@ import '../main.dart';
 import '../models.dart';
 import '../notifications.dart';
 import '../theme.dart';
+import 'notebook.dart';
 import 'matrix.dart';
 
 class BriefingScreen extends StatefulWidget {
@@ -69,6 +70,22 @@ class _BriefingScreenState extends State<BriefingScreen> {
           children: [
             const MickySays('Bonjour ! On prépare la journée ? 2 minutes, promis.'),
             const SizedBox(height: 12),
+            if (isTablet(context)) ...[
+              SizedBox(
+                height: 52,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: K.ink,
+                    side: const BorderSide(color: K.cyan, width: 2),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  onPressed: () => openScreen(context, HandwritingPage(note: store.noteFor(store.todayKey, 'briefing'))),
+                  icon: const Icon(Icons.draw_rounded, color: K.cyan),
+                  label: Text('Écrire mon briefing à la main', style: K.body(15, w: FontWeight.w800)),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             Wrap(
               spacing: 8,
               runSpacing: 6,

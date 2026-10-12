@@ -4,3 +4,7 @@ Appli Android d'organisation gamifiée : briefing du matin, quêtes, matrice d'E
 
 - Chaque push sur `main` construit l'APK et le publie dans **Releases** (`micky-quest.apk`).
 - Toutes les données restent sur le téléphone, sauf les tâches que tu envoies toi-même dans Notion.
+
+## Synchronisation
+
+Téléphone et tablette partagent leurs données via un dépôt GitHub privé (Réglages › Synchronisation). Les photos de repas restent sur l'appareil qui les a prises ; les pages manuscrites ne se téléchargent que sur tablette.

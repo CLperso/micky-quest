@@ -5,6 +5,7 @@ import '../models.dart';
 import '../notifications.dart';
 import '../store.dart';
 import '../theme.dart';
+import 'notebook.dart';
 
 /// Onglet « Soir » : accès au feu de camp et aux replays.
 class EveningTab extends StatelessWidget {
@@ -178,6 +179,22 @@ class _EveningScreenState extends State<EveningScreen> {
           children: [
             const MickySays('Bravo pour ta journée. On range ce qui reste et on ouvre le coffre ?', ring: K.coral),
             const SizedBox(height: 14),
+            if (isTablet(context)) ...[
+              SizedBox(
+                height: 52,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: K.ink,
+                    side: const BorderSide(color: K.cyan, width: 2),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  onPressed: () => openScreen(context, HandwritingPage(note: store.noteFor(store.todayKey, 'soir'))),
+                  icon: const Icon(Icons.draw_rounded, color: K.cyan),
+                  label: Text('Écrire mon journal à la main', style: K.body(15, w: FontWeight.w800)),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             Row(
               children: [
                 Expanded(child: _tile('+${store.xpOn(day)}', 'XP du jour', K.lime)),
@@ -306,6 +323,7 @@ class ReplayScreen extends StatelessWidget {
     'coffee': K.coral,
     'free': K.ink,
     'task': K.lime,
+    'pause': K.gold,
   };
   static const _actColors = {
     Act.quest: K.lime,

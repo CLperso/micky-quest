@@ -54,6 +54,7 @@ class Task {
   int bossHp;
   bool removed;
   int order;
+  int mod;
 
   Task({
     String? id,
@@ -70,6 +71,7 @@ class Task {
     this.bossHp = 100,
     this.removed = false,
     this.order = 0,
+    this.mod = 0,
   })  : id = id ?? newId(),
         createdDay = createdDay ?? day;
 
@@ -88,6 +90,7 @@ class Task {
         bossHp: _i(j['hp'], 100),
         removed: _b(j['removed']),
         order: _i(j['order']),
+        mod: _i(j['mod']),
       );
 
   Map<String, dynamic> toJson() => {
@@ -105,6 +108,7 @@ class Task {
         'hp': bossHp,
         'removed': removed,
         'order': order,
+        'mod': mod,
       };
 }
 
@@ -116,6 +120,7 @@ class SessionRec {
   int end; // 0 = en cours
   int predictedMin;
   bool finished; // étape terminée (sinon interrompue)
+  int mod;
 
   SessionRec({
     String? id,
@@ -125,6 +130,7 @@ class SessionRec {
     this.end = 0,
     required this.predictedMin,
     this.finished = false,
+    this.mod = 0,
   }) : id = id ?? newId();
 
   double get actualMin => end == 0 ? 0 : (end - start) / 60000.0;
@@ -142,6 +148,7 @@ class SessionRec {
         end: _i(j['end']),
         predictedMin: _i(j['pred']),
         finished: _b(j['fin']),
+        mod: _i(j['mod']),
       );
 
   Map<String, dynamic> toJson() => {
@@ -152,6 +159,7 @@ class SessionRec {
         'end': end,
         'pred': predictedMin,
         'fin': finished,
+        'mod': mod,
       };
 }
 
@@ -188,6 +196,7 @@ class CheckIn {
   int mood; // 0 = non renseignée, 1 à 5
   int energy; // -1 = non renseignée, 0 à 100
   String note;
+  int mod;
 
   CheckIn({
     required this.ts,
@@ -196,7 +205,10 @@ class CheckIn {
     this.mood = 0,
     this.energy = -1,
     this.note = '',
+    this.mod = 0,
   });
+
+  String get id => '$ts';
 
   factory CheckIn.fromJson(Map<String, dynamic> j) => CheckIn(
         ts: _i(j['ts']),
@@ -205,9 +217,11 @@ class CheckIn {
         mood: _i(j['mood']),
         energy: _i(j['energy'], -1),
         note: _s(j['note']),
+        mod: _i(j['mod']),
       );
 
   Map<String, dynamic> toJson() => {
+        'mod': mod,
         'ts': ts,
         'act': activity,
         'why': reason,
@@ -237,8 +251,9 @@ class LogEntry {
   String kind;
   String note;
   String photo;
+  int mod;
 
-  LogEntry({String? id, required this.ts, required this.kind, this.note = '', this.photo = ''})
+  LogEntry({String? id, required this.ts, required this.kind, this.note = '', this.photo = '', this.mod = 0})
       : id = id ?? newId();
 
   factory LogEntry.fromJson(Map<String, dynamic> j) => LogEntry(
@@ -247,9 +262,10 @@ class LogEntry {
         kind: _s(j['kind']),
         note: _s(j['note']),
         photo: _s(j['photo']),
+        mod: _i(j['mod']),
       );
 
-  Map<String, dynamic> toJson() => {'id': id, 'ts': ts, 'kind': kind, 'note': note, 'photo': photo};
+  Map<String, dynamic> toJson() => {'id': id, 'ts': ts, 'kind': kind, 'note': note, 'photo': photo, 'mod': mod};
 }
 
 class DayPlan {
@@ -264,6 +280,7 @@ class DayPlan {
   String brake;
   String tomorrow;
   int sleepH; // heures de sommeil × 2 (demi-heures), 0 = non renseigné
+  int mod;
 
   DayPlan({
     required this.day,
@@ -277,6 +294,7 @@ class DayPlan {
     this.brake = '',
     this.tomorrow = '',
     this.sleepH = 0,
+    this.mod = 0,
   });
 
   factory DayPlan.fromJson(Map<String, dynamic> j) => DayPlan(
@@ -291,6 +309,7 @@ class DayPlan {
         brake: _s(j['brake']),
         tomorrow: _s(j['tomorrow']),
         sleepH: _i(j['sleep']),
+        mod: _i(j['mod']),
       );
 
   Map<String, dynamic> toJson() => {
@@ -305,6 +324,7 @@ class DayPlan {
         'brake': brake,
         'tomorrow': tomorrow,
         'sleep': sleepH,
+        'mod': mod,
       };
 }
 
@@ -313,6 +333,7 @@ class XpEvent {
   int amount;
   String reason;
   XpEvent({required this.ts, required this.amount, required this.reason});
+  String get id => '$ts|$reason|$amount';
 
   factory XpEvent.fromJson(Map<String, dynamic> j) =>
       XpEvent(ts: _i(j['ts']), amount: _i(j['xp']), reason: _s(j['why']));
@@ -333,6 +354,10 @@ class Settings {
   String notionDb;
   String notionTitleProp;
   String notionDateProp;
+  String syncRepo; // propriétaire/dépôt
+  String syncToken;
+  int lastSync;
+  bool stylusOnly;
 
   Settings({
     this.startHour = 9,
@@ -348,6 +373,10 @@ class Settings {
     this.notionDb = '',
     this.notionTitleProp = 'Name',
     this.notionDateProp = 'Date',
+    this.syncRepo = '',
+    this.syncToken = '',
+    this.lastSync = 0,
+    this.stylusOnly = true,
   });
 
   factory Settings.fromJson(Map<String, dynamic> j) => Settings(
@@ -364,6 +393,10 @@ class Settings {
         notionDb: _s(j['nDb']),
         notionTitleProp: _s(j['nTitle'], 'Name'),
         notionDateProp: _s(j['nDate'], 'Date'),
+        syncRepo: _s(j['syncRepo']),
+        syncToken: _s(j['syncToken']),
+        lastSync: _i(j['lastSync']),
+        stylusOnly: j['stylusOnly'] != false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -380,6 +413,10 @@ class Settings {
         'nDb': notionDb,
         'nTitle': notionTitleProp,
         'nDate': notionDateProp,
+        'syncRepo': syncRepo,
+        'syncToken': syncToken,
+        'lastSync': lastSync,
+        'stylusOnly': stylusOnly,
       };
 }
 
@@ -417,4 +454,75 @@ String cyclePhase(int dayOfCycle, int length) {
   if (dayOfCycle < ovulation - 1) return 'folliculaire';
   if (dayOfCycle <= ovulation + 1) return 'ovulation';
   return 'lutéale';
+}
+
+/// Période sans check-in (cours, sortie…), sans pénalité.
+class Pause {
+  String id;
+  int start;
+  int end; // 0 = jusqu'à réactivation
+  String label;
+  int mod;
+
+  Pause({String? id, required this.start, this.end = 0, required this.label, this.mod = 0}) : id = id ?? newId();
+
+  bool activeAt(int ts) => ts >= start && (end == 0 || ts < end);
+
+  static const labels = ['Cours', 'Sortie', 'Rendez-vous', 'Repos', 'Sport', 'Autre'];
+
+  factory Pause.fromJson(Map<String, dynamic> j) =>
+      Pause(id: _s(j['id']), start: _i(j['start']), end: _i(j['end']), label: _s(j['label']), mod: _i(j['mod']));
+
+  Map<String, dynamic> toJson() => {'id': id, 'start': start, 'end': end, 'label': label, 'mod': mod};
+}
+
+/// Page manuscrite (les traits sont stockés à part, fichier par page).
+class NoteMeta {
+  String id;
+  String day;
+  String kind; // briefing, soir, libre
+  String title;
+  int mod;
+  bool removed;
+
+  NoteMeta({String? id, required this.day, required this.kind, this.title = '', this.mod = 0, this.removed = false})
+      : id = id ?? newId();
+
+  static const kinds = {'briefing': 'Briefing', 'soir': 'Journal du soir', 'libre': 'Page libre'};
+
+  factory NoteMeta.fromJson(Map<String, dynamic> j) => NoteMeta(
+        id: _s(j['id']),
+        day: _s(j['day']),
+        kind: _s(j['kind'], 'libre'),
+        title: _s(j['title']),
+        mod: _i(j['mod']),
+        removed: _b(j['removed']),
+      );
+
+  Map<String, dynamic> toJson() =>
+      {'id': id, 'day': day, 'kind': kind, 'title': title, 'mod': mod, 'removed': removed};
+}
+
+/// Un trait de stylet : coordonnées normalisées par la largeur de la page, et pression.
+class Stroke {
+  int color;
+  double width;
+  bool highlighter;
+  List<double> pts; // x, y, pression, x, y, pression…
+
+  Stroke({required this.color, required this.width, this.highlighter = false, List<double>? pts}) : pts = pts ?? [];
+
+  factory Stroke.fromJson(Map<String, dynamic> j) => Stroke(
+        color: _i(j['c']),
+        width: (j['w'] as num?)?.toDouble() ?? 2,
+        highlighter: _b(j['h']),
+        pts: ((j['p'] as List?) ?? []).map((e) => (e as num).toDouble()).toList(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'c': color,
+        'w': width,
+        if (highlighter) 'h': true,
+        'p': pts.map((v) => (v * 10000).round() / 10000).toList(),
+      };
 }

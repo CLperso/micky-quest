@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../main.dart';
 import '../models.dart';
 import '../notifications.dart';
+import '../sync.dart';
 import '../theme.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -17,7 +18,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _db = TextEditingController();
   final _titleProp = TextEditingController();
   final _dateProp = TextEditingController();
+  final _repo = TextEditingController();
+  final _syncToken = TextEditingController();
   bool _init = false;
+  bool _syncing = false;
 
   @override
   void didChangeDependencies() {
@@ -29,11 +33,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _db.text = s.notionDb;
     _titleProp.text = s.notionTitleProp;
     _dateProp.text = s.notionDateProp;
+    _repo.text = s.syncRepo;
+    _syncToken.text = s.syncToken;
   }
 
   @override
   void dispose() {
-    for (final c in [_token, _db, _titleProp, _dateProp]) {
+    for (final c in [_token, _db, _titleProp, _dateProp, _repo, _syncToken]) {
       c.dispose();
     }
     super.dispose();
@@ -46,6 +52,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     s.notionDb = _db.text.trim();
     s.notionTitleProp = _titleProp.text.trim().isEmpty ? 'Name' : _titleProp.text.trim();
     s.notionDateProp = _dateProp.text.trim().isEmpty ? 'Date' : _dateProp.text.trim();
+    s.syncRepo = _repo.text.trim();
+    s.syncToken = _syncToken.text.trim();
     await store.updateSettings();
     await rescheduleAll(store);
     if (mounted) setState(() {});
@@ -186,6 +194,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 6),
                   Text(store.notionReady ? 'Notion est configuré.' : 'Notion n\'est pas encore configuré.',
                       style: K.body(12, color: store.notionReady ? K.lime : K.muted)),
+                ],
+              ),
+            ),
+            const SectionLabel('Synchronisation téléphone ↔ tablette'),
+            Panel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '1. Sur GitHub, crée un dépôt privé vide (par exemple micky-data).\n'
+                    '2. Settings › Developer settings › Fine-grained tokens : un jeton limité à ce dépôt, '
+                    'avec « Contents » en lecture et écriture.\n'
+                    '3. Mets le même dépôt et le même jeton sur ton téléphone et ta tablette.',
+                    style: K.body(13, color: K.muted),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(controller: _repo, decoration: const InputDecoration(labelText: 'Dépôt (ex. CLperso/micky-data)')),
+                  const SizedBox(height: 8),
+                  TextField(controller: _syncToken, obscureText: true, decoration: const InputDecoration(labelText: 'Jeton GitHub')),
+                  const SizedBox(height: 8),
+                  Text(
+                    s.lastSync == 0
+                        ? 'Jamais synchronisé. Les photos de repas restent sur l\'appareil qui les a prises.'
+                        : 'Dernière synchro : ${hm(DateTime.fromMillisecondsSinceEpoch(s.lastSync))}. Les photos de repas restent sur l\'appareil qui les a prises.',
+                    style: K.body(12, color: K.muted),
+                  ),
+                  if (Sync.lastError != null) ...[
+                    const SizedBox(height: 4),
+                    Text(Sync.lastError!, style: K.body(12, color: K.coral)),
+                  ],
+                  const SizedBox(height: 10),
+                  SecondaryButton(
+                    label: _syncing ? 'Synchronisation…' : 'Synchroniser maintenant',
+                    onPressed: _syncing
+                        ? null
+                        : () async {
+                            await _apply();
+                            if (!context.mounted) return;
+                            setState(() => _syncing = true);
+                            final err = Sync.configured(store)
+                                ? await Sync.run(store, tablet: MediaQuery.of(context).size.shortestSide >= 600)
+                                : 'Indique le dépôt et le jeton.';
+                            await rescheduleAll(store);
+                            if (!mounted) return;
+                            setState(() => _syncing = false);
+                            ScaffoldMessenger.of(this.context).showSnackBar(
+                              SnackBar(content: Text(err ?? 'Synchronisé !')),
+                            );
+                          },
+                  ),
                 ],
               ),
             ),

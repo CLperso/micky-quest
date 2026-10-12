@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../main.dart';
 import '../models.dart';
+import '../notifications.dart';
 import '../store.dart';
 import '../theme.dart';
 import 'briefing.dart';
@@ -87,6 +88,8 @@ class HomeScreen extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 14),
+        const PauseSwitch(),
         const SizedBox(height: 14),
 
         if (!plan.briefingDone) ...[
@@ -344,6 +347,152 @@ class HomeScreen extends StatelessWidget {
               Text(label, style: K.body(12, w: FontWeight.w800)),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+
+/// Interrupteur des check-ins : on coupe pour un cours, une sortie… sans pénalité.
+class PauseSwitch extends StatelessWidget {
+  const PauseSwitch({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final p = store.activePause;
+    final on = p == null;
+    String sub;
+    if (p == null) {
+      sub = 'Toutes les ${store.settings.intervalMin} min, de ${store.settings.startHour} h à ${store.settings.endHour} h';
+    } else if (p.end == 0) {
+      sub = '${p.label} · jusqu\'à ce que tu réactives';
+    } else {
+      sub = '${p.label} · jusqu\'à ${hm(DateTime.fromMillisecondsSinceEpoch(p.end))}';
+    }
+    return Panel(
+      padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+      color: on ? K.card : const Color(0xFF2A2240),
+      border: on ? null : K.gold,
+      child: Row(
+        children: [
+          Icon(on ? Icons.notifications_active_rounded : Icons.notifications_paused_rounded, color: on ? K.lime : K.gold),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(on ? 'Check-ins actifs' : 'En pause, sans pénalité', style: K.body(15, w: FontWeight.w800)),
+                Text(sub, style: K.body(12, color: K.muted)),
+              ],
+            ),
+          ),
+          Switch(
+            value: on,
+            onChanged: (v) async {
+              if (v) {
+                await store.stopPause();
+              } else {
+                final ok = await showModalBottomSheet<bool>(
+                  context: context,
+                  builder: (_) => AppScope(store: store, child: const _PauseSheet()),
+                );
+                if (ok != true) return;
+              }
+              await rescheduleAll(store);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PauseSheet extends StatefulWidget {
+  const _PauseSheet();
+
+  @override
+  State<_PauseSheet> createState() => _PauseSheetState();
+}
+
+class _PauseSheetState extends State<_PauseSheet> {
+  String _label = Pause.labels.first;
+  int _choice = 1;
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final now = DateTime.now();
+    final evening = DateTime(now.year, now.month, now.day, store.settings.endHour);
+    final options = <String, DateTime?>{
+      '1 h': now.add(const Duration(hours: 1)),
+      '2 h': now.add(const Duration(hours: 2)),
+      '3 h': now.add(const Duration(hours: 3)),
+      if (evening.isAfter(now)) 'Jusqu\'à ce soir': evening,
+      'Jusqu\'à ce que je réactive': null,
+    };
+    final keys = options.keys.toList();
+    if (_choice >= keys.length) _choice = 0;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Mettre les check-ins en pause', style: K.display(20)),
+            const SizedBox(height: 4),
+            Text('Aucune pénalité : ta série continue et la pause apparaît dans ton replay.',
+                style: K.body(13, color: K.muted)),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final l in Pause.labels)
+                  ChoiceChip(
+                    label: Text(l),
+                    selected: _label == l,
+                    onSelected: (_) => setState(() => _label = l),
+                    selectedColor: K.gold,
+                    labelStyle: K.body(14, color: _label == l ? K.bg : K.ink),
+                    backgroundColor: K.raised,
+                    side: BorderSide.none,
+                    showCheckmark: false,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text('Pendant', style: K.body(13, color: K.muted)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (var i = 0; i < keys.length; i++)
+                  ChoiceChip(
+                    label: Text(keys[i]),
+                    selected: _choice == i,
+                    onSelected: (_) => setState(() => _choice = i),
+                    selectedColor: K.cyan,
+                    labelStyle: K.body(14, color: _choice == i ? K.bg : K.ink),
+                    backgroundColor: K.raised,
+                    side: BorderSide.none,
+                    showCheckmark: false,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            PrimaryButton(
+              label: 'Mettre en pause',
+              color: K.gold,
+              onPressed: () async {
+                await store.startPause(_label, options[keys[_choice]]);
+                if (context.mounted) Navigator.pop(context, true);
+              },
+            ),
+          ],
         ),
       ),
     );

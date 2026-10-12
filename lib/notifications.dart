@@ -130,6 +130,7 @@ Future<void> rescheduleAll(AppStore store) async {
       i++;
       if (!t.isAfter(now.add(const Duration(minutes: 1)))) continue;
       if (quietFrom != null && t.isAfter(quietFrom) && t.isBefore(quietTo!)) continue;
+      if (store.pausedAt(t)) continue;
       await _schedule(
         id: 2000 + d * 200 + i,
         when: t,
@@ -168,6 +169,19 @@ Future<void> rescheduleAll(AppStore store) async {
         payload: jsonEncode({'type': 'soir'}),
       );
     }
+  }
+
+  // fin de la pause
+  final pause = store.activePause;
+  if (pause != null && pause.end > now.millisecondsSinceEpoch) {
+    await _schedule(
+      id: 40,
+      when: DateTime.fromMillisecondsSinceEpoch(pause.end),
+      title: 'Micky reprend les check-ins',
+      body: 'Fin de ta pause « ${pause.label} ». Tu pourras toujours la prolonger depuis le QG.',
+      details: _dayDetails(),
+      payload: jsonEncode({'type': 'home'}),
+    );
   }
 
   // fin du pari

@@ -8,8 +8,10 @@ import 'screens/discoveries.dart';
 import 'screens/evening.dart';
 import 'screens/home.dart';
 import 'screens/matrix.dart';
+import 'screens/notebook.dart';
 import 'screens/session.dart';
 import 'store.dart';
+import 'sync.dart';
 import 'theme.dart';
 
 class AppScope extends InheritedNotifier<AppStore> {
@@ -127,6 +129,14 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     final store = AppScope.read(context);
     await requestNotificationPermission();
     await rescheduleAll(store);
+    await _sync();
+  }
+
+  Future<void> _sync() async {
+    final store = AppScope.read(context);
+    if (!Sync.configured(store)) return;
+    final err = await Sync.run(store, tablet: isTablet(context));
+    if (err == null) await rescheduleAll(store);
   }
 
   @override
@@ -141,6 +151,9 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
       final store = AppScope.read(context);
       await store.mergePending();
       await rescheduleAll(store);
+      await _sync();
+    } else if (state == AppLifecycleState.paused) {
+      await _sync();
     }
   }
 
@@ -148,15 +161,75 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final wide = MediaQuery.of(context).size.width >= 840;
+    final tablet = isTablet(context);
+    final running = AppScope.of(context).runningSession != null;
+    if (!tablet && _tab == 5) _tab = 0;
+
     final pages = [
-      HomeScreen(onGoTo: goTo),
-      const MatrixScreen(),
+      wide
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(flex: 5, child: HomeScreen(onGoTo: goTo)),
+                const VerticalDivider(width: 1, color: K.line),
+                const Expanded(flex: 4, child: MatrixScreen()),
+              ],
+            )
+          : HomeScreen(onGoTo: goTo),
+      _limit(const MatrixScreen(), wide ? 900 : null),
       const SizedBox.shrink(),
-      const DiscoveriesScreen(),
-      const EveningTab(),
+      _limit(const DiscoveriesScreen(), wide ? 820 : null),
+      _limit(const EveningTab(), wide ? 760 : null),
+      const NotebookScreen(),
     ];
+    final body = SafeArea(child: IndexedStack(index: _tab, children: pages));
+
+    final focusBtn = Semantics(
+      button: true,
+      label: 'Lancer une session',
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () => startFocus(context),
+        child: Container(
+          width: 58,
+          height: 58,
+          decoration: BoxDecoration(color: running ? K.gold : K.lime, shape: BoxShape.circle),
+          child: Icon(running ? Icons.timer_rounded : Icons.play_arrow_rounded, color: K.bg, size: 32),
+        ),
+      ),
+    );
+
+    if (wide) {
+      return Scaffold(
+        body: Row(
+          children: [
+            Container(
+              width: 96,
+              decoration: const BoxDecoration(color: K.bg, border: Border(right: BorderSide(color: K.line))),
+              child: SafeArea(
+                child: Column(
+                  children: [
+                    const SizedBox(height: 16),
+                    focusBtn,
+                    const SizedBox(height: 20),
+                    _railItem(0, Icons.home_rounded, 'QG'),
+                    _railItem(1, Icons.grid_view_rounded, 'Quêtes'),
+                    _railItem(3, Icons.travel_explore_rounded, 'Découvertes'),
+                    _railItem(4, Icons.local_fire_department_rounded, 'Soir'),
+                    if (tablet) _railItem(5, Icons.draw_rounded, 'Carnet'),
+                  ],
+                ),
+              ),
+            ),
+            Expanded(child: body),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
-      body: SafeArea(child: IndexedStack(index: _tab, children: pages)),
+      body: body,
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(color: K.bg, border: Border(top: BorderSide(color: K.line))),
         child: SafeArea(
@@ -167,35 +240,43 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
               children: [
                 _navItem(0, Icons.home_rounded, 'QG'),
                 _navItem(1, Icons.grid_view_rounded, 'Quêtes'),
-                Expanded(
-                  child: Center(
-                    child: Semantics(
-                      button: true,
-                      label: 'Lancer une session',
-                      child: InkWell(
-                        customBorder: const CircleBorder(),
-                        onTap: () => startFocus(context),
-                        child: Container(
-                          width: 58,
-                          height: 58,
-                          decoration: BoxDecoration(
-                            color: AppScope.of(context).runningSession != null ? K.gold : K.lime,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            AppScope.of(context).runningSession != null ? Icons.timer_rounded : Icons.play_arrow_rounded,
-                            color: K.bg,
-                            size: 32,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+                Expanded(child: Center(child: focusBtn)),
                 _navItem(3, Icons.travel_explore_rounded, 'Découvertes'),
                 _navItem(4, Icons.local_fire_department_rounded, 'Soir'),
+                if (tablet) _navItem(5, Icons.draw_rounded, 'Carnet'),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _limit(Widget child, double? maxWidth) => maxWidth == null
+      ? child
+      : Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(constraints: BoxConstraints(maxWidth: maxWidth), child: child),
+        );
+
+  Widget _railItem(int i, IconData icon, String label) {
+    final on = _tab == i;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => goTo(i),
+        child: Container(
+          width: 80,
+          height: 66,
+          decoration: BoxDecoration(color: on ? K.raised : Colors.transparent, borderRadius: BorderRadius.circular(16)),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: on ? K.lime : K.muted, size: 26),
+              const SizedBox(height: 4),
+              FittedBox(child: Text(label, style: K.body(12, color: on ? K.lime : K.muted, w: FontWeight.w800))),
+            ],
           ),
         ),
       ),

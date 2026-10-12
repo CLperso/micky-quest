@@ -41,10 +41,16 @@ class AppStore extends ChangeNotifier {
   Map<String, DayPlan> plans = {};
   List<XpEvent> xpEvents = [];
   List<String> inventory = [];
+  List<Pause> pauses = [];
+  List<NoteMeta> notes = [];
   Settings settings = Settings();
-  int xp = 0;
-  int jokers = 1;
   String lastChest = '';
+
+  /// Empreinte de chaque enregistrement au dernier enregistrement (pour dater les modifications).
+  final Map<String, String> _seen = {};
+
+  int get xp => xpEvents.fold(0, (a, e) => a + e.amount);
+  int get jokers => 1 + xpEvents.where((e) => e.reason == 'Joker').length;
 
   String get todayKey => dayKey(DateTime.now());
   String get tomorrowKey => dayKey(DateTime.now().add(const Duration(days: 1)));
@@ -69,20 +75,139 @@ class AppStore extends ChangeNotifier {
           for (final p in list('plans').map(DayPlan.fromJson)) p.day: p,
         };
         inventory = ((j['inventory'] as List?) ?? []).map((e) => e.toString()).toList();
+        pauses = list('pauses').map(Pause.fromJson).toList();
+        notes = list('notes').map(NoteMeta.fromJson).toList();
         settings = Settings.fromJson(Map<String, dynamic>.from((j['settings'] as Map?) ?? {}));
-        xp = (j['xp'] as num?)?.toInt() ?? 0;
-        jokers = (j['jokers'] as num?)?.toInt() ?? 1;
         lastChest = (j['lastChest'] as String?) ?? '';
       } catch (e) {
         debugPrint('État illisible : $e');
       }
     }
+    _stamp(init: true);
     _rollOver();
     await mergePending(notify: false);
     notifyListeners();
   }
 
-  Future<void> save() async {
+  /// Toutes les collections synchronisables, par type puis par identifiant.
+  Map<String, Map<String, Map<String, dynamic>>> records() => {
+        'tasks': {for (final e in tasks) e.id: e.toJson()},
+        'sessions': {for (final e in sessions) e.id: e.toJson()},
+        'checkins': {for (final e in checkins) e.id: e.toJson()},
+        'logs': {for (final e in logs) e.id: e.toJson()},
+        'plans': {for (final e in plans.values) e.day: e.toJson()},
+        'pauses': {for (final e in pauses) e.id: e.toJson()},
+        'notes': {for (final e in notes) e.id: e.toJson()},
+      };
+
+  /// Date les enregistrements qui ont changé depuis la dernière fois.
+  void _stamp({bool init = false}) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    void check(String kind, String id, Map<String, dynamic> json, void Function(int) setMod) {
+      final copy = Map<String, dynamic>.from(json)..remove('mod');
+      final sig = jsonEncode(copy);
+      final key = '$kind:$id';
+      if (!init && _seen[key] != sig) setMod(now);
+      if (init && (json['mod'] ?? 0) == 0) setMod(now);
+      _seen[key] = sig;
+    }
+
+    for (final e in tasks) {
+      check('tasks', e.id, e.toJson(), (m) => e.mod = m);
+    }
+    for (final e in sessions) {
+      check('sessions', e.id, e.toJson(), (m) => e.mod = m);
+    }
+    for (final e in checkins) {
+      check('checkins', e.id, e.toJson(), (m) => e.mod = m);
+    }
+    for (final e in logs) {
+      check('logs', e.id, e.toJson(), (m) => e.mod = m);
+    }
+    for (final e in plans.values) {
+      check('plans', e.day, e.toJson(), (m) => e.mod = m);
+    }
+    for (final e in pauses) {
+      check('pauses', e.id, e.toJson(), (m) => e.mod = m);
+    }
+    for (final e in notes) {
+      check('notes', e.id, e.toJson(), (m) => e.mod = m);
+    }
+  }
+
+  /// Contenu partagé entre appareils (sans les réglages propres à l'appareil).
+  Map<String, dynamic> syncPayload() {
+    final r = records();
+    return {
+      'v': 1,
+      for (final e in r.entries) e.key: e.value.values.toList(),
+      'xpEvents': xpEvents.map((e) => e.toJson()).toList(),
+      'inventory': inventory,
+      'cycle': {'start': settings.cycleStart, 'len': settings.cycleLength},
+    };
+  }
+
+  /// Fusionne le contenu d'un autre appareil : le plus récent gagne, rien ne se perd.
+  Future<void> mergeRemote(Map<String, dynamic> remote) async {
+    List<Map<String, dynamic>> list(String k) =>
+        ((remote[k] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+
+    void mergeInto<T>(List<T> local, List<Map<String, dynamic>> incoming, String Function(T) idOf,
+        String Function(Map<String, dynamic>) idOfJson, int Function(T) modOf, T Function(Map<String, dynamic>) make) {
+      final index = {for (var i = 0; i < local.length; i++) idOf(local[i]): i};
+      for (final j in incoming) {
+        final id = idOfJson(j);
+        final m = (j['mod'] as num?)?.toInt() ?? 0;
+        final i = index[id];
+        if (i == null) {
+          local.add(make(j));
+          index[id] = local.length - 1;
+        } else if (m > modOf(local[i])) {
+          local[i] = make(j);
+        }
+      }
+    }
+
+    mergeInto<Task>(tasks, list('tasks'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Task.fromJson);
+    mergeInto<SessionRec>(
+        sessions, list('sessions'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, SessionRec.fromJson);
+    mergeInto<CheckIn>(checkins, list('checkins'), (e) => e.id, (j) => '${j['ts']}', (e) => e.mod, CheckIn.fromJson);
+    mergeInto<LogEntry>(logs, list('logs'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, LogEntry.fromJson);
+    mergeInto<Pause>(pauses, list('pauses'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Pause.fromJson);
+    mergeInto<NoteMeta>(notes, list('notes'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, NoteMeta.fromJson);
+    for (final j in list('plans')) {
+      final d = j['day'] as String;
+      final m = (j['mod'] as num?)?.toInt() ?? 0;
+      final cur = plans[d];
+      if (cur == null || m > cur.mod) plans[d] = DayPlan.fromJson(j);
+    }
+    final ids = xpEvents.map((e) => e.id).toSet();
+    for (final j in list('xpEvents')) {
+      final e = XpEvent.fromJson(j);
+      if (ids.add(e.id)) xpEvents.add(e);
+    }
+    xpEvents.sort((a, b) => a.ts.compareTo(b.ts));
+    for (final it in ((remote['inventory'] as List?) ?? []).map((e) => e.toString())) {
+      if (!inventory.contains(it)) inventory.add(it);
+    }
+    final cyc = remote['cycle'] as Map?;
+    if (cyc != null && settings.cycleStart.isEmpty && (cyc['start'] as String? ?? '').isNotEmpty) {
+      settings.cycleStart = cyc['start'] as String;
+      settings.cycleLength = (cyc['len'] as num?)?.toInt() ?? 28;
+    } else if (cyc != null && (cyc['start'] as String? ?? '').compareTo(settings.cycleStart) > 0) {
+      settings.cycleStart = cyc['start'] as String;
+      settings.cycleLength = (cyc['len'] as num?)?.toInt() ?? settings.cycleLength;
+    }
+    checkins.sort((a, b) => a.ts.compareTo(b.ts));
+    // les copies reçues gardent leur date de modification
+    _stamp(init: true);
+    _rollOver();
+    await save(stamp: false);
+    notifyListeners();
+  }
+
+  Future<void> save({bool stamp = true}) async {
+    if (stamp) _stamp();
     final j = {
       'tasks': tasks.map((e) => e.toJson()).toList(),
       'sessions': sessions.map((e) => e.toJson()).toList(),
@@ -91,9 +216,9 @@ class AppStore extends ChangeNotifier {
       'xpEvents': xpEvents.map((e) => e.toJson()).toList(),
       'plans': plans.values.map((e) => e.toJson()).toList(),
       'inventory': inventory,
+      'pauses': pauses.map((e) => e.toJson()).toList(),
+      'notes': notes.map((e) => e.toJson()).toList(),
       'settings': settings.toJson(),
-      'xp': xp,
-      'jokers': jokers,
       'lastChest': lastChest,
     };
     await _prefs.setString(kStateKey, jsonEncode(j));
@@ -161,8 +286,10 @@ class AppStore extends ChangeNotifier {
   }
 
   void _gainXp(int amount, String reason) {
-    xp += amount;
-    xpEvents.add(XpEvent(ts: DateTime.now().millisecondsSinceEpoch, amount: amount, reason: reason));
+    // horodatage unique : sert d'identifiant pour la synchronisation
+    var ts = DateTime.now().millisecondsSinceEpoch;
+    if (xpEvents.isNotEmpty && ts <= xpEvents.last.ts) ts = xpEvents.last.ts + 1;
+    xpEvents.add(XpEvent(ts: ts, amount: amount, reason: reason));
   }
 
   int xpOn(String day) => xpEvents
@@ -179,6 +306,14 @@ class AppStore extends ChangeNotifier {
     }
     for (final p in plans.values) {
       if (p.briefingDone || p.eveningDone) s.add(p.day);
+    }
+    // une journée en pause (cours, sortie…) ne casse jamais la série
+    for (final p in pauses) {
+      final end = p.end == 0 ? DateTime.now().millisecondsSinceEpoch : p.end;
+      for (var t = p.start; t <= end; t += 6 * 3600 * 1000) {
+        s.add(dayKey(DateTime.fromMillisecondsSinceEpoch(t)));
+      }
+      s.add(dayKey(DateTime.fromMillisecondsSinceEpoch(end)));
     }
     return s;
   }
@@ -397,7 +532,7 @@ class AppStore extends ChangeNotifier {
     String item;
     if (r.nextInt(5) == 0) {
       item = Loot.rewards[r.nextInt(Loot.rewards.length)];
-      if (item == 'Joker de série') jokers++;
+      if (item == 'Joker de série') _gainXp(0, 'Joker');
       if (item == '+50 XP bonus') _gainXp(50, 'Coffre');
     } else {
       final notOwned = Loot.items.where((i) => !inventory.contains(i)).toList();
@@ -472,6 +607,11 @@ class AppStore extends ChangeNotifier {
                   ? 'coffee'
                   : 'free';
       ev.add(ReplayEvent(l.ts, kind, LogKind.labels[l.kind] ?? 'Note', l.note, l.photo));
+    }
+    for (final p in pauses) {
+      if (dayKey(DateTime.fromMillisecondsSinceEpoch(p.start)) != day) continue;
+      final until = p.end == 0 ? 'en cours' : 'jusqu\'à ${DateTime.fromMillisecondsSinceEpoch(p.end).hour}h${DateTime.fromMillisecondsSinceEpoch(p.end).minute.toString().padLeft(2, '0')}';
+      ev.add(ReplayEvent(p.start, 'pause', 'Pause · ${p.label}', '$until · check-ins coupés'));
     }
     for (final t in tasks.where((t) => t.done && dayKey(DateTime.fromMillisecondsSinceEpoch(t.doneAt)) == day)) {
       ev.add(ReplayEvent(t.doneAt, 'task', 'Tâche faite', t.title));
@@ -738,4 +878,49 @@ class AppStore extends ChangeNotifier {
   }
 
   Future<void> updateSettings() async => commit();
+
+  // ---------- Mode occupée ----------
+
+  Pause? get activePause {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final p in pauses) {
+      if (p.activeAt(now)) return p;
+    }
+    return null;
+  }
+
+  Future<void> startPause(String label, DateTime? until) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final p in pauses) {
+      if (p.activeAt(now)) p.end = now;
+    }
+    pauses.add(Pause(start: now, end: until?.millisecondsSinceEpoch ?? 0, label: label));
+    await commit();
+  }
+
+  Future<void> stopPause() async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final p in pauses) {
+      if (p.activeAt(now)) p.end = now;
+    }
+    await commit();
+  }
+
+  /// Vrai si un check-in à cette heure tombe pendant une pause.
+  bool pausedAt(DateTime t) {
+    final ts = t.millisecondsSinceEpoch;
+    return pauses.any((p) => p.activeAt(ts));
+  }
+
+  // ---------- Carnet manuscrit ----------
+
+  List<NoteMeta> get liveNotes => notes.where((n) => !n.removed).toList()..sort((a, b) => b.mod.compareTo(a.mod));
+
+  NoteMeta noteFor(String day, String kind) {
+    for (final n in notes) {
+      if (n.day == day && n.kind == kind && !n.removed) return n;
+    }
+    // ajoutée au carnet seulement quand on écrit dessus
+    return NoteMeta(day: day, kind: kind, title: '${NoteMeta.kinds[kind] ?? 'Page'} du ${parseDay(day).day}/${parseDay(day).month}');
+  }
 }
