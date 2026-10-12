@@ -1,0 +1,64 @@
+name: Construire l'APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.4'
+          channel: stable
+          cache: true
+
+      - name: Générer le projet Android
+        run: |
+          flutter create --org com.clperso --project-name micky_quest --platforms android .
+          rm -rf test
+          python3 ci/patch_android.py
+
+      - name: Clé de signature stable
+        run: |
+          mkdir -p ~/.android
+          cp ci/debug.keystore ~/.android/debug.keystore
+
+      - name: Dépendances
+        run: flutter pub get
+
+      - name: Analyse du code
+        run: |
+          flutter analyze --no-fatal-infos --no-fatal-warnings > analyze.txt 2>&1 || true
+          cat analyze.txt
+          python3 ci/annotate.py analyze.txt
+
+      - name: Construire
+        run: |
+          set +e
+          flutter build apk --release --build-name=1.0.${{ github.run_number }} --build-number=${{ github.run_number }} > build.txt 2>&1
+          code=$?
+          cat build.txt
+          if [ $code -ne 0 ]; then python3 ci/build_errors.py build.txt; exit $code; fi
+          cp build/app/outputs/flutter-apk/app-release.apk micky-quest.apk
+
+      - name: Publier
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Micky Quest v1.0.${{ github.run_number }}
+          body: Télécharge micky-quest.apk depuis ton téléphone pour l'installer ou le mettre à jour.
+          files: micky-quest.apk
+          make_latest: true
