@@ -51,6 +51,7 @@ class AppStore extends ChangeNotifier {
   List<Expense> expenses = [];
   List<Remind> reminders = [];
   List<Placement> placements = [];
+  List<Slot> slots = [];
   Settings settings = Settings();
   String lastChest = '';
 
@@ -108,6 +109,7 @@ class AppStore extends ChangeNotifier {
         expenses = list('expenses').map(Expense.fromJson).toList();
         reminders = list('reminders').map(Remind.fromJson).toList();
         placements = list('placements').map(Placement.fromJson).toList();
+        slots = list('slots').map(Slot.fromJson).toList();
         settings = Settings.fromJson(Map<String, dynamic>.from((j['settings'] as Map?) ?? {}));
         lastChest = (j['lastChest'] as String?) ?? '';
       } catch (e) {
@@ -146,6 +148,7 @@ class AppStore extends ChangeNotifier {
         'expenses': {for (final e in expenses) e.id: e.toJson()},
         'reminders': {for (final e in reminders) e.id: e.toJson()},
         'placements': {for (final e in placements) e.id: e.toJson()},
+        'slots': {for (final e in slots) e.id: e.toJson()},
       };
 
   /// Date les enregistrements qui ont changé depuis la dernière fois.
@@ -199,6 +202,9 @@ class AppStore extends ChangeNotifier {
     for (final e in placements) {
       check('placements', e.id, e.toJson(), (m) => e.mod = m);
     }
+    for (final e in slots) {
+      check('slots', e.id, e.toJson(), (m) => e.mod = m);
+    }
   }
 
   /// Contenu partagé entre appareils (sans les réglages propres à l'appareil).
@@ -249,6 +255,7 @@ class AppStore extends ChangeNotifier {
     mergeInto<Expense>(expenses, list('expenses'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Expense.fromJson);
     mergeInto<Remind>(reminders, list('reminders'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Remind.fromJson);
     mergeInto<Placement>(placements, list('placements'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Placement.fromJson);
+    mergeInto<Slot>(slots, list('slots'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Slot.fromJson);
     for (final j in list('plans')) {
       final d = j['day'] as String;
       final m = (j['mod'] as num?)?.toInt() ?? 0;
@@ -298,6 +305,7 @@ class AppStore extends ChangeNotifier {
       'expenses': expenses.map((e) => e.toJson()).toList(),
       'reminders': reminders.map((e) => e.toJson()).toList(),
       'placements': placements.map((e) => e.toJson()).toList(),
+      'slots': slots.map((e) => e.toJson()).toList(),
       'settings': settings.toJson(),
       'lastChest': lastChest,
     };
@@ -854,6 +862,41 @@ class AppStore extends ChangeNotifier {
     return t;
   }
 
+  // ---------- Créneaux notés après coup ----------
+
+  List<Slot> slotsOn(String day) => slots
+      .where((x) => !x.removed && dayKey(DateTime.fromMillisecondsSinceEpoch(x.start)) == day)
+      .toList()
+    ..sort((a, b) => a.start.compareTo(b.start));
+
+  static String _hm(int ts) {
+    final d = DateTime.fromMillisecondsSinceEpoch(ts);
+    return '${d.hour}h${d.minute.toString().padLeft(2, '0')}';
+  }
+
+  bool _inSlot(int ts) => slots.any((x) => !x.removed && ts > x.start && ts <= x.end);
+
+  /// Noter un créneau honnêtement rapporte +1 XP, quel qu'il soit.
+  Future<void> saveSlot(Slot x) async {
+    if (!slots.contains(x)) {
+      slots.add(x);
+      _gainXp(1, 'Créneau noté');
+    }
+    await commit();
+  }
+
+  Future<void> removeSlot(Slot x) async {
+    x.removed = true;
+    await commit();
+  }
+
+  /// « Accepter » : un geste de régulation, compté en Sérénité.
+  Future<void> acceptSlot({int lowerGoalBy = 0}) async {
+    if (lowerGoalBy > 0 && today.proGoalMin > 0) today.proGoalMin = max(30, today.proGoalMin - lowerGoalBy);
+    _gainXp(0, 'Sérénité : accepter');
+    await commit();
+  }
+
   // ---------- Timetable et rappels ----------
 
   /// Tâches placées dans la journée (bloc prévu), triées par heure.
@@ -1235,6 +1278,15 @@ class AppStore extends ChangeNotifier {
       ev.add(ReplayEvent(e.ts, 'expense', 'Dépense · ${e.amount.toStringAsFixed(2).replaceAll('.', ',')} €',
           '${Expense.labels[e.category] ?? e.category}${e.why.isNotEmpty ? ' · ${e.why}' : ''}'));
     }
+    for (final x in slotsOn(day)) {
+      final parts = <String>[
+        '${_hm(x.start)}–${_hm(x.end)}',
+        if (x.title.isNotEmpty) x.title,
+        if (x.emotion.isNotEmpty) x.emotion,
+        if (x.why.isNotEmpty) 'pourquoi : ${x.why.toLowerCase()}',
+      ];
+      ev.add(ReplayEvent(x.start, x.kind == 'idle' ? 'idle' : 'slot', 'Créneau · ${Slot.labels[x.kind] ?? x.kind}', parts.join(' · ')));
+    }
     for (final r in remindersOn(day)) {
       ev.add(ReplayEvent(r.ts, 'remind', 'Rappel · ${r.title}',
           '${Remind.labels[r.answer] ?? r.answer}${r.detail.isNotEmpty ? ' · ${r.detail}' : ''}'));
@@ -1324,9 +1376,12 @@ class AppStore extends ChangeNotifier {
       add(sessionCategory(s),
           s.running ? DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(s.start)).inMinutes.toDouble() : s.actualMin);
     }
+    for (final x in slotsOn(day)) {
+      add(x.category, x.minutes);
+    }
     final cs = checkinsOn(day)..sort((a, b) => a.ts.compareTo(b.ts));
     for (var i = 0; i < cs.length; i++) {
-      if (cs[i].activity.isEmpty || _duringSession(cs[i].ts)) continue;
+      if (cs[i].activity.isEmpty || _duringSession(cs[i].ts) || _inSlot(cs[i].ts)) continue;
       add(categoryOf(cs[i]), _checkinMinutes(cs, i));
     }
     return m;
@@ -1360,9 +1415,12 @@ class AppStore extends ChangeNotifier {
       if (s.start < from || sessionCategory(s) != Act.pro) continue;
       spread(s.start, s.running ? DateTime.now().millisecondsSinceEpoch : s.end);
     }
+    for (final x in slots.where((x) => !x.removed && x.kind == 'pro' && x.start >= from)) {
+      spread(x.start, x.end);
+    }
     final cs = checkins.where((c) => c.ts >= from).toList()..sort((a, b) => a.ts.compareTo(b.ts));
     for (var i = 0; i < cs.length; i++) {
-      if (categoryOf(cs[i]) != Act.pro || _duringSession(cs[i].ts)) continue;
+      if (categoryOf(cs[i]) != Act.pro || _duringSession(cs[i].ts) || _inSlot(cs[i].ts)) continue;
       final mins = _checkinMinutes(cs, i);
       spread(cs[i].ts - (mins * 60000).round(), cs[i].ts);
     }
@@ -1634,6 +1692,32 @@ class AppStore extends ChangeNotifier {
             1, ''));
       } else {
         out.add(Discovery('start', 'Ton heure de démarrage', '', starts.length / 5, '5 jours avec du travail pro noté'));
+      }
+    }
+
+    // 7 ter. Créneaux improductifs : quand et pourquoi.
+    {
+      final idle = slots.where((x) => !x.removed && x.kind == 'idle').toList();
+      if (idle.length >= 4) {
+        final parts = {'le matin': 0.0, 'l\'après-midi': 0.0, 'le soir': 0.0};
+        final whys = <String, int>{};
+        for (final x in idle) {
+          final h = DateTime.fromMillisecondsSinceEpoch(x.start).hour;
+          final k = h < 12 ? 'le matin' : h < 18 ? 'l\'après-midi' : 'le soir';
+          parts[k] = parts[k]! + x.minutes;
+          if (x.why.isNotEmpty) whys[x.why] = (whys[x.why] ?? 0) + 1;
+        }
+        final top = parts.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+        final w = whys.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+        // nuits courtes avant les jours improductifs ?
+        final days = idle.map((x) => dayKey(DateTime.fromMillisecondsSinceEpoch(x.start))).toSet();
+        final sl = days.map((d) => plans[d]?.sleepH ?? 0).where((v) => v > 0).toList();
+        final shortSleep = sl.isNotEmpty && sl.where((v) => v < 14).length / sl.length >= 0.6;
+        out.add(Discovery('idle', 'Tes créneaux qui glissent',
+            'Ils tombent surtout ${top.first.key}${w.isNotEmpty ? ', le plus souvent par « ${w.first.key.toLowerCase()} »' : ''}.${shortSleep ? ' Et souvent après une nuit de moins de 7 h.' : ''} Un bloc facile planifié à ce moment-là peut aider.',
+            1, ''));
+      } else {
+        out.add(Discovery('idle', 'Tes créneaux qui glissent', '', idle.length / 4, '4 créneaux « improductive » notés'));
       }
     }
 

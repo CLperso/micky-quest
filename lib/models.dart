@@ -392,6 +392,72 @@ class CheckIn {
       };
 }
 
+/// Un créneau noté après coup (« de 9 h à 12 h, j'ai été improductive »).
+class Slot {
+  String id;
+  int start;
+  int end;
+  String kind; // pro, perso, pause, phone, idle
+  String title;
+  int mood; // 0 = non renseignée, 1 à 5 (désagréable → agréable)
+  int energy; // -1 = non renseignée, 0 à 100
+  String emotion;
+  String why;
+  bool removed;
+  int mod;
+
+  Slot({
+    String? id,
+    required this.start,
+    required this.end,
+    required this.kind,
+    this.title = '',
+    this.mood = 0,
+    this.energy = -1,
+    this.emotion = '',
+    this.why = '',
+    this.removed = false,
+    this.mod = 0,
+  }) : id = id ?? newId();
+
+  static const kinds = ['pro', 'perso', 'pause', 'phone', 'idle'];
+  static const labels = {'pro': 'Pro', 'perso': 'Perso', 'pause': 'Pause', 'phone': 'Téléphone', 'idle': 'Improductive'};
+  static const whys = ['Fatigue', 'Flou', 'Évitement', 'Quelqu\'un', 'Émotion', 'Je ne sais pas'];
+
+  double get minutes => (end - start) / 60000.0;
+
+  /// Catégorie pour les stats de temps (improductive = « rien de précis », jamais un échec).
+  String get category => kind == 'idle' ? Act.nothing : kind;
+
+  factory Slot.fromJson(Map<String, dynamic> j) => Slot(
+        id: _s(j['id']),
+        start: _i(j['start']),
+        end: _i(j['end']),
+        kind: _s(j['kind'], 'idle'),
+        title: _s(j['title']),
+        mood: _i(j['mood']),
+        energy: _i(j['energy'], -1),
+        emotion: _s(j['emo']),
+        why: _s(j['why']),
+        removed: _b(j['removed']),
+        mod: _i(j['mod']),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'start': start,
+        'end': end,
+        'kind': kind,
+        'title': title,
+        'mood': mood,
+        'energy': energy,
+        'emo': emotion,
+        'why': why,
+        'removed': removed,
+        'mod': mod,
+      };
+}
+
 /// Repas, boissons et entrées libres.
 class LogKind {
   static const meal = 'meal';

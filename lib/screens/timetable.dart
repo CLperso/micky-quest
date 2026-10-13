@@ -11,6 +11,7 @@ import '../notifications.dart';
 import '../store.dart';
 import '../theme.dart';
 import 'block.dart';
+import 'slot.dart';
 import 'task_panel.dart';
 import 'session.dart';
 
@@ -316,11 +317,12 @@ class PlanningView extends StatefulWidget {
 
 class _Item {
   final int start, end;
-  final String kind; // session, agenda, block, free
+  final String kind; // session, agenda, block, free, past, slot
   final String title, sub;
   final Task? task;
+  final Slot? slot;
   final bool done;
-  _Item(this.start, this.end, this.kind, this.title, this.sub, {this.task, this.done = false});
+  _Item(this.start, this.end, this.kind, this.title, this.sub, {this.task, this.slot, this.done = false});
 }
 
 class _PlanningViewState extends State<PlanningView> {
@@ -414,6 +416,17 @@ class _PlanningViewState extends State<PlanningView> {
     for (final e in _events.where((e) => !e.allDay)) {
       items.add(_Item(e.start.millisecondsSinceEpoch, e.end.millisecondsSinceEpoch, 'agenda', e.title, 'agenda · ${e.end.difference(e.start).inMinutes} min'));
     }
+    for (final x in store.slotsOn(_key)) {
+      items.add(_Item(x.start, x.end, 'slot', x.title.isNotEmpty ? x.title : (Slot.labels[x.kind] ?? x.kind),
+          [
+            if (x.title.isNotEmpty) Slot.labels[x.kind] ?? x.kind,
+            fmtMin(x.minutes.round()),
+            if (x.emotion.isNotEmpty) x.emotion,
+            if (x.why.isNotEmpty) x.why.toLowerCase(),
+            'noté après coup',
+          ].join(' · '),
+          slot: x, done: true));
+    }
     for (final t in store.plannedOn(_key)) {
       // un bloc déjà couvert par une session faite dessus n'est pas répété
       if (t.done && items.any((i) => i.kind == 'session' && i.task == null && i.title == t.title)) continue;
@@ -426,18 +439,30 @@ class _PlanningViewState extends State<PlanningView> {
     final s = store.settings;
     final dayStart = _day.add(Duration(hours: s.startHour)).millisecondsSinceEpoch;
     final dayEnd = _day.add(Duration(hours: s.endHour)).millisecondsSinceEpoch;
-    final isToday = _key == store.todayKey;
-    var cursor = isToday ? max(now, dayStart) : dayStart;
-    if (_key.compareTo(store.todayKey) < 0) return items;
+    if (_key.compareTo(store.todayKey) > 0) {
+      // jour futur : seulement les trous à venir
+    }
+    var cursor = dayStart;
     final out = <_Item>[];
-    for (final i in items) {
-      if (i.start - cursor >= 30 * 60000 && cursor < dayEnd) {
-        out.add(_Item(cursor, i.start, 'free', '', ''));
+    void gap(int a, int b) {
+      if (b - a < 30 * 60000 || a >= dayEnd) return;
+      b = min(b, dayEnd);
+      // partie passée : « noter ce créneau » ; partie à venir : « caser »
+      if (b <= now) {
+        out.add(_Item(a, b, 'past', '', ''));
+      } else if (a >= now) {
+        out.add(_Item(a, b, 'free', '', ''));
+      } else {
+        if (now - a >= 30 * 60000) out.add(_Item(a, now, 'past', '', ''));
+        if (b - now >= 30 * 60000) out.add(_Item(now, b, 'free', '', ''));
       }
+    }
+    for (final i in items) {
+      gap(cursor, i.start);
       out.add(i);
       cursor = max(cursor, i.end);
     }
-    if (dayEnd - cursor >= 30 * 60000) out.add(_Item(cursor, dayEnd, 'free', '', ''));
+    gap(cursor, dayEnd);
     return out;
   }
 
@@ -529,13 +554,26 @@ class _PlanningViewState extends State<PlanningView> {
           if (!nowShown) _nowLine(now),
           const SizedBox(height: 8),
           if (place == null)
-            SecondaryButton(
-              label: '+ Caser une tâche',
-              onPressed: () async {
-                final at = await pickWhen(context, title: 'À quelle heure ?');
-                if (at != null) await _placeAt(at);
-              },
-            ),
+            Row(children: [
+              Expanded(
+                child: SecondaryButton(
+                  label: '+ Caser une tâche',
+                  onPressed: () async {
+                    final at = await pickWhen(context, title: 'À quelle heure ?');
+                    if (at != null) await _placeAt(at);
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: SecondaryButton(
+                  label: '+ Créneau passé',
+                  onPressed: () => addPastSlotSheet(context,
+                      start: _key == store.todayKey ? null : _day.add(const Duration(hours: 9)),
+                      end: _key == store.todayKey ? null : _day.add(const Duration(hours: 12))),
+                ),
+              ),
+            ]),
         ],
       ],
     );
@@ -555,6 +593,69 @@ class _PlanningViewState extends State<PlanningView> {
   Widget _row(AppStore store, _Item i, Task? place) {
     final t = i.task;
     final start = DateTime.fromMillisecondsSinceEpoch(i.start);
+    if (i.kind == 'past') {
+      final mins = ((i.end - i.start) / 60000).round();
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Row(children: [
+          SizedBox(width: 44, child: Text(hm(start), textAlign: TextAlign.right, style: K.body(11, color: K.muted, w: FontWeight.w800))),
+          const SizedBox(width: 10),
+          Expanded(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => addPastSlotSheet(context, start: start, end: DateTime.fromMillisecondsSinceEpoch(i.end)),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: K.line, width: 2)),
+                child: Row(children: [
+                  Expanded(child: Text('${fmtMin(mins)} sans trace', style: K.body(12, color: K.muted, w: FontWeight.w800))),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(color: K.raised, borderRadius: BorderRadius.circular(999)),
+                    child: Text('+ noter', style: K.body(11, w: FontWeight.w900)),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+        ]),
+      );
+    }
+    if (i.kind == 'slot') {
+      final x = i.slot!;
+      final c = x.kind == 'idle' || x.kind == 'phone'
+          ? moodColor(x.mood, x.energy)
+          : x.kind == 'pro'
+              ? K.lime
+              : x.kind == 'perso'
+                  ? K.pink
+                  : K.cyan;
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(width: 44, child: Padding(padding: const EdgeInsets.only(top: 8), child: Text(hm(start), textAlign: TextAlign.right, style: K.body(11, color: K.muted, w: FontWeight.w800)))),
+          const SizedBox(width: 10),
+          Expanded(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => addPastSlotSheet(context, existing: x),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: c.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border(left: BorderSide(color: c, width: 4)),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(i.title, style: K.body(13, w: FontWeight.w800)),
+                  Text(i.sub, style: K.body(11, color: K.muted)),
+                ]),
+              ),
+            ),
+          ),
+        ]),
+      );
+    }
     if (i.kind == 'free') {
       final mins = ((i.end - i.start) / 60000).round();
       return Padding(
@@ -914,6 +1015,25 @@ class _TimetableViewState extends State<TimetableView> {
                         const SizedBox(width: 4),
                         Expanded(child: Text('${hm(e.start)} ${e.title}', style: K.body(11, color: K.muted, w: FontWeight.w800), maxLines: 1, overflow: TextOverflow.ellipsis)),
                       ]),
+                    ),
+                  ),
+                // créneaux notés après coup (couleur de l'émotion)
+                for (final x in store.slotsOn(_key))
+                  Positioned(
+                    top: top(x.start) + 8,
+                    left: _left,
+                    right: 0,
+                    height: max(18, x.minutes / 60 * _hourH),
+                    child: GestureDetector(
+                      onTap: () => addPastSlotSheet(context, existing: x),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: (x.kind == 'idle' || x.kind == 'phone' ? moodColor(x.mood, x.energy) : x.kind == 'pro' ? K.lime : x.kind == 'perso' ? K.pink : K.cyan).withValues(alpha: 0.25),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        child: Text('${Slot.labels[x.kind]}${x.emotion.isNotEmpty ? ' · ${x.emotion}' : ''}', style: K.body(11, color: K.muted, w: FontWeight.w800), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ),
                     ),
                   ),
                 // sessions réelles : liseré à gauche du bloc

@@ -364,6 +364,8 @@ class ReplayScreen extends StatelessWidget {
     'coffee': K.coral,
     'pill': K.coral,
     'calm': K.pink,
+    'idle': K.dim,
+    'slot': K.cyan,
     'free': K.ink,
     'task': K.lime,
     'pause': K.gold,
