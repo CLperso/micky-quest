@@ -493,6 +493,13 @@ class Loot {
     'Sac de croquettes de luxe',
     'Carton de rêve',
   ];
+  static const rare = [
+    'Couronne dorée de Micky',
+    'Trône de velours',
+    'Château en carton',
+    'Cape d\'héroïne étoilée',
+    'Arbre à chat géant',
+  ];
   static const rewards = [
     'Joker de série',
     'Thème doré pour 24 h',

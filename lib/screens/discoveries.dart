@@ -58,7 +58,9 @@ class DiscoveriesScreen extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         const TimeStats(),
-        const SizedBox(height: 12),        const BudgetStats(),
+        const SizedBox(height: 12),        const GainsStats(),
+        const SizedBox(height: 12),
+        const BudgetStats(),
         const SizedBox(height: 12),
         Panel(
           child: Column(
@@ -433,4 +435,97 @@ class BudgetStats extends StatelessWidget {
           Text(l, style: K.body(11, color: K.muted)),
         ]),
       );
+}
+
+
+/// Ce que tu as gagné chaque jour : XP, détail et trésors.
+class GainsStats extends StatefulWidget {
+  const GainsStats({super.key});
+
+  @override
+  State<GainsStats> createState() => _GainsStatsState();
+}
+
+class _GainsStatsState extends State<GainsStats> {
+  int _sel = 13; // index du jour choisi (13 = aujourd'hui)
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final now = DateTime.now();
+    final days = [for (var i = 13; i >= 0; i--) DateTime(now.year, now.month, now.day).subtract(Duration(days: i))];
+    final gains = [for (final d in days) store.gainsOn(dayKey(d))];
+    final maxXp = gains.fold(0, (a, g) => g.xp > a ? g.xp : a);
+    final g = gains[_sel];
+    final d = days[_sel];
+    final week = gains.skip(7).fold(0, (a, g) => a + g.xp);
+    final entries = g.byReason.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    const names = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
+
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Expanded(child: Text('Tes gains', style: K.display(16))),
+            Text('$week XP sur 7 jours', style: K.body(12, color: K.muted)),
+          ]),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 86,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (var i = 0; i < 14; i++)
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _sel = i),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            if (gains[i].loot.isNotEmpty) const Icon(Icons.star_rounded, color: K.gold, size: 10),
+                            Container(
+                              height: maxXp == 0 ? 3 : 3 + 58 * gains[i].xp.clamp(0, maxXp) / maxXp,
+                              decoration: BoxDecoration(
+                                color: i == _sel ? K.lime : K.cyan.withValues(alpha: 0.45),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text('${days[i].day}', style: K.body(9, color: i == _sel ? K.ink : K.muted)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(
+              child: Text(_sel == 13 ? 'Aujourd\'hui' : '${names[d.weekday - 1]} ${d.day}/${d.month}', style: K.display(15)),
+            ),
+            Text('+${g.xp} XP', style: K.display(16, color: K.lime, w: FontWeight.w700)),
+          ]),
+          const SizedBox(height: 4),
+          if (entries.isEmpty && g.loot.isEmpty) Text('Rien gagné ce jour-là.', style: K.body(12, color: K.muted)),
+          for (final e in entries)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(children: [
+                Expanded(child: Text(e.key, style: K.body(13))),
+                Text('${e.value > 0 ? '+' : ''}${e.value}', style: K.body(13, color: e.value > 0 ? K.lime : K.coral, w: FontWeight.w800)),
+              ]),
+            ),
+          if (g.loot.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Wrap(spacing: 6, runSpacing: 6, children: [for (final it in g.loot) Pill(it, color: K.gold)]),
+          ],
+        ],
+      ),
+    );
+  }
 }

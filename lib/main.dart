@@ -178,8 +178,23 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
 
   void goTo(int tab) => setState(() => _tab = tab);
 
+  bool _celebrating = false;
+
+  void _maybeCelebrate(AppStore store) {
+    final msg = store.pendingCelebration;
+    if (msg == null || _celebrating) return;
+    _celebrating = true;
+    store.pendingCelebration = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final ctx = navKey.currentContext;
+      if (ctx != null) await showBigChest(ctx, msg);
+      _celebrating = false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    _maybeCelebrate(AppScope.of(context));
     final wide = MediaQuery.of(context).size.width >= 840;
     final tablet = isTablet(context);
     final running = AppScope.of(context).runningSession != null;

@@ -292,3 +292,52 @@ Future<void> showChest(BuildContext context, String item) {
     ),
   );
 }
+
+
+/// Grande célébration : coffre géant ou journée parfaite.
+Future<void> showBigChest(BuildContext context, String text) {
+  final perfect = text.contains('JOURNÉE PARFAITE');
+  return showDialog(
+    context: context,
+    builder: (_) => AlertDialog(
+      backgroundColor: K.card,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(28),
+        side: BorderSide(color: perfect ? K.pink : K.gold, width: 3),
+      ),
+      content: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.6, end: 1),
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.elasticOut,
+        builder: (_, v, child) => Transform.scale(scale: v, child: child),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.auto_awesome_rounded, color: perfect ? K.pink : K.gold, size: 30),
+                Icon(perfect ? Icons.emoji_events_rounded : Icons.inventory_2_rounded, color: K.gold, size: 84),
+                Icon(Icons.auto_awesome_rounded, color: perfect ? K.pink : K.gold, size: 30),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Container(
+              width: 90,
+              height: 90,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: perfect ? K.pink : K.gold, width: 3),
+                image: DecorationImage(image: AssetImage(K.micky['happy']!), fit: BoxFit.cover),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(text, textAlign: TextAlign.center, style: K.body(15)),
+            const SizedBox(height: 18),
+            PrimaryButton(label: 'Incroyable !', color: perfect ? K.pink : K.gold, onPressed: () => Navigator.pop(context)),
+          ],
+        ),
+      ),
+    ),
+  );
+}

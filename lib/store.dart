@@ -515,6 +515,7 @@ class AppStore extends ChangeNotifier {
       t.done = true;
       t.doneAt = DateTime.now().millisecondsSinceEpoch;
       _gainXp(taskXp(t), 'Tâche faite');
+      _checkBigBonuses();
     }
     await commit();
   }
@@ -614,7 +615,59 @@ class AppStore extends ChangeNotifier {
       if (!inventory.contains(item)) inventory.add(item);
     }
     lastChest = item;
+    // trace du butin, pour les stats de gains
+    _gainXp(0, 'Butin : $item');
     return item;
+  }
+
+  /// Célébration à afficher (coffre géant, journée parfaite), consommée par l'interface.
+  String? pendingCelebration;
+
+  bool _claimedToday(String reason) => xpEvents.any(
+      (e) => e.reason == reason && dayKey(DateTime.fromMillisecondsSinceEpoch(e.ts)) == todayKey);
+
+  /// Vérifie les super bonus du jour.
+  void _checkBigBonuses() {
+    final today = tasks.where((t) => t.day == todayKey && !t.removed).toList();
+    final pro = today.where((t) => t.category != 'perso').toList();
+    final msgs = <String>[];
+    if (pro.length >= 2 && pro.every((t) => t.done) && !_claimedToday('Coffre géant')) {
+      _gainXp(100, 'Coffre géant');
+      final a = _openChest();
+      final b = _openChest();
+      msgs.add('COFFRE GÉANT · toutes tes tâches pro sont faites !\n+100 XP · $a · $b');
+    }
+    final habitsOk = activeHabits.isNotEmpty && activeHabits.every((h) => habitLevel(h, todayKey) > 0);
+    if (today.length >= 3 && today.every((t) => t.done) && habitsOk && !_claimedToday('Journée parfaite')) {
+      _gainXp(200, 'Journée parfaite');
+      _gainXp(0, 'Joker');
+      final r = Random();
+      final notOwned = Loot.rare.where((i) => !inventory.contains(i)).toList();
+      final item = notOwned.isEmpty ? Loot.rare[r.nextInt(Loot.rare.length)] : notOwned[r.nextInt(notOwned.length)];
+      if (!inventory.contains(item)) inventory.add(item);
+      _gainXp(0, 'Butin : $item');
+      msgs.add('JOURNÉE PARFAITE · tout est fait, habitudes comprises !\n+200 XP · $item · un joker de série');
+    }
+    if (msgs.isNotEmpty) pendingCelebration = msgs.join('\n\n');
+  }
+
+  /// Gains d'un jour : XP total, détail par raison, butins.
+  ({int xp, Map<String, int> byReason, List<String> loot}) gainsOn(String day) {
+    var total = 0;
+    final by = <String, int>{};
+    final loot = <String>[];
+    for (final e in xpEvents) {
+      if (dayKey(DateTime.fromMillisecondsSinceEpoch(e.ts)) != day) continue;
+      if (e.reason.startsWith('Butin : ')) {
+        loot.add(e.reason.substring(8));
+        continue;
+      }
+      if (e.amount == 0) continue;
+      total += e.amount;
+      final k = e.reason.startsWith('Habitude') ? 'Habitudes' : e.reason;
+      by[k] = (by[k] ?? 0) + e.amount;
+    }
+    return (xp: total, byReason: by, loot: loot);
   }
 
   // ---------- Check-ins et journal ----------
@@ -1175,6 +1228,7 @@ class AppStore extends ChangeNotifier {
     if (cur > 0 && next == 0) _gainXp(cur == 2 ? -5 : -3, 'Habitude annulée');
     if (cur == 2 && next == 1) _gainXp(-2, 'Habitude en mini');
     if (cur == 1 && next == 2) _gainXp(2, 'Habitude complète');
+    if (next > 0) _checkBigBonuses();
     await commit();
     return next;
   }
