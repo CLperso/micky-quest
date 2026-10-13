@@ -24,6 +24,19 @@ void phone(WidgetTester tester) {
   addTearDown(tester.view.reset);
 }
 
+/// Détails complets des erreurs Flutter (widget fautif compris).
+final List<String> details = [];
+
+void captureErrors() {
+  details.clear();
+  final prev = FlutterError.onError;
+  FlutterError.onError = (d) {
+    details.add(d.toString());
+    prev?.call(d);
+  };
+  addTearDown(() => FlutterError.onError = prev);
+}
+
 Future<void> check(WidgetTester tester, Widget page, String name) async {
   final store = await freshStore();
   await tester.pumpWidget(AppScope(
@@ -32,14 +45,15 @@ Future<void> check(WidgetTester tester, Widget page, String name) async {
   ));
   await tester.pump(const Duration(milliseconds: 100));
   final e = tester.takeException();
-  expect(e, isNull, reason: '$name a planté : $e');
+  expect(e, isNull, reason: '$name a planté : $e\n${details.join('\n')}');
 }
 
 void main() {
   testWidgets('QG', (t) async {
     phone(t);
+    captureErrors();
     await check(t, HomeScreen(onGoTo: (_) {}), 'QG');
-    expect(find.text('Quêtes du jour'), findsOneWidget);
+    expect(find.text('Tes stats de personnage'), findsOneWidget);
   });
   testWidgets('Matrice', (t) async {
     phone(t);
@@ -55,17 +69,18 @@ void main() {
   });
   testWidgets('Application complète', (t) async {
     phone(t);
+    captureErrors();
     final store = await freshStore();
     await t.pumpWidget(AppScope(store: store, child: const MickyQuestApp()));
     await t.pump(const Duration(milliseconds: 300));
     final e = t.takeException();
-    expect(e, isNull, reason: 'Shell a planté : $e');
-    expect(find.text('Quêtes du jour'), findsOneWidget);
+    expect(e, isNull, reason: 'Shell a planté : $e\n${details.join('\n')}');
+    expect(find.text('Tes stats de personnage'), findsOneWidget);
     for (final tab in ['Quêtes', 'Découvertes', 'Soir', 'QG']) {
       await t.tap(find.text(tab));
       await t.pump(const Duration(milliseconds: 300));
       final e2 = t.takeException();
-      expect(e2, isNull, reason: 'Onglet $tab a planté : $e2');
+      expect(e2, isNull, reason: 'Onglet $tab a planté : $e2\n${details.join('\n')}');
     }
   });
 }
