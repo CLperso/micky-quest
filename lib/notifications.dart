@@ -60,27 +60,33 @@ Future<bool> requestNotificationPermission() async {
   }
 }
 
-const _checkinActions = [
-  AndroidNotificationAction('quest', 'Ma quête', cancelNotification: false),
-  AndroidNotificationAction('pause', 'Pause', cancelNotification: false),
-  AndroidNotificationAction('other', 'Autre chose', showsUserInterface: true),
+/// Sans session : on ne présume de rien, le panneau complet est à un tap.
+const _freeActions = [
+  AndroidNotificationAction('other', 'Répondre', showsUserInterface: true),
+  AndroidNotificationAction('pause', 'En pause', cancelNotification: false),
+];
+
+/// Pendant une session : un tap pour confirmer, sinon le panneau.
+const _sessionActions = [
+  AndroidNotificationAction('quest', 'Oui, dessus', cancelNotification: false),
+  AndroidNotificationAction('other', 'J\'ai décroché', showsUserInterface: true),
 ];
 
 const _checkinTitles = [
   'Micky jette un œil : tu fais quoi ?',
-  'Petit check-in : tu en es où ?',
+  'Petit check-in : tu fais quoi, là ?',
   'Micky s\'étire… et toi, tu fais quoi ?',
-  'Coucou ! Toujours sur ta quête ?',
+  'Coucou ! Tu es sur quoi en ce moment ?',
 ];
 
-AndroidNotificationDetails _checkDetails() => const AndroidNotificationDetails(
+AndroidNotificationDetails _checkDetails({bool session = false}) => AndroidNotificationDetails(
       _checkChannel,
       'Check-ins',
       channelDescription: 'Micky te demande ce que tu fais',
       importance: Importance.high,
       priority: Priority.high,
-      color: Color(0xFFB8FF3C),
-      actions: _checkinActions,
+      color: const Color(0xFFB8FF3C),
+      actions: session ? _sessionActions : _freeActions,
       timeoutAfter: 25 * 60 * 1000,
     );
 
@@ -132,13 +138,16 @@ Future<void> rescheduleAll(AppStore store) async {
       if (!t.isAfter(now.add(const Duration(minutes: 1)))) continue;
       if (quietFrom != null && t.isAfter(quietFrom) && t.isBefore(quietTo!)) continue;
       if (store.pausedAt(t)) continue;
+      final inSession = run != null && s.checkinsDuringSession && d == 0 && t.isBefore(now.add(const Duration(hours: 3)));
       await _schedule(
         id: 2000 + d * 200 + i,
         when: t,
-        title: _checkinTitles[rnd.nextInt(_checkinTitles.length)],
-        body: 'Un tap suffit. « Autre chose » pour dire pourquoi.',
-        details: _checkDetails(),
-        payload: jsonEncode({'type': 'checkin', 'ts': t.millisecondsSinceEpoch}),
+        title: inSession ? 'Toujours sur « ${run.title} » ?' : _checkinTitles[rnd.nextInt(_checkinTitles.length)],
+        body: inSession
+            ? 'Un tap pour confirmer, ou dis ce qui s\'est passé.'
+            : 'Touche pour dire sur quoi tu es, depuis quand et comment tu te sens.',
+        details: _checkDetails(session: inSession),
+        payload: jsonEncode({'type': 'checkin', 'ts': t.millisecondsSinceEpoch, 'task': inSession ? run.taskId : ''}),
       );
       scheduledCheckins.add(t);
     }
@@ -270,9 +279,9 @@ Future<void> showTestCheckin() async {
   await _plugin.show(
     99,
     _checkinTitles.first,
-    'Un tap suffit. « Autre chose » pour dire pourquoi.',
+    'Touche pour dire sur quoi tu es, depuis quand et comment tu te sens.',
     NotificationDetails(android: _checkDetails()),
-    payload: jsonEncode({'type': 'checkin', 'ts': ts}),
+    payload: jsonEncode({'type': 'checkin', 'ts': ts, 'task': ''}),
   );
 }
 
@@ -296,10 +305,12 @@ Future<void> _savePending(Map<String, dynamic> c) async {
 
 Future<void> _handle(NotificationResponse r, {required bool foreground}) async {
   var type = '';
+  var task = '';
   var ts = DateTime.now().millisecondsSinceEpoch;
   try {
     final p = jsonDecode(r.payload ?? '{}') as Map<String, dynamic>;
     type = (p['type'] as String?) ?? '';
+    task = (p['task'] as String?) ?? '';
     // l'heure de la réponse compte, pas celle de la notification
     if (p['answer'] != null) ts = (p['answer'] as num).toInt();
   } catch (_) {}
@@ -326,7 +337,7 @@ Future<void> _handle(NotificationResponse r, {required bool foreground}) async {
   }
 
   if (action == 'quest' || action == 'pause') {
-    await _savePending({'ts': ts, 'act': action});
+    await _savePending({'ts': ts, 'act': action, 'task': action == 'quest' ? task : ''});
     // deuxième temps : l'humeur, en un tap aussi
     await _plugin.show(
       id,
@@ -346,7 +357,7 @@ Future<void> _handle(NotificationResponse r, {required bool foreground}) async {
           ],
         ),
       ),
-      payload: jsonEncode({'type': 'checkin', 'answer': ts}),
+      payload: jsonEncode({'type': 'checkin', 'answer': ts, 'task': task}),
     );
   } else if (action.startsWith('m')) {
     final mood = int.tryParse(action.substring(1)) ?? 0;

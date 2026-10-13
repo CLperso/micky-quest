@@ -19,7 +19,11 @@ class CheckinScreen extends StatefulWidget {
 
 class _CheckinScreenState extends State<CheckinScreen> {
   String _act = '';
+  String _taskId = '';
+  int _since = -1;
   String _reason = '';
+  final _why = TextEditingController();
+  static const _sinceChoices = [5, 15, 30, 45, 60, 90];
   int _mood = 0;
   double _energy = 50;
   bool _energySet = false;
@@ -39,6 +43,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
   @override
   void dispose() {
     _note.dispose();
+    _why.dispose();
     super.dispose();
   }
 
@@ -130,10 +135,13 @@ class _CheckinScreenState extends State<CheckinScreen> {
       Navigator.pop(context);
       return;
     }
+    final why = _why.text.trim();
     await store.addCheckIn(CheckIn(
       ts: DateTime.now().millisecondsSinceEpoch,
       activity: _act,
-      reason: _act == Act.quest ? '' : _reason,
+      taskId: _act == Act.quest || _act == Act.other ? _taskId : '',
+      sinceMin: _since,
+      reason: _act == Act.quest ? '' : [if (_reason.isNotEmpty) _reason, if (why.isNotEmpty) why].join(' · '),
       mood: _mood,
       energy: _energySet ? _energy.round() : -1,
       note: _note.text.trim(),
@@ -147,6 +155,17 @@ class _CheckinScreenState extends State<CheckinScreen> {
   Widget build(BuildContext context) {
     final logsFirst = widget.focusLog != null;
     final logs = _logsSection();
+    final store = AppScope.of(context);
+    final tasks = store.openTasks.where((t) => !t.done).toList()
+      ..sort((a, b) {
+        int rank(Task t) => t.category.isNotEmpty ? 0 : (t.quad == Quad.doNow ? 1 : 2);
+        return rank(a).compareTo(rank(b));
+      });
+    final run = store.runningSession;
+    if (run != null && _act.isEmpty && _taskId.isEmpty && widget.focusLog == null) {
+      _act = Act.quest;
+      _taskId = run.taskId;
+    }
     return Scaffold(
       appBar: AppBar(title: Text(logsFirst ? 'Noter' : 'Check-in')),
       body: SafeArea(
@@ -156,27 +175,63 @@ class _CheckinScreenState extends State<CheckinScreen> {
           children: [
             if (logsFirst) ...logs,
             if (!logsFirst) ...[
-              const MickySays('Tu fais quoi, là tout de suite ?', pose: 'window', ring: K.lime),
+              MickySays(run != null ? 'Toujours sur « ${run.title} » ?' : 'Tu fais quoi, là tout de suite ?',
+                  pose: 'window', ring: K.lime),
               const SizedBox(height: 12),
             ],
             Panel(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Activité', style: K.display(17)),
+                  Text('Tu fais quoi ?', style: K.display(17)),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
                       for (final e in Act.labels.entries)
-                        _chip(e.value, _act == e.key, e.key == Act.quest ? K.lime : K.cyan,
-                            () => setState(() => _act = _act == e.key ? '' : e.key)),
+                        _chip(e.value, _act == e.key, e.key == Act.quest ? K.lime : K.cyan, () => setState(() {
+                              _act = _act == e.key ? '' : e.key;
+                              if (_act != Act.quest && _act != Act.other) _taskId = '';
+                            })),
                     ],
                   ),
+                  if (_act == Act.quest || _act == Act.other) ...[
+                    const SizedBox(height: 14),
+                    Text(_act == Act.quest ? 'Laquelle ?' : 'Laquelle ? (facultatif)', style: K.display(15)),
+                    const SizedBox(height: 8),
+                    if (tasks.isEmpty)
+                      Text('Aucune tâche du jour : ajoute-les dans Quêtes ou au briefing.', style: K.body(13, color: K.muted)),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final t in tasks)
+                          _chip(
+                            t.category.isNotEmpty ? '${t.category == 'pro' ? 'PRO' : 'PERSO'} · ${t.title}' : t.title,
+                            _taskId == t.id,
+                            t.category == 'perso' ? K.pink : K.lime,
+                            () => setState(() => _taskId = _taskId == t.id ? '' : t.id),
+                          ),
+                      ],
+                    ),
+                  ],
+                  if (_act.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    Text('Depuis combien de temps ?', style: K.display(15)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final m in _sinceChoices)
+                          _chip('$m min', _since == m, K.gold, () => setState(() => _since = _since == m ? -1 : m)),
+                      ],
+                    ),
+                  ],
                   if (_act.isNotEmpty && _act != Act.quest) ...[
                     const SizedBox(height: 14),
-                    Text('Qu\'est-ce qui t\'a attirée ailleurs ?', style: K.display(15)),
+                    Text('Pourquoi pas sur une quête ?', style: K.display(15)),
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 8,
@@ -185,6 +240,12 @@ class _CheckinScreenState extends State<CheckinScreen> {
                         for (final r in Act.reasons)
                           _chip(r, _reason == r, K.coral, () => setState(() => _reason = _reason == r ? '' : r)),
                       ],
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _why,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: const InputDecoration(hintText: 'Avec tes mots, si tu veux'),
                     ),
                   ],
                 ],
@@ -195,7 +256,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Ton humeur', style: K.display(17)),
+                  Text('Comment tu te sens ?', style: K.display(17)),
                   const SizedBox(height: 10),
                   Row(
                     children: [

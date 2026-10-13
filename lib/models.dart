@@ -183,7 +183,7 @@ class Act {
   static const phone = 'phone';
   static const nothing = 'none';
   static const labels = {
-    quest: 'Ma quête',
+    quest: 'Une quête',
     other: 'Autre tâche',
     pause: 'Pause',
     phone: 'Téléphone, écrans',
@@ -208,6 +208,8 @@ class CheckIn {
   int mood; // 0 = non renseignée, 1 à 5
   int energy; // -1 = non renseignée, 0 à 100
   String note;
+  String taskId; // quête ou tâche en cours, si précisée
+  int sinceMin; // depuis combien de minutes, -1 = non précisé
   int mod;
 
   CheckIn({
@@ -217,6 +219,8 @@ class CheckIn {
     this.mood = 0,
     this.energy = -1,
     this.note = '',
+    this.taskId = '',
+    this.sinceMin = -1,
     this.mod = 0,
   });
 
@@ -229,11 +233,15 @@ class CheckIn {
         mood: _i(j['mood']),
         energy: _i(j['energy'], -1),
         note: _s(j['note']),
+        taskId: _s(j['task']),
+        sinceMin: _i(j['since'], -1),
         mod: _i(j['mod']),
       );
 
   Map<String, dynamic> toJson() => {
         'mod': mod,
+        'task': taskId,
+        'since': sinceMin,
         'ts': ts,
         'act': activity,
         'why': reason,

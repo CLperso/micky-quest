@@ -232,6 +232,8 @@ class HomeScreen extends StatelessWidget {
       }
     }
     final complete = steps.isNotEmpty && done == steps.length;
+    final byTask = store.minutesByTask(store.todayKey);
+    final minutes = steps.fold(0.0, (a, s) => a + (byTask[s.id] ?? 0)).round();
     return Panel(
       border: complete ? c : (cat == 'pro' && goal.isNotEmpty ? c.withValues(alpha: 0.6) : null),
       child: Column(
@@ -240,7 +242,10 @@ class HomeScreen extends StatelessWidget {
           Row(children: [
             Pill(tag, color: K.bg, fill: c),
             const SizedBox(width: 8),
-            Text(complete ? 'Quête accomplie !' : '${steps.length} étapes', style: K.body(12, color: K.muted)),
+            Expanded(
+              child: Text(complete ? 'Quête accomplie !' : '${steps.length} étapes', style: K.body(12, color: K.muted)),
+            ),
+            if (minutes > 0) Pill('$minutes min aujourd\'hui', color: c),
           ]),
           const SizedBox(height: 6),
           Text(goal.isEmpty ? 'Pas encore définie' : goal,

@@ -395,6 +395,31 @@ class ReplayScreen extends StatelessWidget {
                 ]),
             ]),
           ],
+          Builder(builder: (context) {
+            final byTask = store.minutesByTask(day).entries.where((e) => e.value >= 1).toList()
+              ..sort((a, b) => b.value.compareTo(a.value));
+            if (byTask.isEmpty) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Panel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Temps par tâche', style: K.display(15)),
+                    const SizedBox(height: 6),
+                    for (final e in byTask)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(children: [
+                          Expanded(child: Text(store.taskById(e.key)?.title ?? 'Tâche', style: K.body(13))),
+                          Text('${e.value.round()} min', style: K.body(13, color: K.lime, w: FontWeight.w800)),
+                        ]),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          }),
           if (plan.pro.isNotEmpty || plan.perso.isNotEmpty) ...[
             const SizedBox(height: 12),
             Panel(

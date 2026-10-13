@@ -646,6 +646,9 @@ class AppStore extends ChangeNotifier {
     }
     for (final c in checkinsOn(day)) {
       final parts = <String>[];
+      final task = c.taskId.isEmpty ? null : taskById(c.taskId);
+      if (task != null) parts.add(task.title);
+      if (c.sinceMin >= 0) parts.add('depuis ${c.sinceMin} min');
       if (c.reason.isNotEmpty) parts.add('raison : ${c.reason.toLowerCase()}');
       if (c.mood > 0) parts.add('humeur ${moodLabels[c.mood - 1].toLowerCase()}');
       if (c.energy >= 0) parts.add('énergie ${c.energy} %');
@@ -686,6 +689,37 @@ class AppStore extends ChangeNotifier {
     ev.sort((a, b) => a.ts.compareTo(b.ts));
     return ev;
   }
+
+  /// Minutes passées par tâche dans la journée : sessions + check-ins.
+  /// Un check-in sans durée précisée vaut l'intervalle depuis le check-in précédent.
+  Map<String, double> minutesByTask(String day) {
+    final m = <String, double>{};
+    for (final s in sessionsOn(day)) {
+      if (s.running) {
+        m[s.taskId] = (m[s.taskId] ?? 0) + DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(s.start)).inMinutes;
+      } else {
+        m[s.taskId] = (m[s.taskId] ?? 0) + s.actualMin;
+      }
+    }
+    final cs = checkinsOn(day)..sort((a, b) => a.ts.compareTo(b.ts));
+    for (var i = 0; i < cs.length; i++) {
+      final c = cs[i];
+      if (c.taskId.isEmpty) continue;
+      // pendant une session, le temps est déjà compté
+      if (sessionsOn(day).any((s) => s.taskId == c.taskId && c.ts >= s.start && (s.running || c.ts <= s.end))) continue;
+      double mins;
+      if (c.sinceMin >= 0) {
+        mins = c.sinceMin.toDouble();
+      } else {
+        final prev = i > 0 ? cs[i - 1].ts : c.ts - settings.intervalMin * 60000;
+        mins = min(settings.intervalMin.toDouble(), (c.ts - prev) / 60000.0);
+      }
+      m[c.taskId] = (m[c.taskId] ?? 0) + mins;
+    }
+    return m;
+  }
+
+  double minutesOnTask(Task t, String day) => minutesByTask(day)[t.id] ?? 0;
 
   /// Répartition des activités du jour d'après les check-ins.
   Map<String, int> activityShare(String day) {
