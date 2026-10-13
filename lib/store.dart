@@ -52,6 +52,7 @@ class AppStore extends ChangeNotifier {
   List<Remind> reminders = [];
   List<Placement> placements = [];
   List<Slot> slots = [];
+  List<CabinVisit> cabin = [];
   Settings settings = Settings();
   String lastChest = '';
 
@@ -110,6 +111,7 @@ class AppStore extends ChangeNotifier {
         reminders = list('reminders').map(Remind.fromJson).toList();
         placements = list('placements').map(Placement.fromJson).toList();
         slots = list('slots').map(Slot.fromJson).toList();
+        cabin = list('cabin').map(CabinVisit.fromJson).toList();
         settings = Settings.fromJson(Map<String, dynamic>.from((j['settings'] as Map?) ?? {}));
         lastChest = (j['lastChest'] as String?) ?? '';
       } catch (e) {
@@ -149,6 +151,7 @@ class AppStore extends ChangeNotifier {
         'reminders': {for (final e in reminders) e.id: e.toJson()},
         'placements': {for (final e in placements) e.id: e.toJson()},
         'slots': {for (final e in slots) e.id: e.toJson()},
+        'cabin': {for (final e in cabin) e.id: e.toJson()},
       };
 
   /// Date les enregistrements qui ont changé depuis la dernière fois.
@@ -205,6 +208,9 @@ class AppStore extends ChangeNotifier {
     for (final e in slots) {
       check('slots', e.id, e.toJson(), (m) => e.mod = m);
     }
+    for (final e in cabin) {
+      check('cabin', e.id, e.toJson(), (m) => e.mod = m);
+    }
   }
 
   /// Contenu partagé entre appareils (sans les réglages propres à l'appareil).
@@ -256,6 +262,7 @@ class AppStore extends ChangeNotifier {
     mergeInto<Remind>(reminders, list('reminders'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Remind.fromJson);
     mergeInto<Placement>(placements, list('placements'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Placement.fromJson);
     mergeInto<Slot>(slots, list('slots'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Slot.fromJson);
+    mergeInto<CabinVisit>(cabin, list('cabin'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, CabinVisit.fromJson);
     for (final j in list('plans')) {
       final d = j['day'] as String;
       final m = (j['mod'] as num?)?.toInt() ?? 0;
@@ -306,6 +313,7 @@ class AppStore extends ChangeNotifier {
       'reminders': reminders.map((e) => e.toJson()).toList(),
       'placements': placements.map((e) => e.toJson()).toList(),
       'slots': slots.map((e) => e.toJson()).toList(),
+      'cabin': cabin.map((e) => e.toJson()).toList(),
       'settings': settings.toJson(),
       'lastChest': lastChest,
     };
@@ -860,6 +868,35 @@ class AppStore extends ChangeNotifier {
     _gainXp(2, 'Étape précisée');
     await commit();
     return t;
+  }
+
+  // ---------- La cabane ----------
+
+  Future<void> saveCabinVisit(CabinVisit v) async {
+    if (!cabin.contains(v)) {
+      cabin.add(v);
+      _gainXp(0, 'Sérénité : cabane');
+    }
+    await commit();
+  }
+
+  /// Baisse moyenne d'intensité par angle (au moins 2 passages).
+  Map<String, double> angleEfficacy() {
+    final by = <String, List<int>>{};
+    for (final v in cabin) {
+      if (v.angle.isEmpty || v.before < 0 || v.after < 0) continue;
+      by.putIfAbsent(v.angle, () => []).add(v.before - v.after);
+    }
+    return {
+      for (final e in by.entries)
+        if (e.value.length >= 2) e.key: e.value.reduce((a, b) => a + b) / e.value.length
+    };
+  }
+
+  /// Plusieurs passages intenses ces 3 derniers jours.
+  bool get cabinHeavy {
+    final from = DateTime.now().subtract(const Duration(days: 3)).millisecondsSinceEpoch;
+    return cabin.where((v) => v.ts >= from && v.before >= 7).length >= 3;
   }
 
   // ---------- Créneaux notés après coup ----------
@@ -1718,6 +1755,29 @@ class AppStore extends ChangeNotifier {
             1, ''));
       } else {
         out.add(Discovery('idle', 'Tes créneaux qui glissent', '', idle.length / 4, '4 créneaux « improductive » notés'));
+      }
+    }
+
+    // 7 quater. La cabane : ce qui pèse et ce qui aide.
+    {
+      final visits = cabin.where((v) => v.weights.isNotEmpty).toList();
+      if (visits.length >= 3) {
+        final w = <String, int>{};
+        for (final v in visits) {
+          for (final x in v.weights) {
+            w[x] = (w[x] ?? 0) + 1;
+          }
+        }
+        final top = w.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+        final eff = angleEfficacy().entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+        final hours = visits.map((v) => DateTime.fromMillisecondsSinceEpoch(v.ts).hour).toList()..sort();
+        final h = hours[hours.length ~/ 2];
+        out.add(Discovery('cabin', 'Tes coups de mou',
+            'Ce qui pèse le plus souvent : ${top.first.key.replaceAll(':', ' · ')}, plutôt vers ${h}h.'
+            '${eff.isNotEmpty ? ' Ce qui t\'aide le plus : « ${eff.first.key} » (−${eff.first.value.toStringAsFixed(1).replaceAll('.', ',')} en moyenne).' : ''}',
+            1, ''));
+      } else {
+        out.add(Discovery('cabin', 'Tes coups de mou', '', visits.length / 3, '3 passages dans la cabane'));
       }
     }
 

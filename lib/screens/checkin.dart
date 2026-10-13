@@ -9,6 +9,7 @@ import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
 import 'block.dart';
+import 'cabin.dart';
 import 'session.dart';
 import 'timetable.dart' show askText;
 
@@ -533,9 +534,9 @@ class _CheckinScreenState extends State<CheckinScreen> {
                             if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pause de 10 min, check-ins coupés. Respire.')));
                           })),
                           const SizedBox(width: 6),
-                          Expanded(child: _pauseBtn('Coup de pouce', K.raised, K.ink, () {
+                          Expanded(child: _pauseBtn('La cabane', const Color(0xFFB9A7FF), K.bg, () {
                             setState(() => _pauseAsked = true);
-                            openScreen(context, const BlockScreen());
+                            openScreen(context, const CabinScreen());
                           })),
                           const SizedBox(width: 6),
                           Expanded(child: _pauseBtn('Non, ça va', K.raised, K.ink, () => setState(() => _pauseAsked = true))),

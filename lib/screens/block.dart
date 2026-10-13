@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../main.dart';
 import '../models.dart';
 import '../theme.dart';
+import 'cabin.dart';
 import 'reflect.dart';
 import 'session.dart';
 import 'timetable.dart';
@@ -62,6 +63,15 @@ class _BlockScreenState extends State<BlockScreen> {
                   : 'Bloquée sur « ${t.title} » ? On ne force pas : on relance la machine, doucement.',
               pose: 'belly',
               ring: K.coral,
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => openScreen(context, const CabinScreen()),
+                icon: const Text('🏕'),
+                label: Text('C\'est plutôt un coup de mou ? La cabane', style: K.body(13, color: const Color(0xFFB9A7FF), w: FontWeight.w800)),
+              ),
             ),
 
             const SectionLabel('Jusqu\'où je PEUX aller ?'),

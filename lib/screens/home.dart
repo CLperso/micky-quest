@@ -13,6 +13,7 @@ import 'checkins_log.dart';
 import 'habits.dart';
 import 'settings.dart';
 import 'block.dart';
+import 'cabin.dart';
 import 'boss.dart';
 import 'house.dart';
 import 'task_panel.dart';
@@ -204,6 +205,30 @@ class HomeScreen extends StatelessWidget {
                 child: _quick(context, Icons.support_rounded, 'Je bloque', K.coral,
                     () => openScreen(context, const BlockScreen()))),
           ],
+        ),
+        const SizedBox(height: 10),
+        Material(
+          color: const Color(0xFF241E48),
+          borderRadius: BorderRadius.circular(18),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: () => openScreen(context, const CabinScreen()),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFB9A7FF), width: 2)),
+              child: Row(children: [
+                const Text('🏕', style: TextStyle(fontSize: 22)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('La cabane de Micky', style: K.display(15)),
+                    Text('pour un coup de mou : souffler, comprendre, un petit geste', style: K.body(11, color: K.muted)),
+                  ]),
+                ),
+                const Icon(Icons.chevron_right_rounded, color: Color(0xFFB9A7FF)),
+              ]),
+            ),
+          ),
         ),
       ],
     );

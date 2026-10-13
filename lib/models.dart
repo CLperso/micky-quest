@@ -458,6 +458,76 @@ class Slot {
       };
 }
 
+/// Un passage dans la cabane : avant / après, ce qui pesait, l'angle et le geste.
+class CabinVisit {
+  String id;
+  int ts;
+  int mood; // 1 à 5
+  int energy; // 0 à 100, -1
+  String emotion;
+  int before; // intensité 0-10
+  int after; // -1 = pas re-noté
+  List<String> weights; // « culpabilité:pas assez avancé », « tristesse »
+  String body;
+  String origin; // corps, pensée, situation
+  String angle;
+  String gesture;
+  String notes;
+  int mod;
+
+  CabinVisit({
+    String? id,
+    required this.ts,
+    this.mood = 0,
+    this.energy = -1,
+    this.emotion = '',
+    this.before = -1,
+    this.after = -1,
+    List<String>? weights,
+    this.body = '',
+    this.origin = '',
+    this.angle = '',
+    this.gesture = '',
+    this.notes = '',
+    this.mod = 0,
+  })  : id = id ?? newId(),
+        weights = weights ?? [];
+
+  factory CabinVisit.fromJson(Map<String, dynamic> j) => CabinVisit(
+        id: _s(j['id']),
+        ts: _i(j['ts']),
+        mood: _i(j['mood']),
+        energy: _i(j['energy'], -1),
+        emotion: _s(j['emo']),
+        before: _i(j['before'], -1),
+        after: _i(j['after'], -1),
+        weights: ((j['weights'] as List?) ?? []).map((e) => e.toString()).toList(),
+        body: _s(j['body']),
+        origin: _s(j['origin']),
+        angle: _s(j['angle']),
+        gesture: _s(j['gesture']),
+        notes: _s(j['notes']),
+        mod: _i(j['mod']),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'ts': ts,
+        'mood': mood,
+        'energy': energy,
+        'emo': emotion,
+        'before': before,
+        'after': after,
+        'weights': weights,
+        'body': body,
+        'origin': origin,
+        'angle': angle,
+        'gesture': gesture,
+        'notes': notes,
+        'mod': mod,
+      };
+}
+
 /// Repas, boissons et entrées libres.
 class LogKind {
   static const meal = 'meal';
@@ -618,6 +688,11 @@ class Settings {
   bool stylusOnly;
   double monthlyBudget;
   List<String> projects; // projets perso précisés dans les check-ins (« ces apps »…)
+  List<String> books; // pile de philo : « Titre|pages »
+  String goodDaysLetter;
+  List<String> contacts; // personnes à qui en parler
+  List<String> library; // phrases gardées dans la cabane
+  List<String> favAngles;
   String calendarId; // agenda du téléphone où écrire les blocs ('' = pas connecté)
   String calendarName;
   bool calendarRead; // afficher les événements de tous les agendas dans « Ma journée »
@@ -642,10 +717,19 @@ class Settings {
     this.stylusOnly = true,
     this.monthlyBudget = 0,
     List<String>? projects,
+    List<String>? books,
+    this.goodDaysLetter = '',
+    List<String>? contacts,
+    List<String>? library,
+    List<String>? favAngles,
     this.calendarId = '',
     this.calendarName = '',
     this.calendarRead = true,
-  }) : projects = projects ?? [];
+  })  : projects = projects ?? [],
+        books = books ?? [],
+        contacts = contacts ?? [],
+        library = library ?? [],
+        favAngles = favAngles ?? [];
 
   factory Settings.fromJson(Map<String, dynamic> j) => Settings(
         startHour: _i(j['start'], 9),
@@ -667,6 +751,11 @@ class Settings {
         stylusOnly: j['stylusOnly'] != false,
         monthlyBudget: (j['budget'] as num?)?.toDouble() ?? 0,
         projects: ((j['projects'] as List?) ?? []).map((e) => e.toString()).toList(),
+        books: ((j['books'] as List?) ?? []).map((e) => e.toString()).toList(),
+        goodDaysLetter: _s(j['letter']),
+        contacts: ((j['contacts'] as List?) ?? []).map((e) => e.toString()).toList(),
+        library: ((j['library'] as List?) ?? []).map((e) => e.toString()).toList(),
+        favAngles: ((j['favAngles'] as List?) ?? []).map((e) => e.toString()).toList(),
         calendarId: _s(j['calId']),
         calendarName: _s(j['calName']),
         calendarRead: j['calRead'] != false,
@@ -692,6 +781,11 @@ class Settings {
         'stylusOnly': stylusOnly,
         'budget': monthlyBudget,
         'projects': projects,
+        'books': books,
+        'letter': goodDaysLetter,
+        'contacts': contacts,
+        'library': library,
+        'favAngles': favAngles,
         'calId': calendarId,
         'calName': calendarName,
         'calRead': calendarRead,
