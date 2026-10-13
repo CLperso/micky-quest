@@ -204,7 +204,7 @@ class _BriefingScreenState extends State<BriefingScreen> {
             const SizedBox(height: 10),
             _field(_perso, 'PERSO', 'Pour toi, ta vie, ta maison', K.pink),
             const SizedBox(height: 6),
-            Text('Formule une action, pas un résultat : « envoyer 3 mails » plutôt que « avancer ». (Dr K)',
+            Text('Formule une action, pas un résultat : « envoyer 3 mails » plutôt que « avancer ».',
                 style: K.body(12, color: K.muted)),
 
             const SectionLabel('3 · Découpe en étapes et parie sur la durée'),

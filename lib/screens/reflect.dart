@@ -123,7 +123,7 @@ class _RateSheetState extends State<RateSheet> {
             ),
             if (s.finished) ...[
               const SizedBox(height: 12),
-              Text('Deux minutes pour ancrer (Dr K) :', style: K.body(13, color: K.muted)),
+              Text('Deux minutes pour ancrer :', style: K.body(13, color: K.muted)),
               const SizedBox(height: 6),
               TextField(
                 controller: _hard,
@@ -270,7 +270,7 @@ class _ReflectionScreenState extends State<ReflectionScreen> {
               Text(widget.title, style: K.display(18)),
             ],
             const SectionLabel('Qu\'est-ce que j\'évitais de ressentir ?'),
-            Text('Dr K : procrastiner enlève une émotion désagréable. La nommer lui enlève de la force.', style: K.body(12, color: K.muted)),
+            Text('Procrastiner enlève une émotion désagréable. La nommer lui enlève de la force.', style: K.body(12, color: K.muted)),
             const SizedBox(height: 6),
             Wrap(
               spacing: 8,

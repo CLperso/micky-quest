@@ -11,7 +11,7 @@ import 'reflect.dart';
 import 'session.dart';
 import 'timetable.dart';
 
-/// « Je bloque » : coups de pouce pour relancer, inspirés de Dr K (HealthyGamerGG),
+/// « Je bloque » : coups de pouce pour relancer, pour relancer,
 /// et le même bloc « plus tard » que « pas tout de suite ».
 class BlockScreen extends StatefulWidget {
   final Task? task;
@@ -66,7 +66,7 @@ class _BlockScreenState extends State<BlockScreen> {
 
             const SectionLabel('Jusqu\'où je PEUX aller ?'),
             Text(
-              'Pas « ce que je devrais », mais le maximum honnête avant de décrocher. Dr K préfère ça au « juste commence 5 minutes ».',
+              'Pas « ce que je devrais », mais le maximum honnête avant de décrocher. Plus efficace que « juste commence 5 minutes ».',
               style: K.body(13, color: K.muted),
             ),
             const SizedBox(height: 8),
@@ -120,7 +120,7 @@ class _BlockScreenState extends State<BlockScreen> {
               () => _run(context, const ProcrastinationTimer()),
             ),
 
-            const SectionLabel('Ce que dirait Dr K'),
+            const SectionLabel('Petites vérités utiles'),
             for (final d in _drK)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
@@ -360,7 +360,7 @@ class _ExerciseTimerState extends State<ExerciseTimer> {
             const SizedBox(height: 20),
             Panel(
               child: Text(
-                'Dr K : un changement de contexte (bouger, sortir d\'une pièce) libère la mémoire de travail coincée dans le conflit « je devrais / j\'ai envie ».',
+                'Un changement de contexte (bouger, sortir d\'une pièce) libère la mémoire de travail coincée dans le conflit « je devrais / j\'ai envie ».',
                 style: K.body(13, color: K.muted),
               ),
             ),
@@ -583,7 +583,7 @@ class _ProcrastinationTimerState extends State<ProcrastinationTimer> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(18, 4, 18, 28),
             children: [
-              Text('Tu vas scroller, regarder une vidéo ? OK. Mais avec un minuteur, et on en reparle après. (Dr K)', style: K.body(14, color: K.muted)),
+              Text('Tu vas scroller, regarder une vidéo ? OK. Mais avec un minuteur, et on en reparle après.', style: K.body(14, color: K.muted)),
               const SizedBox(height: 20),
               _Clock(frac: _elapsed / total, big: _mmss(max(0, total - _elapsed)), small: _done ? 'les 20 min sont passées' : 'restantes', color: K.pink),
               const SizedBox(height: 24),

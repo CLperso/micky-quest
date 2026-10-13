@@ -83,7 +83,7 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
                   border: K.coral,
                   padding: const EdgeInsets.all(10),
                   child: Text(
-                    'Tu as entamé ${store.switchingToday.length} tâches aujourd\'hui sans en finir une. Dr K dirait : finis une expérience avant d\'en ouvrir une autre. Reprends ${store.switchingToday.first.title} ?',
+                    'Tu as entamé ${store.switchingToday.length} tâches aujourd\'hui sans en finir une. Finis une expérience avant d\'en ouvrir une autre. Reprends ${store.switchingToday.first.title} ?',
                     style: K.body(13),
                   ),
                 ),
