@@ -28,7 +28,6 @@ jobs:
       - name: Générer le projet Android
         run: |
           flutter create --org com.clperso --project-name micky_quest --platforms android .
-          rm -rf test
           python3 ci/patch_android.py
 
       - name: Clé de signature stable
@@ -44,6 +43,12 @@ jobs:
           flutter analyze --no-fatal-infos --no-fatal-warnings > analyze.txt 2>&1 || true
           cat analyze.txt
           python3 ci/annotate.py analyze.txt
+
+      - name: Tests
+        run: |
+          flutter test > test.txt 2>&1 || true
+          cat test.txt
+          python3 ci/test_errors.py test.txt
 
       - name: Construire
         run: |
