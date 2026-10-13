@@ -51,6 +51,15 @@ class AppStore extends ChangeNotifier {
   Settings settings = Settings();
   String lastChest = '';
 
+  /// Après une session ou une tâche faite, on pose la question « et maintenant ? » dans l'appli :
+  /// pas de check-in avant ce moment.
+  int skipCheckinsUntil = 0;
+
+  void skipCheckins({int minutes = 20}) =>
+      skipCheckinsUntil = DateTime.now().add(Duration(minutes: minutes)).millisecondsSinceEpoch;
+
+  bool skippedAt(DateTime t) => t.millisecondsSinceEpoch < skipCheckinsUntil;
+
   /// Empreinte de chaque enregistrement au dernier enregistrement (pour dater les modifications).
   final Map<String, String> _seen = {};
 
@@ -407,11 +416,19 @@ class AppStore extends ChangeNotifier {
     return checkins.where((c) => c.ts >= from).toList();
   }
 
+  /// Focus : minutes de vrai focus (sessions pro, débrief sans interruption) sur 7 jours,
+  /// rapportées à l'objectif pro du jour (3 h par défaut).
   int get statFocus {
-    final c = _recentCheckins(7).where((c) => c.activity.isNotEmpty).toList();
-    if (c.isEmpty) return 0;
-    final q = c.where((x) => Act.isOnTask(x.activity)).length;
-    return (20 * q / c.length).round();
+    var total = 0.0;
+    var goal = 0.0;
+    for (var i = 0; i < 7; i++) {
+      final d = dayKey(DateTime.now().subtract(Duration(days: i)));
+      total += focusMinutes(d);
+      final g = plans[d]?.proGoalMin ?? 0;
+      goal += g > 0 ? g : 180;
+    }
+    if (goal == 0) return 0;
+    return min(20, (20 * total / goal).round());
   }
 
   int get statTime {
@@ -422,14 +439,112 @@ class AppStore extends ChangeNotifier {
     return (20 * (1 - min(1.0, err))).round();
   }
 
-  int get statConstancy => min(20, streak);
-
-  int get statSerenity {
-    final c = _recentCheckins(7).where((c) => c.mood > 0).toList();
-    if (c.isEmpty) return 0;
-    final m = c.map((x) => x.mood).reduce((a, b) => a + b) / c.length;
-    return (20 * (m - 1) / 4).round();
+  /// Constance : sur 10 jours, un point par jour avec une tâche pro faite, un point pour les habitudes.
+  int get statConstancy {
+    var pts = 0.0;
+    for (var i = 0; i < 10; i++) {
+      final d = dayKey(DateTime.now().subtract(Duration(days: i)));
+      if (tasks.any((t) => t.done && t.category != 'perso' && dayKey(DateTime.fromMillisecondsSinceEpoch(t.doneAt)) == d)) {
+        pts += 1;
+      }
+      final hs = activeHabits;
+      if (hs.isNotEmpty) {
+        final done = hs.where((h) => habitLevel(h, d) > 0).length;
+        pts += done == hs.length ? 1 : (done > 0 ? 0.5 : 0);
+      }
+    }
+    return min(20, pts.round());
   }
+
+  /// Sérénité : elle se gagne par des gestes de régulation, elle ne baisse jamais parce qu'on va mal.
+  int get statSerenity {
+    final from = DateTime.now().subtract(const Duration(days: 7)).millisecondsSinceEpoch;
+    var pts = 0.0;
+    for (final e in xpEvents.where((e) => e.ts >= from)) {
+      if (e.reason == 'Réflexion') pts += 2;
+      if (e.reason.startsWith('Sérénité')) pts += 2;
+      if (e.reason == 'Ruban') pts += 3;
+      if (e.reason == 'Auto-évaluation') pts += 0.5;
+    }
+    for (final p in pauses.where((p) => p.start >= from)) {
+      pts += p.label == 'Repos' ? 1 : 0.5;
+    }
+    return min(20, pts.round());
+  }
+
+  /// Un geste de régulation (respiration, porte, exercice…) : compte pour la Sérénité.
+  Future<void> noteSerenity(String what) async {
+    _gainXp(0, 'Sérénité : $what');
+    logs.add(LogEntry(ts: DateTime.now().millisecondsSinceEpoch, kind: LogKind.calm, note: what));
+    await commit();
+  }
+
+  // ---------- Objectifs du jour et médailles ----------
+
+  /// Minutes pro d'un jour (sessions et check-ins).
+  double proMinutesOn(String day) => minutesByCategory(day)[Act.pro] ?? 0;
+
+  /// Moyenne de minutes pro par jour sur les N derniers jours (hors aujourd'hui).
+  double avgProMinutes(int days) {
+    var t = 0.0;
+    for (var i = 1; i <= days; i++) {
+      t += proMinutesOn(dayKey(DateTime.now().subtract(Duration(days: i))));
+    }
+    return t / days;
+  }
+
+  /// 0 rien · 1 bronze (1 h de pro) · 2 argent (objectif pro) · 3 or (pro + perso) · 4 couronne (tout, habitudes comprises).
+  int medalOn(String day) {
+    final p = plans[day];
+    final pro = proMinutesOn(day);
+    var m = pro >= 60 ? 1 : 0;
+    final goal = p?.proGoalMin ?? 0;
+    if (goal > 0 && pro >= goal) m = 2;
+    if (m == 2 && (p?.persoGoal.isNotEmpty ?? false) && (p?.persoGoalDone ?? false)) m = 3;
+    if (m == 3) {
+      final todays = tasks.where((t) => t.day == day && !t.removed).toList();
+      final hs = activeHabits;
+      if (todays.length >= 3 && todays.every((t) => t.done) && hs.isNotEmpty && hs.every((h) => habitLevel(h, day) > 0)) m = 4;
+    }
+    return m;
+  }
+
+  static const medalNames = ['', 'Bronze', 'Argent', 'Or', 'Couronne'];
+
+  /// Attribue les récompenses de médaille du jour (une seule fois chacune).
+  void _checkMedals() {
+    final m = medalOn(todayKey);
+    final msgs = <String>[];
+    if (m >= 2 && !_claimedToday('Médaille d\'argent')) {
+      _gainXp(60, 'Médaille d\'argent');
+      msgs.add('MÉDAILLE D\'ARGENT · objectif pro atteint !\n+60 XP');
+    }
+    if (m >= 3 && !_claimedToday('Médaille d\'or')) {
+      _gainXp(40, 'Médaille d\'or');
+      msgs.add('MÉDAILLE D\'OR · objectifs pro et perso !\n+40 XP');
+    }
+    if (msgs.isNotEmpty) pendingCelebration = [if (pendingCelebration != null) pendingCelebration!, ...msgs].join('\n\n');
+  }
+
+  Future<void> setDayGoals({int? proGoalMin, String? persoGoal}) async {
+    if (proGoalMin != null) today.proGoalMin = proGoalMin;
+    if (persoGoal != null) today.persoGoal = persoGoal.trim();
+    await commit();
+  }
+
+  /// L'objectif perso est fait : un ruban pour Micky, de la Sérénité, pas d'XP.
+  Future<void> setPersoGoalDone(bool done) async {
+    today.persoGoalDone = done;
+    if (done && !_claimedToday('Ruban')) _gainXp(0, 'Ruban');
+    _checkMedals();
+    _checkBigBonuses();
+    await commit();
+  }
+
+  /// Minutes de focus (sessions pro) d'un jour, pondérées par le débrief.
+  double focusMinutes(String day) => sessionsOn(day)
+      .where((s) => !s.running && sessionCategory(s) == Act.pro)
+      .fold(0.0, (a, s) => a + s.focusMin);
 
   // ---------- Plans du jour ----------
 
@@ -516,6 +631,7 @@ class AppStore extends ChangeNotifier {
       t.doneAt = DateTime.now().millisecondsSinceEpoch;
       _gainXp(taskXp(t), 'Tâche faite');
       _checkBigBonuses();
+      _checkMedals();
     }
     await commit();
   }
@@ -556,7 +672,7 @@ class AppStore extends ChangeNotifier {
   }
 
   Future<SessionRec> startSession(String taskId, String title, int predicted,
-      {String category = '', bool silent = true}) async {
+      {String category = '', bool silent = true, String stim = ''}) async {
     final s = SessionRec(
       taskId: taskId,
       title: title,
@@ -564,6 +680,7 @@ class AppStore extends ChangeNotifier {
       predictedMin: predicted,
       category: category,
       silent: silent,
+      stim: stim,
     );
     sessions.add(s);
     final t = taskById(taskId);
@@ -598,6 +715,7 @@ class AppStore extends ChangeNotifier {
       _gainXp(15, 'Pari réussi');
       chest = _openChest();
     }
+    _checkMedals();
     await commit();
     return chest;
   }
@@ -720,7 +838,7 @@ class AppStore extends ChangeNotifier {
     for (final s in sessionsOn(day)) {
       final detail = s.running
           ? 'en cours · pari ${s.predictedMin} min'
-          : 'pari ${s.predictedMin} min · réel ${s.actualMin.round()} min${s.onTarget ? ' · coffre gagné' : ''}${s.finished ? '' : ' · interrompue'}';
+          : 'pari ${s.predictedMin} min · réel ${s.actualMin.round()} min${s.onTarget ? ' · coffre gagné' : ''}${s.finished ? '' : ' · décrochée'}${s.interrupted == 0 ? ' · sans interruption' : s.interrupted == 1 ? ' · 1 interruption' : s.interrupted >= 2 ? ' · plusieurs interruptions' : ''}';
       ev.add(ReplayEvent(s.start, 'quest', 'Session · ${s.title}', detail));
     }
     for (final c in checkinsOn(day)) {
@@ -742,8 +860,12 @@ class AppStore extends ChangeNotifier {
               ? 'drink'
               : l.kind == LogKind.coffee
                   ? 'coffee'
-                  : 'free';
-      ev.add(ReplayEvent(l.ts, kind, LogKind.labels[l.kind] ?? 'Note', l.note, l.photo));
+                  : l.kind == LogKind.pill
+                      ? 'pill'
+                      : l.kind == LogKind.calm
+                          ? 'calm'
+                          : 'free';
+      ev.add(ReplayEvent(l.ts, kind, l.label, l.note, l.photo));
     }
     for (final l in habitLogs.where((l) => l.day == day && l.level > 0)) {
       Habit? h;
@@ -902,9 +1024,6 @@ class AppStore extends ChangeNotifier {
     }
     return m;
   }
-
-  double focusMinutes(String day) =>
-      sessionsOn(day).where((s) => !s.running).fold(0.0, (a, s) => a + s.actualMin);
 
   double? dayRatio(String day) {
     final s = sessionsOn(day).where((s) => s.ratio > 0).toList();
@@ -1228,7 +1347,10 @@ class AppStore extends ChangeNotifier {
     if (cur > 0 && next == 0) _gainXp(cur == 2 ? -5 : -3, 'Habitude annulée');
     if (cur == 2 && next == 1) _gainXp(-2, 'Habitude en mini');
     if (cur == 1 && next == 2) _gainXp(2, 'Habitude complète');
-    if (next > 0) _checkBigBonuses();
+    if (next > 0) {
+      _checkBigBonuses();
+      _checkMedals();
+    }
     await commit();
     return next;
   }
@@ -1292,12 +1414,18 @@ class AppStore extends ChangeNotifier {
 
   // ---------- Évaluations et réflexions ----------
 
-  Future<void> rateSession(SessionRec s, {int? difficulty, int? feeling, String? helped}) async {
-    final first = s.difficulty == 0 && s.feeling == 0;
+  Future<void> rateSession(SessionRec s,
+      {int? difficulty, int? feeling, String? helped, int? interrupted, String? hardWhat, String? worthWhy}) async {
+    final first = s.difficulty == 0 && s.feeling == 0 && s.interrupted < 0;
     if (difficulty != null) s.difficulty = difficulty;
     if (feeling != null) s.feeling = feeling;
     if (helped != null) s.helped = helped;
-    if (first && (s.difficulty > 0 || s.feeling > 0)) _gainXp(2, 'Auto-évaluation');
+    if (interrupted != null) s.interrupted = interrupted;
+    if (hardWhat != null) s.hardWhat = hardWhat;
+    if (worthWhy != null) s.worthWhy = worthWhy;
+    if (first && (s.difficulty > 0 || s.feeling > 0 || s.interrupted >= 0)) _gainXp(2, 'Auto-évaluation');
+    // deux minutes à s'asseoir avec ce qui a été dur et pourquoi ça valait le coup : ça ancre
+    if ((hardWhat ?? '').isNotEmpty || (worthWhy ?? '').isNotEmpty) _gainXp(0, 'Sérénité : débrief');
     await commit();
   }
 

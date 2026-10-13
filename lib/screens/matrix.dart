@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 
 import '../main.dart';
 import '../models.dart';
-import '../notifications.dart';
 import '../theme.dart';
 import 'session.dart';
 
@@ -280,7 +279,7 @@ class _MatrixScreenState extends State<MatrixScreen> {
         break;
       case 'done':
         await store.completeTask(t);
-        if (t.done) await showNextQuestion(context: 'Tâche faite !');
+        if (t.done && context.mounted) await askNext(context, 'Tâche faite !');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bien joué ! XP gagnée')));
         }

@@ -61,7 +61,7 @@ class EveningTab extends StatelessWidget {
         for (final d in days.skip(1))
           Builder(builder: (context) {
             final k = dayKey(d);
-            final mins = store.focusMinutes(k).round();
+            final mins = store.proMinutesOn(k).round();
             final xp = store.xpOn(k);
             return Padding(
               padding: const EdgeInsets.only(bottom: 8),
@@ -71,7 +71,7 @@ class EveningTab extends StatelessWidget {
                 child: ListTile(
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   title: Text('${names[d.weekday - 1]} ${d.day}/${d.month}', style: K.body(15)),
-                  subtitle: Text('$mins min de focus · +$xp XP', style: K.body(12, color: K.muted)),
+                  subtitle: Text('$mins min de pro · +$xp XP', style: K.body(12, color: K.muted)),
                   trailing: const Icon(Icons.chevron_right_rounded, color: K.muted),
                   onTap: () => openScreen(context, ReplayScreen(day: k)),
                 ),
@@ -338,6 +338,8 @@ class ReplayScreen extends StatelessWidget {
     'food': K.gold,
     'drink': K.cyan,
     'coffee': K.coral,
+    'pill': K.coral,
+    'calm': K.pink,
     'free': K.ink,
     'task': K.lime,
     'pause': K.gold,
@@ -361,7 +363,7 @@ class ReplayScreen extends StatelessWidget {
     final ev = store.replay(day);
     final share = store.activityShare(day);
     final ratio = store.dayRatio(day);
-    final mins = store.focusMinutes(day).round();
+    final mins = store.proMinutesOn(day).round();
     final plan = store.plan(day);
     final d = parseDay(day);
 
@@ -373,7 +375,7 @@ class ReplayScreen extends StatelessWidget {
           Text('Tout ce que tu as fait, sans jugement', style: K.body(13, color: K.muted)),
           const SizedBox(height: 12),
           Row(children: [
-            Expanded(child: _tile(mins >= 60 ? '${mins ~/ 60} h ${(mins % 60).toString().padLeft(2, '0')}' : '$mins min', 'de sessions', K.lime)),
+            Expanded(child: _tile(mins >= 60 ? '${mins ~/ 60} h ${(mins % 60).toString().padLeft(2, '0')}' : '$mins min', 'de pro', K.lime)),
             const SizedBox(width: 8),
             Expanded(
                 child: _tile(ratio == null ? '—' : '×${ratio.toStringAsFixed(1).replaceAll('.', ',')}', 'réel ÷ prévu', K.cyan)),

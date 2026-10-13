@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 
 import '../main.dart';
 import '../models.dart';
-import '../notifications.dart';
 import '../theme.dart';
 import 'reflect.dart';
 
@@ -24,6 +23,7 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
   int _min = 25;
   String _cat = '';
   bool _silent = true;
+  String _stim = '';
   static const _choices = [5, 10, 15, 20, 25, 30, 45, 60, 90, 120, 180, 240];
 
   @override
@@ -174,6 +174,30 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
               const SizedBox(height: 8),
               Text('Finis entre ${(_min * 0.8).round()} et ${(_min * 1.2).round()} min pour gagner un coffre.',
                   style: K.body(13, color: K.muted)),
+              if (_cat != Act.perso) ...[
+                const SizedBox(height: 10),
+                Text('Dans quelles conditions ?', style: K.body(13, color: K.muted)),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final e in SessionRec.stims.entries)
+                      ChoiceChip(
+                        label: Text(e.value),
+                        selected: _stim == e.key,
+                        onSelected: (_) => setState(() => _stim = _stim == e.key ? '' : e.key),
+                        selectedColor: K.gold,
+                        labelStyle: K.body(13, color: _stim == e.key ? K.bg : K.ink),
+                        backgroundColor: K.raised,
+                        side: BorderSide.none,
+                        showCheckmark: false,
+                      ),
+                  ],
+                ),
+                Text('Les cerveaux TDAH ont besoin d\'un bon niveau de stimulation : Découvertes te dira ce qui te réussit.',
+                    style: K.body(12, color: K.muted)),
+              ],
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: Text('Pas de check-in pendant la session', style: K.body(14)),
@@ -189,7 +213,7 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
                     : () async {
                         final id = _taskId ?? '';
                         final title = id.isEmpty ? _free.text.trim() : (store.taskById(id)?.title ?? '');
-                        await store.startSession(id, title, _min, category: _cat, silent: _silent);
+                        await store.startSession(id, title, _min, category: _cat, silent: _silent, stim: _stim);
                         if (context.mounted) Navigator.pop(context, true);
                       },
               ),
@@ -231,34 +255,33 @@ class _SessionScreenState extends State<SessionScreen> {
     if (s == null) return;
     final perso = store.sessionCategory(s) == Act.perso;
     final chest = await store.endSession(s, finished: finished);
-    if (perso) {
-      if (finished && s.taskId.isNotEmpty) {
-        final t = store.taskById(s.taskId);
-        if (t != null && !t.done) await store.completeTask(t);
-      }
-      await rescheduleAll(store);
-      await showNextQuestion(context: '${s.title} : ${s.actualMin.round()} min.');
-      if (!mounted) return;
-      Navigator.pop(context);
-      return;
-    }
     if (finished && s.taskId.isNotEmpty) {
       final t = store.taskById(s.taskId);
       if (t != null && !t.done) await store.completeTask(t);
     }
-    await rescheduleAll(store);
-    await showNextQuestion(context: finished ? 'Étape finie !' : '');
+    if (perso) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      final ctx = navKey.currentContext;
+      if (ctx != null) await askNext(ctx, '${s.title} : ${s.actualMin.round()} min.');
+      return;
+    }
     if (!mounted) return;
-    if (chest.isNotEmpty) await showChest(context, chest);
-    if (!mounted) return;
+    // débrief d'abord (interruptions → Focus), puis le coffre, puis « et maintenant ? »
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       builder: (_) => AppScope(store: store, child: RateSheet(session: s)),
     );
     if (!mounted) return;
+    if (chest.isNotEmpty) await showChest(context, chest);
+    if (!mounted) return;
     Navigator.pop(context);
-    if (!finished) openScreen(context, ReflectionScreen(kind: 'decroche', taskId: s.taskId, title: s.title));
+    final ctx = navKey.currentContext;
+    if (ctx == null) return;
+    if (!finished) await openScreen(ctx, ReflectionScreen(kind: 'decroche', taskId: s.taskId, title: s.title));
+    final ctx2 = navKey.currentContext;
+    if (ctx2 != null) await askNext(ctx2, finished ? 'Étape finie !' : 'Session arrêtée.');
   }
 
   @override

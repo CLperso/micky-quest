@@ -20,7 +20,10 @@ class _BriefingScreenState extends State<BriefingScreen> {
   final _if = TextEditingController();
   final _then = TextEditingController();
   int _sleep = 0;
+  int _proGoal = 0;
+  final _persoGoal = TextEditingController();
   bool _init = false;
+  static const _goalChoices = [60, 90, 120, 180, 240, 300, 360];
 
   @override
   void didChangeDependencies() {
@@ -33,15 +36,19 @@ class _BriefingScreenState extends State<BriefingScreen> {
     _if.text = p.planIf;
     _then.text = p.planThen;
     _sleep = p.sleepH;
+    _proGoal = p.proGoalMin;
+    _persoGoal.text = p.persoGoal;
   }
 
   @override
   void dispose() {
-    for (final c in [_pro, _perso, _if, _then]) {
+    for (final c in [_pro, _perso, _if, _then, _persoGoal]) {
       c.dispose();
     }
     super.dispose();
   }
+
+  static String _fmt(int m) => m >= 60 ? '${m ~/ 60} h${m % 60 == 0 ? '' : ' ${m % 60}'}' : '$m min';
 
   Future<void> _saveFields() async {
     final store = AppScope.read(context);
@@ -51,6 +58,8 @@ class _BriefingScreenState extends State<BriefingScreen> {
     p.planIf = _if.text.trim();
     p.planThen = _then.text.trim();
     p.sleepH = _sleep;
+    p.proGoalMin = _proGoal;
+    p.persoGoal = _persoGoal.text.trim();
     await store.commit();
   }
 
@@ -133,17 +142,70 @@ class _BriefingScreenState extends State<BriefingScreen> {
               ),
             ),
 
-            const SectionLabel('1 · Tes quêtes principales'),
+            const SectionLabel('1 · Tes objectifs du jour'),
+            Panel(
+              border: K.gold,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Text('Temps pro', style: K.display(16)),
+                    const Spacer(),
+                    Text(_proGoal == 0 ? 'pas d\'objectif' : _fmt(_proGoal), style: K.display(16, color: K.gold)),
+                  ]),
+                  const SizedBox(height: 4),
+                  Text('Ta moyenne des 7 derniers jours : ${_fmt(store.avgProMinutes(7).round())}',
+                      style: K.body(12, color: K.muted)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final m in _goalChoices)
+                        ChoiceChip(
+                          label: Text(_fmt(m)),
+                          selected: _proGoal == m,
+                          onSelected: (_) => setState(() => _proGoal = _proGoal == m ? 0 : m),
+                          selectedColor: K.gold,
+                          labelStyle: K.body(13, color: _proGoal == m ? K.bg : K.ink),
+                          backgroundColor: K.raised,
+                          side: BorderSide.none,
+                          showCheckmark: false,
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _persoGoal,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(
+                      labelText: 'Objectif perso du jour',
+                      hintText: 'aller courir, appeler maman, 20 min de rangement…',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Objectif pro atteint : médaille d\'argent (+60 XP). Perso fait : un ruban pour Micky et de la Sérénité. Les deux : or. Tout, habitudes comprises : la couronne.',
+                    style: K.body(12, color: K.muted),
+                  ),
+                ],
+              ),
+            ),
+
+            const SectionLabel('2 · Tes quêtes principales'),
             _field(_pro, 'PRO', 'Ce qui compte vraiment aujourd\'hui', K.lime),
             const SizedBox(height: 10),
             _field(_perso, 'PERSO', 'Pour toi, ta vie, ta maison', K.pink),
+            const SizedBox(height: 6),
+            Text('Formule une action, pas un résultat : « envoyer 3 mails » plutôt que « avancer ». (Dr K)',
+                style: K.body(12, color: K.muted)),
 
-            const SectionLabel('2 · Découpe en étapes et parie sur la durée'),
+            const SectionLabel('3 · Découpe en étapes et parie sur la durée'),
             StepsEditor(category: 'pro', color: K.lime, label: 'Étapes pro'),
             const SizedBox(height: 10),
             StepsEditor(category: 'perso', color: K.pink, label: 'Étapes perso'),
 
-            const SectionLabel('3 · Ton plan B'),
+            const SectionLabel('4 · Ton plan B'),
             if (store.recentIfThen.isNotEmpty) ...[
               Text('Tes plans tirés de tes réflexions :', style: K.body(12, color: K.muted)),
               const SizedBox(height: 6),
@@ -271,7 +333,7 @@ class _StepsEditorState extends State<StepsEditor> {
                   IconButton(
                     onPressed: () async {
                       await store.completeTask(t);
-                      if (t.done) await showNextQuestion(context: 'Étape faite !');
+                      if (t.done && context.mounted) await askNext(context, 'Étape faite !');
                     },
                     icon: Icon(t.done ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
                         color: t.done ? widget.color : K.muted),

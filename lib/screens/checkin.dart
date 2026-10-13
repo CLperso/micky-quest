@@ -17,7 +17,10 @@ class CheckinScreen extends StatefulWidget {
 
   /// Check-in existant à corriger.
   final CheckIn? existing;
-  const CheckinScreen({super.key, this.focusLog, this.at, this.existing});
+
+  /// « Et maintenant, tu vas faire quoi ? » après une session ou une tâche (message de contexte).
+  final String? nextAfter;
+  const CheckinScreen({super.key, this.focusLog, this.at, this.existing, this.nextAfter});
 
   @override
   State<CheckinScreen> createState() => _CheckinScreenState();
@@ -74,13 +77,56 @@ class _CheckinScreenState extends State<CheckinScreen> {
     super.dispose();
   }
 
-  Future<void> _log(String kind, {String note = '', String photo = ''}) async {
-    await AppScope.read(context).addLog(
-      LogEntry(ts: DateTime.now().millisecondsSinceEpoch, kind: kind, note: note, photo: photo),
-    );
+  Future<void> _log(String kind, {String note = '', String photo = '', double qty = 1}) async {
+    final e = LogEntry(ts: DateTime.now().millisecondsSinceEpoch, kind: kind, note: note, photo: photo, qty: qty);
+    await AppScope.read(context).addLog(e);
     if (!mounted) return;
-    setState(() => _added.add(LogKind.labels[kind] ?? kind));
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${LogKind.labels[kind]} noté à ${hm(DateTime.now())}')));
+    setState(() => _added.add(e.label));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${e.label} noté à ${hm(DateTime.now())}')));
+  }
+
+  /// Quantité en un tap : ¼, ½, ¾ ou 1.
+  Future<void> _logQty(String kind) async {
+    final q = await showModalBottomSheet<double>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(LogKind.labels[kind] ?? kind, style: K.display(20)),
+              const SizedBox(height: 4),
+              Text('Quelle quantité ?', style: K.body(13, color: K.muted)),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  for (final e in LogKind.qtyLabels.entries) ...[
+                    Expanded(
+                      child: SizedBox(
+                        height: 56,
+                        child: OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: K.raised,
+                            side: const BorderSide(color: K.line, width: 2),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          onPressed: () => Navigator.pop(ctx, e.key),
+                          child: Text(e.value, style: K.display(20)),
+                        ),
+                      ),
+                    ),
+                    if (e.key != 1.0) const SizedBox(width: 8),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (q != null && mounted) await _log(kind, qty: q);
   }
 
   Future<void> _meal() async {
@@ -215,7 +261,9 @@ class _CheckinScreenState extends State<CheckinScreen> {
       appBar: AppBar(
         title: Text(logsFirst
             ? 'Noter'
-            : widget.existing != null
+            : widget.nextAfter != null
+                ? 'Et maintenant ?'
+                : widget.existing != null
                 ? 'Corriger · ${hm(DateTime.fromMillisecondsSinceEpoch(widget.existing!.ts))}'
                 : (widget.at == null ? 'Check-in' : 'Check-in de ${hm(widget.at!)}')),
         actions: [
@@ -238,12 +286,14 @@ class _CheckinScreenState extends State<CheckinScreen> {
             if (logsFirst) ...logs,
             if (!logsFirst) ...[
               MickySays(
-                  widget.at != null
-                      ? 'Tu faisais quoi vers ${hm(widget.at!)} ?'
-                      : run != null
-                          ? 'Toujours sur « ${run.title} » ?'
-                          : 'Tu fais quoi, là tout de suite ?',
-                  pose: 'window',
+                  widget.nextAfter != null
+                      ? '${widget.nextAfter} Et maintenant, tu vas faire quoi ?'
+                      : widget.at != null
+                          ? 'Tu faisais quoi vers ${hm(widget.at!)} ?'
+                          : run != null
+                              ? 'Toujours sur « ${run.title} » ?'
+                              : 'Tu fais quoi, là tout de suite ?',
+                  pose: widget.nextAfter != null ? 'happy' : 'window',
                   ring: K.lime),
               const SizedBox(height: 12),
             ],
@@ -422,9 +472,11 @@ class _CheckinScreenState extends State<CheckinScreen> {
           children: [
             Expanded(child: _logBtn(Icons.photo_camera_rounded, 'Repas', K.gold, _meal)),
             const SizedBox(width: 6),
-            Expanded(child: _logBtn(Icons.bolt_rounded, 'Energy drink', K.cyan, () => _log(LogKind.energy))),
+            Expanded(child: _logBtn(Icons.bolt_rounded, 'Energy', K.cyan, () => _logQty(LogKind.energy))),
             const SizedBox(width: 6),
             Expanded(child: _logBtn(Icons.coffee_rounded, 'Café', K.pink, () => _log(LogKind.coffee))),
+            const SizedBox(width: 6),
+            Expanded(child: _logBtn(Icons.medication_rounded, 'Pilule', K.coral, () => _logQty(LogKind.pill))),
             const SizedBox(width: 6),
             Expanded(child: _logBtn(Icons.add_rounded, 'Autre', K.lime, _free)),
           ],

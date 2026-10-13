@@ -76,6 +76,15 @@ class MickyQuestApp extends StatelessWidget {
 Future<T?> openScreen<T>(BuildContext context, Widget screen) =>
     Navigator.of(context).push<T>(MaterialPageRoute(builder: (_) => screen));
 
+/// Après une session ou une tâche faite : « et maintenant, tu vas faire quoi ? » dans l'appli,
+/// sans notification, et le check-in des 20 prochaines minutes est annulé.
+Future<void> askNext(BuildContext context, String message) async {
+  final store = AppScope.read(context);
+  store.skipCheckins();
+  await rescheduleAll(store);
+  if (context.mounted) await openScreen(context, CheckinScreen(nextAfter: message));
+}
+
 /// Lance le choix de la tâche et du pari, puis la session.
 Future<void> startFocus(BuildContext context) async {
   final store = AppScope.read(context);

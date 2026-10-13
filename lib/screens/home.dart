@@ -146,6 +146,10 @@ class HomeScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
+        if (plan.proGoalMin > 0 || plan.persoGoal.isNotEmpty) ...[
+          const DayGoalsCard(),
+          const SizedBox(height: 14),
+        ],
         const HabitsCard(),
         const SizedBox(height: 14),
         const BudgetCard(),
@@ -302,7 +306,7 @@ class HomeScreen extends StatelessWidget {
     return InkWell(
       onTap: () async {
         await store.completeTask(t);
-        if (t.done) await showNextQuestion(context: 'Tâche faite !');
+        if (t.done && context.mounted) await askNext(context, 'Tâche faite !');
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
@@ -422,6 +426,68 @@ class PauseSwitch extends StatelessWidget {
               await rescheduleAll(store);
             },
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Objectifs du jour : temps pro (médaille) et objectif perso (ruban pour Micky).
+class DayGoalsCard extends StatelessWidget {
+  const DayGoalsCard({super.key});
+
+  static String fmt(int m) => m >= 60 ? '${m ~/ 60} h${m % 60 == 0 ? '' : ' ${m % 60}'}' : '$m min';
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final p = store.today;
+    final pro = store.proMinutesOn(store.todayKey).round();
+    final medal = store.medalOn(store.todayKey);
+    const medalColors = [K.line, Color(0xFFC98A5B), Color(0xFFC9C4E8), K.gold, K.gold];
+    return Panel(
+      border: medal >= 2 ? K.gold : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text('Objectifs du jour', style: K.display(16))),
+              if (medal > 0)
+                Pill(medal == 4 ? 'COURONNE' : 'MÉDAILLE ${AppStore.medalNames[medal].toUpperCase()}',
+                    color: medalColors[medal]),
+            ],
+          ),
+          if (p.proGoalMin > 0) ...[
+            const SizedBox(height: 10),
+            Row(children: [
+              Text('Temps pro', style: K.body(14)),
+              const Spacer(),
+              Text('${fmt(pro)} / ${fmt(p.proGoalMin)}', style: K.display(14, color: pro >= p.proGoalMin ? K.gold : K.lime)),
+            ]),
+            const SizedBox(height: 6),
+            Bar((pro / p.proGoalMin).clamp(0.0, 1.0), color: pro >= p.proGoalMin ? K.gold : K.lime),
+          ],
+          if (p.persoGoal.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => store.setPersoGoalDone(!p.persoGoalDone),
+              child: Row(
+                children: [
+                  Icon(p.persoGoalDone ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                      color: p.persoGoalDone ? K.pink : K.muted),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(p.persoGoal,
+                        style: K.body(14, color: p.persoGoalDone ? K.muted : K.ink)
+                            .copyWith(decoration: p.persoGoalDone ? TextDecoration.lineThrough : null)),
+                  ),
+                  Pill(p.persoGoalDone ? 'RUBAN GAGNÉ' : 'PERSO', color: K.pink),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );

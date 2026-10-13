@@ -125,6 +125,10 @@ class SessionRec {
   int difficulty; // 0 = non évaluée, 1 facile, 2 correct, 3 dur
   int feeling; // 0 = non évalué, 1 pénible, 2 neutre, 3 agréable
   String helped;
+  int interrupted; // -1 = pas demandé, 0 = non, 1 = une fois, 2 = plusieurs
+  String hardWhat; // débrief : c'était dur en quoi
+  String worthWhy; // débrief : pourquoi ça valait le coup
+  String stim; // condition : '', seule, body, bruit, musique
   int mod;
 
   SessionRec({
@@ -140,8 +144,23 @@ class SessionRec {
     this.difficulty = 0,
     this.feeling = 0,
     this.helped = '',
+    this.interrupted = -1,
+    this.hardWhat = '',
+    this.worthWhy = '',
+    this.stim = '',
     this.mod = 0,
   }) : id = id ?? newId();
+
+  /// Minutes de vrai focus : 100 % sans interruption, 50 % une fois, 0 sinon.
+  /// Les sessions d'avant le débrief comptent en entier.
+  double get focusMin {
+    if (end == 0) return 0;
+    if (interrupted == 1) return actualMin / 2;
+    if (interrupted >= 2) return 0;
+    return actualMin;
+  }
+
+  static const stims = {'seule': 'Seule, silence', 'body': 'Avec quelqu\'un', 'bruit': 'Bruit blanc', 'musique': 'Musique'};
 
   double get actualMin => end == 0 ? 0 : (end - start) / 60000.0;
   bool get running => end == 0;
@@ -163,6 +182,10 @@ class SessionRec {
         difficulty: _i(j['diff']),
         feeling: _i(j['feel']),
         helped: _s(j['helped']),
+        interrupted: _i(j['intr'], -1),
+        hardWhat: _s(j['hard']),
+        worthWhy: _s(j['worth']),
+        stim: _s(j['stim']),
         mod: _i(j['mod']),
       );
 
@@ -179,6 +202,10 @@ class SessionRec {
         'diff': difficulty,
         'feel': feeling,
         'helped': helped,
+        'intr': interrupted,
+        'hard': hardWhat,
+        'worth': worthWhy,
+        'stim': stim,
         'mod': mod,
       };
 }
@@ -285,13 +312,19 @@ class LogKind {
   static const meal = 'meal';
   static const energy = 'energy';
   static const coffee = 'coffee';
+  static const pill = 'pill';
   static const free = 'free';
+  static const calm = 'calm'; // geste de régulation (respiration, porte, exercice)
   static const labels = {
     meal: 'Repas',
     energy: 'Energy drink',
     coffee: 'Café',
+    pill: 'Pilule',
     free: 'Note libre',
+    calm: 'Coup de pouce',
   };
+  static const qtyLabels = {0.25: '¼', 0.5: '½', 0.75: '¾', 1.0: '1'};
+  static String qtyLabel(double q) => qtyLabels[q] ?? (q == q.roundToDouble() ? '${q.round()}' : '$q');
 }
 
 class LogEntry {
@@ -300,10 +333,13 @@ class LogEntry {
   String kind;
   String note;
   String photo;
+  double qty; // quantité : 1 par défaut, ¼ ½ ¾ pour une pilule ou une canette
   int mod;
 
-  LogEntry({String? id, required this.ts, required this.kind, this.note = '', this.photo = '', this.mod = 0})
+  LogEntry({String? id, required this.ts, required this.kind, this.note = '', this.photo = '', this.qty = 1, this.mod = 0})
       : id = id ?? newId();
+
+  String get label => '${LogKind.labels[kind] ?? kind}${qty != 1 ? ' ${LogKind.qtyLabel(qty)}' : ''}';
 
   factory LogEntry.fromJson(Map<String, dynamic> j) => LogEntry(
         id: _s(j['id']),
@@ -311,10 +347,11 @@ class LogEntry {
         kind: _s(j['kind']),
         note: _s(j['note']),
         photo: _s(j['photo']),
+        qty: (j['qty'] as num?)?.toDouble() ?? 1,
         mod: _i(j['mod']),
       );
 
-  Map<String, dynamic> toJson() => {'id': id, 'ts': ts, 'kind': kind, 'note': note, 'photo': photo, 'mod': mod};
+  Map<String, dynamic> toJson() => {'id': id, 'ts': ts, 'kind': kind, 'note': note, 'photo': photo, 'qty': qty, 'mod': mod};
 }
 
 class DayPlan {
@@ -329,6 +366,10 @@ class DayPlan {
   String brake;
   String tomorrow;
   int sleepH; // heures de sommeil × 2 (demi-heures), 0 = non renseigné
+  int proGoalMin; // objectif de temps pro du jour, 0 = pas fixé
+  String persoGoal; // objectif perso du jour (aller courir…)
+  bool persoGoalDone;
+  String spawn; // point de spawn de demain : le geste préparé ce soir
   int mod;
 
   DayPlan({
@@ -343,6 +384,10 @@ class DayPlan {
     this.brake = '',
     this.tomorrow = '',
     this.sleepH = 0,
+    this.proGoalMin = 0,
+    this.persoGoal = '',
+    this.persoGoalDone = false,
+    this.spawn = '',
     this.mod = 0,
   });
 
@@ -358,6 +403,10 @@ class DayPlan {
         brake: _s(j['brake']),
         tomorrow: _s(j['tomorrow']),
         sleepH: _i(j['sleep']),
+        proGoalMin: _i(j['proGoal']),
+        persoGoal: _s(j['persoGoal']),
+        persoGoalDone: _b(j['persoDone']),
+        spawn: _s(j['spawn']),
         mod: _i(j['mod']),
       );
 
@@ -373,6 +422,10 @@ class DayPlan {
         'brake': brake,
         'tomorrow': tomorrow,
         'sleep': sleepH,
+        'proGoal': proGoalMin,
+        'persoGoal': persoGoal,
+        'persoDone': persoGoalDone,
+        'spawn': spawn,
         'mod': mod,
       };
 }

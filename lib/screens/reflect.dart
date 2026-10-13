@@ -16,11 +16,16 @@ class RateSheet extends StatefulWidget {
 class _RateSheetState extends State<RateSheet> {
   int _diff = 0;
   int _feel = 0;
+  int _intr = -1;
   final _helped = TextEditingController();
+  final _hard = TextEditingController();
+  final _worth = TextEditingController();
 
   @override
   void dispose() {
     _helped.dispose();
+    _hard.dispose();
+    _worth.dispose();
     super.dispose();
   }
 
@@ -47,12 +52,27 @@ class _RateSheetState extends State<RateSheet> {
           shrinkWrap: true,
           padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
           children: [
-            Text('Comment c\'était ?', style: K.display(22)),
+            Text('Débrief', style: K.display(22)),
             if (verdict.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text(verdict, style: K.body(14, color: K.muted)),
             ],
             const SizedBox(height: 14),
+            Text('Interrompue ?', style: K.body(13, color: K.muted)),
+            const SizedBox(height: 6),
+            _row(['Non', '1 fois', 'Plusieurs'], _intr + 1, K.lime, (i) => setState(() => _intr = i - 1)),
+            const SizedBox(height: 4),
+            Text(
+              _intr == 0
+                  ? 'Les ${s.actualMin.round()} min comptent en entier dans ta barre Focus.'
+                  : _intr == 1
+                      ? 'La moitié des minutes compte dans ta barre Focus.'
+                      : _intr >= 2
+                          ? 'Cette session ne remplit pas la barre Focus, mais le temps est bien compté.'
+                          : 'Seules les sessions pro sans interruption remplissent la barre Focus.',
+              style: K.body(12, color: K.muted),
+            ),
+            const SizedBox(height: 12),
             Text('Difficulté', style: K.body(13, color: K.muted)),
             const SizedBox(height: 6),
             _row(['Facile', 'Correct', 'Dur'], _diff, K.cyan, (i) => setState(() => _diff = i)),
@@ -68,6 +88,22 @@ class _RateSheetState extends State<RateSheet> {
                 hintText: s.finished ? 'Ce qui m\'a aidée (facultatif)' : 'Ce qui marchait avant de décrocher (facultatif)',
               ),
             ),
+            if (s.finished) ...[
+              const SizedBox(height: 12),
+              Text('Deux minutes pour ancrer (Dr K) :', style: K.body(13, color: K.muted)),
+              const SizedBox(height: 6),
+              TextField(
+                controller: _hard,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(hintText: 'C\'était dur en quoi ?'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _worth,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(hintText: 'Pourquoi ça valait le coup ?'),
+              ),
+            ],
             const SizedBox(height: 14),
             Row(
               children: [
@@ -78,11 +114,16 @@ class _RateSheetState extends State<RateSheet> {
                 Expanded(
                   child: PrimaryButton(
                     label: '+2 XP',
-                    onPressed: (_diff == 0 && _feel == 0 && _helped.text.trim().isEmpty)
+                    onPressed: (_diff == 0 && _feel == 0 && _intr < 0 && _helped.text.trim().isEmpty)
                         ? null
                         : () async {
-                            await AppScope.read(context)
-                                .rateSession(s, difficulty: _diff, feeling: _feel, helped: _helped.text.trim());
+                            await AppScope.read(context).rateSession(s,
+                                difficulty: _diff,
+                                feeling: _feel,
+                                helped: _helped.text.trim(),
+                                interrupted: _intr,
+                                hardWhat: _hard.text.trim(),
+                                worthWhy: _worth.text.trim());
                             if (context.mounted) Navigator.pop(context);
                           },
                   ),

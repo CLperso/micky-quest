@@ -139,6 +139,8 @@ Future<void> rescheduleAll(AppStore store) async {
       if (!t.isAfter(now.add(const Duration(minutes: 1)))) continue;
       if (quietFrom != null && t.isAfter(quietFrom) && t.isBefore(quietTo!)) continue;
       if (store.pausedAt(t)) continue;
+      // on vient de demander « et maintenant ? » dans l'appli : pas de doublon
+      if (store.skippedAt(t)) continue;
       final inSession = run != null && !run.silent && d == 0 && t.isBefore(now.add(const Duration(hours: 3)));
       await _schedule(
         id: 2000 + d * 200 + i,
@@ -282,25 +284,6 @@ Future<void> showTestCheckin() async {
     _checkinTitles.first,
     'Touche pour dire sur quoi tu es, depuis quand et comment tu te sens.',
     NotificationDetails(android: _checkDetails()),
-    payload: jsonEncode({'type': 'checkin', 'ts': ts, 'task': ''}),
-  );
-}
-
-/// « Et maintenant, tu vas faire quoi ? » après une session ou une tâche faite.
-Future<void> showNextQuestion({String context = ''}) async {
-  if (!notificationsReady) {
-    try {
-      await initNotifications();
-    } catch (_) {
-      return;
-    }
-  }
-  final ts = DateTime.now().millisecondsSinceEpoch;
-  await _plugin.show(
-    98,
-    context.isEmpty ? 'Bravo ! Et maintenant, tu vas faire quoi ?' : '$context Et maintenant, tu vas faire quoi ?',
-    'Touche pour choisir ta prochaine activité et noter comment tu te sens.',
-    NotificationDetails(android: _checkDetails(timeoutMin: 60)),
     payload: jsonEncode({'type': 'checkin', 'ts': ts, 'task': ''}),
   );
 }
