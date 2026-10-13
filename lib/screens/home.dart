@@ -14,6 +14,7 @@ import 'habits.dart';
 import 'settings.dart';
 import 'timetable.dart';
 import 'block.dart';
+import 'house.dart';
 
 class HomeScreen extends StatelessWidget {
   final void Function(int) onGoTo;
@@ -153,6 +154,8 @@ class HomeScreen extends StatelessWidget {
           const SizedBox(height: 14),
         ],
         const HabitsCard(),
+        const SizedBox(height: 14),
+        const HouseCard(),
         const SizedBox(height: 14),
         const BudgetCard(),
         const SizedBox(height: 18),

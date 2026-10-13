@@ -11,6 +11,7 @@ import 'screens/discoveries.dart';
 import 'screens/evening.dart';
 import 'screens/habits.dart';
 import 'screens/home.dart';
+import 'screens/house.dart';
 import 'screens/matrix.dart';
 import 'screens/notebook.dart';
 import 'screens/session.dart';
@@ -214,6 +215,8 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final ctx = navKey.currentContext;
       if (ctx != null) await showBigChest(ctx, msg);
+      final ctx2 = navKey.currentContext;
+      if (ctx2 != null && store.lastObject.isNotEmpty) await showLoot(ctx2, store, '');
       _celebrating = false;
     });
   }

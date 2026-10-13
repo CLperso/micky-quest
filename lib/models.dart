@@ -591,33 +591,70 @@ class Settings {
       };
 }
 
-/// Butin des coffres.
+/// Un objet de la maison de Micky (ou un accessoire qu'elle porte).
+class GameObject {
+  final String id;
+  final String name;
+  final String series; // salon, chambre, micky
+  final String asset; // vide = illustration à venir
+  final int rarity; // 1 commun, 2 rare, 3 épique
+  final bool wall; // s'accroche au mur du fond
+  final String flavor;
+  const GameObject(this.id, this.name, this.series, this.asset, this.rarity, {this.wall = false, this.flavor = ''});
+
+  bool get accessory => series == 'micky';
+  String get rarityLabel => rarity == 3 ? 'ÉPIQUE' : rarity == 2 ? 'RARE' : 'COMMUN';
+}
+
+class Objects {
+  static const all = [
+    GameObject('panier', 'Panier douillet', 'salon', 'assets/objects/panier.png', 1, flavor: 'Micky y fait la sieste pendant tes sessions.'),
+    GameObject('tapis', 'Tapis zigzag', 'salon', 'assets/objects/tapis.png', 1, flavor: 'Pour les roulades.'),
+    GameObject('aquarium', 'Aquarium', 'salon', 'assets/objects/aquarium.png', 2, flavor: 'Le poisson s\'appelle Nathalie.'),
+    GameObject('neon', 'Néon MICKY', 'salon', 'assets/objects/neon.png', 2, wall: true, flavor: 'Il clignote quand tu gagnes un pari.'),
+    GameObject('disco', 'Boule disco', 'salon', 'assets/objects/disco.png', 2, wall: true, flavor: 'Soirée dansante après une journée parfaite.'),
+    GameObject('canape', 'Canapé bleu', 'salon', '', 1, flavor: 'Deux coussins, zéro poil. Pour l\'instant.'),
+    GameObject('lampe', 'Lampe champignon', 'salon', '', 1, flavor: 'Lumière douce pour les soirs de feu de camp.'),
+    GameObject('arbre', 'Arbre à chat', 'salon', 'assets/objects/arbre.png', 3, flavor: 'Le trône d\'observation.'),
+    GameObject('chateau', 'Château en carton', 'salon', 'assets/objects/chateau.png', 3, flavor: 'Avec un drapeau. Évidemment.'),
+    GameObject('lampe_etoile', 'Veilleuse étoile', 'chambre', 'assets/objects/lampe_etoile.png', 1, flavor: 'Pour les nuits de 7 h et plus.'),
+    GameObject('lit', 'Lit à baldaquin', 'chambre', '', 2, flavor: 'Un lit de princesse. Elle le mérite.'),
+    GameObject('biblio', 'Bibliothèque', 'chambre', '', 2, wall: true, flavor: 'Tes articles préférés, en couleur.'),
+    GameObject('noeud', 'Nœud papillon', 'micky', 'assets/objects/noeud.png', 1, flavor: 'Rose à pois. Chic.'),
+    GameObject('lunettes', 'Lunettes de soleil', 'micky', '', 1, flavor: 'Pour les jours de zone d\'or.'),
+    GameObject('echarpe', 'Écharpe rayée', 'micky', '', 2, flavor: 'Cyan et lime, comme l\'appli.'),
+    GameObject('couronne', 'Couronne dorée', 'micky', 'assets/objects/couronne.png', 3, flavor: 'Réservée aux journées parfaites.'),
+  ];
+
+  static const seriesNames = {'salon': 'Salon', 'chambre': 'Chambre', 'micky': 'Garde-robe de Micky'};
+  static const seriesOrder = ['salon', 'chambre', 'micky'];
+
+  static GameObject? byId(String id) {
+    for (final o in all) {
+      if (o.id == id) return o;
+    }
+    return null;
+  }
+
+  static List<GameObject> inSeries(String s) => all.where((o) => o.series == s).toList();
+}
+
+/// Où est posé un objet dans la maison (case de la grille isométrique).
+class Placement {
+  String id; // identifiant de l'objet
+  String room;
+  int gx;
+  int gy;
+  int mod;
+  Placement({required this.id, required this.room, required this.gx, required this.gy, this.mod = 0});
+
+  factory Placement.fromJson(Map<String, dynamic> j) =>
+      Placement(id: _s(j['id']), room: _s(j['room'], 'salon'), gx: _i(j['gx']), gy: _i(j['gy']), mod: _i(j['mod']));
+  Map<String, dynamic> toJson() => {'id': id, 'room': room, 'gx': gx, 'gy': gy, 'mod': mod};
+}
+
+/// Butin des coffres : récompenses annexes (les objets viennent de [Objects]).
 class Loot {
-  static const items = [
-    'Nœud papillon rose',
-    'Couronne de chaton',
-    'Lunettes de soleil',
-    'Bonnet de laine',
-    'Cape de sorcière',
-    'Pelote dorée',
-    'Coussin moelleux',
-    'Souris en peluche',
-    'Plume arc-en-ciel',
-    'Collier à clochette',
-    'Écharpe rayée',
-    'Chapeau de pirate',
-    'Plaid à carreaux',
-    'Médaille d\'exploratrice',
-    'Sac de croquettes de luxe',
-    'Carton de rêve',
-  ];
-  static const rare = [
-    'Couronne dorée de Micky',
-    'Trône de velours',
-    'Château en carton',
-    'Cape d\'héroïne étoilée',
-    'Arbre à chat géant',
-  ];
   static const rewards = [
     'Joker de série',
     'Thème doré pour 24 h',

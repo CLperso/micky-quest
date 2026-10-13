@@ -5,9 +5,18 @@ import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
 import 'budget.dart';
+import 'house.dart';
 
-class DiscoveriesScreen extends StatelessWidget {
+class DiscoveriesScreen extends StatefulWidget {
   const DiscoveriesScreen({super.key});
+
+  @override
+  State<DiscoveriesScreen> createState() => _DiscoveriesScreenState();
+}
+
+class _DiscoveriesScreenState extends State<DiscoveriesScreen> {
+  int _tab = 0;
+  static const _tabs = ['Moi', 'Temps', 'Patterns', 'Argent'];
 
   static const _icons = {
     'gold': Icons.star_rounded,
@@ -15,8 +24,10 @@ class DiscoveriesScreen extends StatelessWidget {
     'why': Icons.psychology_alt_rounded,
     'hard': Icons.fitness_center_rounded,
     'feel': Icons.favorite_rounded,
+    'stim': Icons.graphic_eq_rounded,
     LogKind.energy: Icons.bolt_rounded,
     LogKind.coffee: Icons.coffee_rounded,
+    LogKind.pill: Icons.medication_rounded,
     'cycle': Icons.water_drop_rounded,
     'day': Icons.calendar_month_rounded,
     'sleep': Icons.bedtime_rounded,
@@ -34,96 +45,129 @@ class DiscoveriesScreen extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
       children: [
+        Text('Découvertes', style: K.display(26)),
+        Text('Ce que tes données révèlent sur toi', style: K.body(13, color: K.muted)),
+        const SizedBox(height: 10),
         Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Découvertes', style: K.display(26)),
-                  Text('Ce que tes données révèlent sur toi', style: K.body(13, color: K.muted)),
-                ],
+            for (var i = 0; i < _tabs.length; i++)
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: i < _tabs.length - 1 ? 6 : 0),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => setState(() => _tab = i),
+                    child: Container(
+                      height: 40,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(color: _tab == i ? K.gold : K.card, borderRadius: BorderRadius.circular(12)),
+                      child: Text(_tabs[i], style: K.body(13, color: _tab == i ? K.bg : K.ink, w: FontWeight.w800)),
+                    ),
+                  ),
+                ),
               ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(color: K.card, borderRadius: BorderRadius.circular(14)),
-              child: Column(children: [
-                Text('$unlocked/${list.length}', style: K.display(18, color: K.gold, w: FontWeight.w700)),
-                Text('débloquées', style: K.body(10, color: K.muted)),
-              ]),
-            ),
           ],
         ),
         const SizedBox(height: 14),
-        const TimeStats(),
-        const SizedBox(height: 12),        const GainsStats(),
-        const SizedBox(height: 12),
-        const BudgetStats(),
-        const SizedBox(height: 12),
-        Panel(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Ta carte du focus', style: K.display(16)),
-              Text('Part du temps sur tes quêtes, 6 dernières semaines', style: K.body(12, color: K.muted)),
-              const SizedBox(height: 10),
-              Row(children: [
-                const SizedBox(width: 24),
-                for (final h in ['8h', '10h', '12h', '14h', '16h', '18h', '20h'])
-                  Expanded(child: Center(child: Text(h, style: K.body(10, color: K.muted)))),
-              ]),
-              const SizedBox(height: 4),
-              for (var r = 0; r < 7; r++)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(children: [
-                    SizedBox(width: 24, child: Text(const ['L', 'M', 'M', 'J', 'V', 'S', 'D'][r], style: K.body(11, color: K.muted))),
-                    for (var c = 0; c < 7; c++)
-                      Expanded(
-                        child: Container(
-                          height: 24,
-                          margin: const EdgeInsets.symmetric(horizontal: 2),
-                          decoration: BoxDecoration(
-                            color: _heatColor(heat[r][c]),
-                            borderRadius: BorderRadius.circular(6),
+        if (_tab == 0) ...[
+          const HouseCard(),
+          const SizedBox(height: 12),
+          _statsPanel(store),
+          const SizedBox(height: 12),
+          const MedalCalendar(),
+          const SizedBox(height: 12),
+          const GainsStats(),
+          const SizedBox(height: 12),
+          SecondaryButton(label: 'Voir l\'album', onPressed: () => openScreen(context, const AlbumScreen())),
+        ],
+        if (_tab == 1) ...[
+          const TimeStats(),
+          const SizedBox(height: 12),
+          Panel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Ta carte du focus', style: K.display(16)),
+                Text('Part du temps sur tes quêtes, 6 dernières semaines', style: K.body(12, color: K.muted)),
+                const SizedBox(height: 10),
+                Row(children: [
+                  const SizedBox(width: 24),
+                  for (final h in ['8h', '10h', '12h', '14h', '16h', '18h', '20h'])
+                    Expanded(child: Center(child: Text(h, style: K.body(10, color: K.muted)))),
+                ]),
+                const SizedBox(height: 4),
+                for (var r = 0; r < 7; r++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(children: [
+                      SizedBox(width: 24, child: Text(const ['L', 'M', 'M', 'J', 'V', 'S', 'D'][r], style: K.body(11, color: K.muted))),
+                      for (var c = 0; c < 7; c++)
+                        Expanded(
+                          child: Container(
+                            height: 24,
+                            margin: const EdgeInsets.symmetric(horizontal: 2),
+                            decoration: BoxDecoration(
+                              color: _heatColor(heat[r][c]),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
                           ),
                         ),
-                      ),
-                  ]),
-                ),
-              if (!hasHeat)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text('Elle se remplit au fil de tes check-ins.', style: K.body(12, color: K.muted)),
-                ),
-            ],
+                    ]),
+                  ),
+                if (!hasHeat)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text('Elle se remplit au fil de tes check-ins.', style: K.body(12, color: K.muted)),
+                  ),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 12),
-        for (var i = 0; i < list.length; i++) ...[
-          _card(list[i], _colors[i % _colors.length]),
-          const SizedBox(height: 10),
         ],
-        const SizedBox(height: 8),
-        Text('Le coffre de Micky', style: K.display(20)),
-        const SizedBox(height: 8),
-        Panel(
-          child: store.inventory.isEmpty
-              ? Text('Gagne des paris de durée et fais ton feu de camp pour remplir le coffre.', style: K.body(13, color: K.muted))
-              : Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final it in store.inventory) Pill(it, color: K.gold),
-                  ],
-                ),
-        ),
-        const SizedBox(height: 8),
-        Text('${store.inventory.length}/${Loot.items.length} trésors · ${store.jokers} joker${store.jokers > 1 ? 's' : ''} de série',
-            style: K.body(12, color: K.muted)),
+        if (_tab == 2) ...[
+          Text('$unlocked / ${list.length} débloquées', style: K.body(12, color: K.gold, w: FontWeight.w800)),
+          const SizedBox(height: 8),
+          for (var i = 0; i < list.length; i++) ...[
+            _card(list[i], _colors[i % _colors.length]),
+            const SizedBox(height: 10),
+          ],
+        ],
+        if (_tab == 3) const BudgetStats(),
       ],
+    );
+  }
+
+  Widget _statsPanel(AppStore store) {
+    Widget stat(String label, int v, Color c, String hint) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Expanded(child: Text(label, style: K.body(13, w: FontWeight.w800))),
+              Text('$v / 20', style: K.display(13, color: c)),
+            ]),
+            const SizedBox(height: 4),
+            Bar(v / 20, color: c),
+            const SizedBox(height: 2),
+            Text(hint, style: K.body(11, color: K.muted)),
+            const SizedBox(height: 10),
+          ],
+        );
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Expanded(child: Text('Niveau ${store.level} · ${store.title}', style: K.display(16))),
+            Text('${store.xpInLevel} / $xpPerLevel XP', style: K.body(12, color: K.muted)),
+          ]),
+          const SizedBox(height: 6),
+          Bar(store.xpInLevel / xpPerLevel, color: K.lime),
+          const SizedBox(height: 14),
+          stat('Focus', store.statFocus, K.lime, 'Minutes de sessions pro sans interruption (débrief), sur 7 jours, face à ton objectif.'),
+          stat('Sens du temps', store.statTime, K.cyan, 'Justesse de tes paris de durée, 14 jours.'),
+          stat('Constance', store.statConstancy, K.gold, 'Sur 10 jours : une tâche pro faite + les habitudes.'),
+          stat('Sérénité', store.statSerenity, K.pink, 'Se gagne avec les gestes de régulation (réflexions, respiration, débrief, ruban). Ne baisse jamais parce que tu vas mal.'),
+        ],
+      ),
     );
   }
 

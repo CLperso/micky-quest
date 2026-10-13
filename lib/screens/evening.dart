@@ -8,6 +8,7 @@ import '../store.dart';
 import '../theme.dart';
 import 'checkin.dart';
 import 'habits.dart';
+import 'house.dart';
 import 'notebook.dart';
 import 'reflect.dart';
 
@@ -285,7 +286,7 @@ class _EveningScreenState extends State<EveningScreen> {
                 final chest = await store.finishEvening();
                 await rescheduleAll(store);
                 if (!context.mounted) return;
-                if (chest.isNotEmpty) await showChest(context, chest);
+                if (chest.isNotEmpty) await showLoot(context, store, chest);
                 if (!context.mounted) return;
                 Navigator.pop(context);
                 openScreen(context, ReplayScreen(day: day));

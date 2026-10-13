@@ -50,6 +50,7 @@ class AppStore extends ChangeNotifier {
   List<Reflection> reflections = [];
   List<Expense> expenses = [];
   List<Remind> reminders = [];
+  List<Placement> placements = [];
   Settings settings = Settings();
   String lastChest = '';
 
@@ -98,6 +99,7 @@ class AppStore extends ChangeNotifier {
         reflections = list('reflections').map(Reflection.fromJson).toList();
         expenses = list('expenses').map(Expense.fromJson).toList();
         reminders = list('reminders').map(Remind.fromJson).toList();
+        placements = list('placements').map(Placement.fromJson).toList();
         settings = Settings.fromJson(Map<String, dynamic>.from((j['settings'] as Map?) ?? {}));
         lastChest = (j['lastChest'] as String?) ?? '';
       } catch (e) {
@@ -134,6 +136,7 @@ class AppStore extends ChangeNotifier {
         'reflections': {for (final e in reflections) e.id: e.toJson()},
         'expenses': {for (final e in expenses) e.id: e.toJson()},
         'reminders': {for (final e in reminders) e.id: e.toJson()},
+        'placements': {for (final e in placements) e.id: e.toJson()},
       };
 
   /// Date les enregistrements qui ont changé depuis la dernière fois.
@@ -184,6 +187,9 @@ class AppStore extends ChangeNotifier {
     for (final e in reminders) {
       check('reminders', e.id, e.toJson(), (m) => e.mod = m);
     }
+    for (final e in placements) {
+      check('placements', e.id, e.toJson(), (m) => e.mod = m);
+    }
   }
 
   /// Contenu partagé entre appareils (sans les réglages propres à l'appareil).
@@ -233,6 +239,7 @@ class AppStore extends ChangeNotifier {
         reflections, list('reflections'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Reflection.fromJson);
     mergeInto<Expense>(expenses, list('expenses'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Expense.fromJson);
     mergeInto<Remind>(reminders, list('reminders'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Remind.fromJson);
+    mergeInto<Placement>(placements, list('placements'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Placement.fromJson);
     for (final j in list('plans')) {
       final d = j['day'] as String;
       final m = (j['mod'] as num?)?.toInt() ?? 0;
@@ -281,6 +288,7 @@ class AppStore extends ChangeNotifier {
       'reflections': reflections.map((e) => e.toJson()).toList(),
       'expenses': expenses.map((e) => e.toJson()).toList(),
       'reminders': reminders.map((e) => e.toJson()).toList(),
+      'placements': placements.map((e) => e.toJson()).toList(),
       'settings': settings.toJson(),
       'lastChest': lastChest,
     };
@@ -835,23 +843,80 @@ class AppStore extends ChangeNotifier {
     return chest;
   }
 
+  /// Tire un objet pas encore possédé (les rares sont plus rares), ou null si tout est possédé.
+  GameObject? _drawObject({int maxRarity = 2}) {
+    final r = Random();
+    final pool = <GameObject>[];
+    for (final o in Objects.all) {
+      if (inventory.contains(o.id) || o.rarity > maxRarity) continue;
+      for (var i = 0; i < (o.rarity == 1 ? 4 : o.rarity == 2 ? 2 : 1); i++) {
+        pool.add(o);
+      }
+    }
+    if (pool.isEmpty) return null;
+    return pool[r.nextInt(pool.length)];
+  }
+
   String _openChest() {
     final r = Random();
     String item;
-    if (r.nextInt(5) == 0) {
+    final obj = r.nextInt(5) == 0 ? null : _drawObject();
+    if (obj == null) {
       item = Loot.rewards[r.nextInt(Loot.rewards.length)];
       if (item == 'Joker de série') _gainXp(0, 'Joker');
       if (item == '+30 XP bonus') _gainXp(30, 'Coffre');
     } else {
-      final notOwned = Loot.items.where((i) => !inventory.contains(i)).toList();
-      item = notOwned.isEmpty ? Loot.items[r.nextInt(Loot.items.length)] : notOwned[r.nextInt(notOwned.length)];
-      if (!inventory.contains(item)) inventory.add(item);
+      inventory.add(obj.id);
+      item = obj.name;
+      lastObject = obj.id;
     }
     lastChest = item;
     // trace du butin, pour les stats de gains
     _gainXp(0, 'Butin : $item');
     return item;
   }
+
+  /// Dernier objet gagné (pour la carte de révélation), consommé par l'interface.
+  String lastObject = '';
+
+  List<GameObject> get ownedObjects => [for (final id in inventory) if (Objects.byId(id) != null) Objects.byId(id)!];
+
+  /// Objets possédés mais pas encore posés.
+  List<GameObject> get unplacedObjects => ownedObjects.where((o) => !placements.any((p) => p.id == o.id)).toList();
+
+  Placement? placementOf(String id) {
+    for (final p in placements) {
+      if (p.id == id) return p;
+    }
+    return null;
+  }
+
+  Future<void> placeObject(String id, String room, int gx, int gy) async {
+    // une case par objet
+    placements.removeWhere((p) => p.id != id && p.room == room && p.gx == gx && p.gy == gy && !(Objects.byId(p.id)?.accessory ?? false));
+    final cur = placementOf(id);
+    if (cur == null) {
+      placements.add(Placement(id: id, room: room, gx: gx, gy: gy));
+    } else {
+      cur.room = room;
+      cur.gx = gx;
+      cur.gy = gy;
+    }
+    await commit();
+  }
+
+  Future<void> unplaceObject(String id) async {
+    placements.removeWhere((p) => p.id == id);
+    await commit();
+  }
+
+  /// Accessoires que Micky porte (posés dans la « pièce » micky).
+  List<GameObject> get worn => [
+        for (final p in placements)
+          if (p.room == 'micky' && Objects.byId(p.id) != null) Objects.byId(p.id)!
+      ];
+
+  bool seriesComplete(String series) => Objects.inSeries(series).every((o) => inventory.contains(o.id));
 
   /// Célébration à afficher (coffre géant, journée parfaite), consommée par l'interface.
   String? pendingCelebration;
@@ -874,10 +939,13 @@ class AppStore extends ChangeNotifier {
     if (today.length >= 3 && today.every((t) => t.done) && habitsOk && !_claimedToday('Journée parfaite')) {
       _gainXp(200, 'Journée parfaite');
       _gainXp(0, 'Joker');
-      final r = Random();
-      final notOwned = Loot.rare.where((i) => !inventory.contains(i)).toList();
-      final item = notOwned.isEmpty ? Loot.rare[r.nextInt(Loot.rare.length)] : notOwned[r.nextInt(notOwned.length)];
-      if (!inventory.contains(item)) inventory.add(item);
+      final epic = Objects.all.where((o) => o.rarity == 3 && !inventory.contains(o.id)).toList();
+      final obj = epic.isEmpty ? _drawObject(maxRarity: 3) : epic[Random().nextInt(epic.length)];
+      final item = obj?.name ?? 'Thème doré pour 24 h';
+      if (obj != null) {
+        inventory.add(obj.id);
+        lastObject = obj.id;
+      }
       _gainXp(0, 'Butin : $item');
       msgs.add('JOURNÉE PARFAITE · tout est fait, habitudes comprises !\n+200 XP · $item · un joker de série');
     }
@@ -1282,9 +1350,28 @@ class AppStore extends ChangeNotifier {
       }
     }
 
-    // 4 et 5. Energy drinks et café.
-    for (final kind in [LogKind.energy, LogKind.coffee]) {
-      final name = kind == LogKind.energy ? 'Energy drinks' : 'Café';
+    // 3 quater. Conditions de travail (seule, body double, bruit, musique).
+    {
+      final by = <String, List<SessionRec>>{};
+      for (final x in sessions.where((x) => x.end > 0 && x.stim.isNotEmpty && sessionCategory(x) == Act.pro)) {
+        by.putIfAbsent(x.stim, () => []).add(x);
+      }
+      final ok = by.entries.where((e) => e.value.length >= 3).toList();
+      if (ok.length >= 2) {
+        double score(List<SessionRec> l) =>
+            l.map((x) => x.actualMin == 0 ? 0.0 : x.focusMin / x.actualMin).reduce((a, b) => a + b) / l.length;
+        ok.sort((a, b) => score(b.value).compareTo(score(a.value)));
+        out.add(Discovery('stim', 'Tes conditions de focus',
+            'Tu tiens le mieux « ${SessionRec.stims[ok.first.key]?.toLowerCase()} » (${(100 * score(ok.first.value)).round()} % de focus) ; le moins « ${SessionRec.stims[ok.last.key]?.toLowerCase()} » (${(100 * score(ok.last.value)).round()} %).',
+            1, ''));
+      } else {
+        out.add(Discovery('stim', 'Tes conditions de focus', '', min(1.0, ok.length / 2), '3 sessions dans 2 conditions différentes'));
+      }
+    }
+
+    // 4 et 5. Energy drinks, café et pilule.
+    for (final kind in [LogKind.energy, LogKind.coffee, LogKind.pill]) {
+      final name = kind == LogKind.energy ? 'Energy drinks' : kind == LogKind.coffee ? 'Café' : 'Pilule';
       final drinks = logs.where((l) => l.kind == kind).map((l) => l.ts).toList();
       bool after(int ts) => drinks.any((d) => ts >= d && ts - d <= 3 * 3600 * 1000);
       final fin = sessions.where((x) => x.finished && x.ratio > 0).toList();
@@ -1309,7 +1396,7 @@ class AppStore extends ChangeNotifier {
                   ? ', et ton humeur est plus basse'
                   : '';
         }
-        out.add(Discovery(kind, '$name et focus', 'Après un ${name == 'Café' ? 'café' : 'energy drink'}, $focusTxt$moodTxt.', 1, ''));
+        out.add(Discovery(kind, '$name et focus', 'Après ${name == 'Café' ? 'un café' : name == 'Pilule' ? 'une pilule' : 'un energy drink'}, $focusTxt$moodTxt.', 1, ''));
       } else {
         final p = (min(drinks.length, 4) + min(a.length, 3) + min(b.length, 3)) / 10;
         out.add(Discovery(kind, '$name et focus', '', p, '4 prises et 3 sessions avec et sans'));

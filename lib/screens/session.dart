@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../main.dart';
 import '../models.dart';
 import '../theme.dart';
+import 'house.dart';
 import 'reflect.dart';
 
 /// Choix de la tâche et du pari de durée.
@@ -287,7 +288,7 @@ class _SessionScreenState extends State<SessionScreen> {
       builder: (_) => AppScope(store: store, child: RateSheet(session: s)),
     );
     if (!mounted) return;
-    if (chest.isNotEmpty) await showChest(context, chest);
+    if (chest.isNotEmpty) await showLoot(context, store, chest);
     if (!mounted) return;
     Navigator.pop(context);
     final ctx = navKey.currentContext;
