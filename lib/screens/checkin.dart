@@ -9,6 +9,7 @@ import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
 import 'block.dart';
+import 'session.dart';
 import 'timetable.dart' show askText;
 
 class CheckinScreen extends StatefulWidget {
@@ -22,7 +23,10 @@ class CheckinScreen extends StatefulWidget {
 
   /// « Et maintenant, tu vas faire quoi ? » après une session ou une tâche (message de contexte).
   final String? nextAfter;
-  const CheckinScreen({super.key, this.focusLog, this.at, this.existing, this.nextAfter});
+
+  /// Juste l'émotion (« Noter vite »).
+  final bool moodOnly;
+  const CheckinScreen({super.key, this.focusLog, this.at, this.existing, this.nextAfter, this.moodOnly = false});
 
   @override
   State<CheckinScreen> createState() => _CheckinScreenState();
@@ -41,6 +45,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
   String _emotion = '';
   String _cause = '';
   bool _pauseAsked = false;
+  bool? _onIt; // pendant une session : toujours dessus ?
   double _energy = 50;
   bool _energySet = false;
   final _note = TextEditingController();
@@ -269,13 +274,13 @@ class _CheckinScreenState extends State<CheckinScreen> {
         return rank(a).compareTo(rank(b));
       });
     final run = store.runningSession;
-    if (run != null && _act.isEmpty && _taskId.isEmpty && widget.focusLog == null && widget.existing == null) {
-      _act = store.taskById(run.taskId)?.category == 'perso' ? Act.perso : Act.pro;
-      _taskId = run.taskId;
-    }
+    final inSession = run != null && widget.existing == null && widget.at == null && widget.nextAfter == null && !widget.moodOnly && widget.focusLog == null;
+    final runCat = run == null ? '' : store.sessionCategory(run);
     return Scaffold(
       appBar: AppBar(
-        title: Text(logsFirst
+        title: Text(widget.moodOnly
+            ? 'Mon émotion'
+            : logsFirst
             ? 'Noter'
             : widget.nextAfter != null
                 ? 'Et maintenant ?'
@@ -300,7 +305,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
           children: [
             if (logsFirst) ...logs,
-            if (!logsFirst) ...[
+            if (!logsFirst && !widget.moodOnly && !inSession) ...[
               MickySays(
                   widget.nextAfter != null
                       ? '${widget.nextAfter} Et maintenant, tu vas faire quoi ?'
@@ -313,17 +318,49 @@ class _CheckinScreenState extends State<CheckinScreen> {
                   ring: K.lime),
               const SizedBox(height: 12),
             ],
+            if (inSession) ...[
+              MickySays('Toujours sur « ${run.title} » ?', pose: 'window', ring: runCat == Act.perso ? K.pink : K.lime),
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(
+                  child: _pauseBtn(_onIt == true ? '✓ Oui, dessus' : 'Oui, toujours dessus', _onIt == true ? K.lime : K.raised, _onIt == true ? K.bg : K.ink, () => setState(() {
+                        _onIt = true;
+                        _act = runCat == Act.perso ? Act.perso : Act.pro;
+                        _taskId = run.taskId;
+                        _reason = '';
+                      })),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _pauseBtn('J\'ai décroché', _onIt == false ? K.coral : K.raised, _onIt == false ? K.bg : K.ink, () => setState(() {
+                        _onIt = false;
+                        _act = '';
+                        _taskId = '';
+                      })),
+                ),
+              ]),
+              if (_onIt == false)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => openScreen(context, const SessionScreen()),
+                    child: Text('Arrêter ou changer la session', style: K.body(12, color: K.muted)),
+                  ),
+                ),
+              const SizedBox(height: 10),
+            ],
+            if (!widget.moodOnly && (!inSession || _onIt == false))
             Panel(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Tu fais quoi ?', style: K.display(17)),
+                  Text(inSession ? 'Tu fais quoi à la place ?' : 'Tu fais quoi ?', style: K.display(17)),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      for (final a in Act.choices)
+                      for (final a in Act.choices.where((a) => !(inSession && (a == Act.pro || a == runCat))))
                         _chip(Act.labels[a]!, _act == a, a == Act.pro ? K.lime : (a == Act.perso ? K.pink : K.cyan), () => setState(() {
                               _act = _act == a ? '' : a;
                               if (!Act.isOnTask(_act)) _taskId = '';
@@ -435,7 +472,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
               ),
             ),
             const SizedBox(height: 10),
-            if (widget.existing == null)
+            if (widget.existing == null && !widget.moodOnly)
               Material(
                 color: K.card,
                 borderRadius: BorderRadius.circular(16),
@@ -516,7 +553,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
               ),
             ),
             const SizedBox(height: 10),
-            if (!logsFirst) ...logs,
+            if (!logsFirst && !widget.moodOnly) ...logs,
             const SizedBox(height: 16),
             PrimaryButton(label: widget.existing != null ? 'Enregistrer la correction' : 'Envoyer · +1 XP', onPressed: _send),
           ],

@@ -193,6 +193,10 @@ class HomeScreen extends StatelessWidget {
                     () => openScreen(context, const CheckinScreen(focusLog: LogKind.meal)))),
             const SizedBox(width: 8),
             Expanded(
+                child: _quick(context, Icons.mood_rounded, 'Émotion', K.pink,
+                    () => openScreen(context, const CheckinScreen(moodOnly: true)))),
+            const SizedBox(width: 8),
+            Expanded(
                 child: _quick(context, Icons.bolt_rounded, 'Prise', K.cyan,
                     () => openScreen(context, const CheckinScreen(focusLog: LogKind.energy)))),
             const SizedBox(width: 8),
