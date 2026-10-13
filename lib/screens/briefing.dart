@@ -269,7 +269,10 @@ class _StepsEditorState extends State<StepsEditor> {
               child: Row(
                 children: [
                   IconButton(
-                    onPressed: () => store.completeTask(t),
+                    onPressed: () async {
+                      await store.completeTask(t);
+                      if (t.done) await showNextQuestion(context: 'Étape faite !');
+                    },
                     icon: Icon(t.done ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
                         color: t.done ? widget.color : K.muted),
                   ),

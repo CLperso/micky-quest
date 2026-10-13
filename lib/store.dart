@@ -565,6 +565,11 @@ class AppStore extends ChangeNotifier {
     s.end = DateTime.now().millisecondsSinceEpoch;
     s.finished = finished;
     final minutes = s.actualMin;
+    if (sessionCategory(s) == Act.perso) {
+      // le perso n'est pas un jeu : on note le temps, sans coffre ni pari
+      await commit();
+      return '';
+    }
     _gainXp(10 + min(60, minutes).round() ~/ 2, 'Session');
     final t = taskById(s.taskId);
     if (t != null && t.isBoss) {

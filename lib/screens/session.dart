@@ -229,12 +229,25 @@ class _SessionScreenState extends State<SessionScreen> {
     final store = AppScope.read(context);
     final s = store.runningSession;
     if (s == null) return;
+    final perso = store.sessionCategory(s) == Act.perso;
     final chest = await store.endSession(s, finished: finished);
+    if (perso) {
+      if (finished && s.taskId.isNotEmpty) {
+        final t = store.taskById(s.taskId);
+        if (t != null && !t.done) await store.completeTask(t);
+      }
+      await rescheduleAll(store);
+      await showNextQuestion(context: '${s.title} : ${s.actualMin.round()} min.');
+      if (!mounted) return;
+      Navigator.pop(context);
+      return;
+    }
     if (finished && s.taskId.isNotEmpty) {
       final t = store.taskById(s.taskId);
       if (t != null && !t.done) await store.completeTask(t);
     }
     await rescheduleAll(store);
+    await showNextQuestion(context: finished ? 'Étape finie !' : '');
     if (!mounted) return;
     if (chest.isNotEmpty) await showChest(context, chest);
     if (!mounted) return;
@@ -265,6 +278,63 @@ class _SessionScreenState extends State<SessionScreen> {
     final mm = elapsed.inMinutes.toString().padLeft(2, '0');
     final ss = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
     final inWindow = frac >= 0.8 && frac <= 1.2;
+    final perso = store.sessionCategory(s) == Act.perso;
+
+    if (perso) {
+      return Scaffold(
+        appBar: AppBar(
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 14),
+              child: Center(child: Pill(s.silent ? 'Check-ins en pause' : 'Check-ins actifs', color: K.pink)),
+            ),
+          ],
+        ),
+        body: SafeArea(
+          top: false,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 20),
+            children: [
+              Text('PERSO', style: K.body(12, color: K.pink, w: FontWeight.w900)),
+              Text(s.title, style: K.display(24)),
+              Text('Commencé à ${hm(DateTime.fromMillisecondsSinceEpoch(s.start))} · prévu ${s.predictedMin >= 60 ? '${s.predictedMin ~/ 60} h${s.predictedMin % 60 == 0 ? '' : ' ${s.predictedMin % 60}'}' : '${s.predictedMin} min'}',
+                  style: K.body(13, color: K.muted)),
+              const SizedBox(height: 28),
+              Center(
+                child: SizedBox(
+                  width: 240,
+                  height: 240,
+                  child: CustomPaint(
+                    painter: _Ring(min(1.0, frac), K.pink, 0),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(elapsed.inHours > 0 ? '${elapsed.inHours}:${(elapsed.inMinutes % 60).toString().padLeft(2, '0')}:$ss' : '$mm:$ss',
+                              style: K.display(48, w: FontWeight.w700)),
+                          Text('temps perso', style: K.body(14, color: K.muted)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 28),
+              Panel(
+                child: Text(
+                  'Pas de pari, pas de coffre : ce temps est pour toi. Il sera compté en Perso dans ton replay.',
+                  style: K.body(13, color: K.muted),
+                ),
+              ),
+              const SizedBox(height: 24),
+              PrimaryButton(label: 'Terminé', color: K.pink, onPressed: () => _end(true)),
+              const SizedBox(height: 10),
+              SecondaryButton(label: 'Arrêter sans finir', onPressed: () => _end(false)),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(

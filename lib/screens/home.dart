@@ -297,7 +297,10 @@ class HomeScreen extends StatelessWidget {
   Widget _taskRow(BuildContext context, Task t) {
     final store = AppScope.read(context);
     return InkWell(
-      onTap: () => store.completeTask(t),
+      onTap: () async {
+        await store.completeTask(t);
+        if (t.done) await showNextQuestion(context: 'Tâche faite !');
+      },
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(

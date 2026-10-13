@@ -286,6 +286,25 @@ Future<void> showTestCheckin() async {
   );
 }
 
+/// « Et maintenant, tu vas faire quoi ? » après une session ou une tâche faite.
+Future<void> showNextQuestion({String context = ''}) async {
+  if (!notificationsReady) {
+    try {
+      await initNotifications();
+    } catch (_) {
+      return;
+    }
+  }
+  final ts = DateTime.now().millisecondsSinceEpoch;
+  await _plugin.show(
+    98,
+    context.isEmpty ? 'Bravo ! Et maintenant, tu vas faire quoi ?' : '$context Et maintenant, tu vas faire quoi ?',
+    'Touche pour choisir ta prochaine activité et noter comment tu te sens.',
+    NotificationDetails(android: _checkDetails(timeoutMin: 60)),
+    payload: jsonEncode({'type': 'checkin', 'ts': ts, 'task': ''}),
+  );
+}
+
 // ---------- Réponses ----------
 
 @pragma('vm:entry-point')
