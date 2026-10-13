@@ -377,7 +377,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                                 Expanded(
                                   child: Text(
                                     '${hm(DateTime.fromMillisecondsSinceEpoch(t.plannedAt))} · ${t.title}${t.condition.isNotEmpty ? ' · si ${t.condition}' : ''}',
-                                    style: K.body(12, color: t.done ? K.muted, w: FontWeight.w800)
+                                    style: K.body(12, color: t.done ? K.muted : K.ink, w: FontWeight.w800)
                                         .copyWith(decoration: t.done ? TextDecoration.lineThrough : null),
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,

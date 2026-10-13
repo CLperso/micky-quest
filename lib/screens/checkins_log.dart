@@ -141,7 +141,6 @@ class _CheckinsLogScreenState extends State<CheckinsLogScreen> {
       ),
     );
   }
-}
 
   Widget _remindTile(BuildContext context, AppStore store, _Row r) {
     final rem = r.remind;
