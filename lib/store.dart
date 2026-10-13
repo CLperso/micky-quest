@@ -315,6 +315,10 @@ class AppStore extends ChangeNotifier {
   /// Les tâches d'un jour passé non rangées reviennent à trier aujourd'hui.
   void _rollOver() {
     final today = todayKey;
+    // boss d'avant la règle « 1 PV = 1 minute » : on repart des minutes estimées s'il n'a pas encore été attaqué
+    for (final t in tasks) {
+      if (t.isBoss && !t.done && t.bossHp == 100 && !sessions.any((s) => s.taskId == t.id)) t.bossHp = bossTotal(t);
+    }
     for (final t in tasks) {
       if (!t.done && !t.removed && t.day.compareTo(today) < 0) {
         t.day = today;

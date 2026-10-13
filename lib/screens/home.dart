@@ -12,10 +12,8 @@ import 'checkin.dart';
 import 'checkins_log.dart';
 import 'habits.dart';
 import 'settings.dart';
-import 'timetable.dart';
 import 'block.dart';
 import 'house.dart';
-import 'today.dart';
 
 class HomeScreen extends StatelessWidget {
   final void Function(int) onGoTo;
@@ -104,8 +102,6 @@ class HomeScreen extends StatelessWidget {
         const PauseSwitch(),
         const SizedBox(height: 14),
         const MissedCheckins(),
-        const TimetableCard(),
-        const SizedBox(height: 14),
 
         if (!plan.briefingDone) ...[
           Panel(
@@ -161,19 +157,7 @@ class HomeScreen extends StatelessWidget {
         const HouseCard(),
         const SizedBox(height: 14),
         const BudgetCard(),
-        const SizedBox(height: 18),
-
-        Row(
-          children: [
-            Expanded(child: Text('Quêtes du jour', style: K.display(20))),
-            TextButton(onPressed: () => openScreen(context, const BriefingScreen()), child: const Text('Modifier')),
-          ],
-        ),
-        const SizedBox(height: 6),
-        _questCard(context, 'pro', 'PRO', plan.pro, K.lime),
-        const SizedBox(height: 10),
-        _questCard(context, 'perso', 'PERSO', plan.perso, K.pink),
-        const SizedBox(height: 10),
+        const SizedBox(height: 14),
 
         if (doNow.isNotEmpty)
           Panel(
@@ -237,77 +221,6 @@ class HomeScreen extends StatelessWidget {
         ],
       );
 
-  Widget _questCard(BuildContext context, String cat, String tag, String goal, Color c) {
-    final store = AppScope.of(context);
-    final steps = store.questSteps(cat);
-    final done = steps.where((s) => s.done).length;
-    Task? next;
-    for (final s in steps) {
-      if (!s.done) {
-        next = s;
-        break;
-      }
-    }
-    final complete = steps.isNotEmpty && done == steps.length;
-    final byTask = store.minutesByTask(store.todayKey);
-    final minutes = steps.fold(0.0, (a, s) => a + (byTask[s.id] ?? 0)).round();
-    return Panel(
-      border: complete ? c : (cat == 'pro' && goal.isNotEmpty ? c.withValues(alpha: 0.6) : null),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            Pill(tag, color: K.bg, fill: c),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(complete ? 'Quête accomplie !' : '${steps.length} étapes', style: K.body(12, color: K.muted)),
-            ),
-            if (minutes > 0) Pill('$minutes min aujourd\'hui', color: c),
-          ]),
-          const SizedBox(height: 6),
-          Text(goal.isEmpty ? 'Pas encore définie' : goal,
-              style: K.body(17, w: FontWeight.w800, color: goal.isEmpty ? K.dim : K.ink)),
-          if (steps.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                for (var i = 0; i < steps.length; i++) ...[
-                  Expanded(
-                    child: Container(
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: steps[i].done ? c : K.raised,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ),
-                  if (i < steps.length - 1) const SizedBox(width: 4),
-                ],
-              ],
-            ),
-          ],
-          if (next != null) ...[
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Étape suivante : ${next.title}${next.estimateMin > 0 ? ' · ${next.estimateMin} min' : ''}',
-                    style: K.body(13, color: K.muted),
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Lancer cette étape',
-                  onPressed: () => startFocus(context),
-                  icon: Icon(Icons.play_circle_fill_rounded, color: c, size: 32),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-  }
 
   Widget _taskRow(BuildContext context, Task t) {
     final store = AppScope.read(context);
@@ -436,55 +349,6 @@ class PauseSwitch extends StatelessWidget {
             },
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Ma journée : les prochains blocs prévus et l'accès au planning.
-class TimetableCard extends StatelessWidget {
-  const TimetableCard({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final store = AppScope.of(context);
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final planned = store.plannedOn(store.todayKey).where((t) => !t.done).toList();
-    final next = planned.where((t) => t.plannedAt + t.blockMin * 60000 > now).take(3).toList();
-    return Panel(
-      border: K.gold,
-      child: InkWell(
-        onTap: () => openScreen(context, const TodayScreen(standalone: true)),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              const Icon(Icons.view_day_rounded, color: K.gold),
-              const SizedBox(width: 8),
-              Expanded(child: Text('Aujourd\'hui · tâches et planning', style: K.display(16))),
-              Text(planned.isEmpty ? 'planifier' : '${planned.length} bloc${planned.length > 1 ? 's' : ''}', style: K.body(12, color: K.gold, w: FontWeight.w800)),
-              const Icon(Icons.chevron_right_rounded, color: K.muted),
-            ]),
-            const SizedBox(height: 6),
-            if (next.isEmpty)
-              Text(
-                planned.isEmpty
-                    ? 'Aucun bloc prévu. Touche pour poser tes tâches sur les heures de la journée ; Micky te dira « c\'est l\'heure ».'
-                    : 'Tous les blocs du jour sont passés.',
-                style: K.body(13, color: K.muted),
-              )
-            else
-              for (final t in next)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(children: [
-                    SizedBox(width: 52, child: Text(hm(DateTime.fromMillisecondsSinceEpoch(t.plannedAt)), style: K.body(14, color: t.plannedAt <= now ? K.coral : K.gold, w: FontWeight.w900))),
-                    Expanded(child: Text(t.title, style: K.body(14), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                    Text('${t.blockMin} min', style: K.body(12, color: K.muted)),
-                  ]),
-                ),
-          ],
-        ),
       ),
     );
   }
