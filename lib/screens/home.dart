@@ -13,6 +13,7 @@ import 'checkins_log.dart';
 import 'habits.dart';
 import 'settings.dart';
 import 'block.dart';
+import 'boss.dart';
 import 'house.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -245,32 +246,63 @@ class HomeScreen extends StatelessWidget {
 
   Widget _bossCard(BuildContext context, Task? boss) {
     final store = AppScope.of(context);
+    final has = boss != null;
+    final minutes = has ? store.bossMinutes(boss) : 0;
     return Panel(
       color: const Color(0xFF2A1630),
       border: K.coral,
-      child: Row(
-        children: [
-          const Icon(Icons.pest_control_rounded, color: K.coral, size: 34),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => openScreen(context, const BossScreen()),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Text('BOSS DE LA SEMAINE · +300 XP', style: K.body(12, color: const Color(0xFFFFB89A), w: FontWeight.w900)),
-                Text(boss?.title ?? 'Choisis la tâche que tu repousses dans Quêtes (appui long)',
-                    style: K.body(boss == null ? 13 : 15, w: FontWeight.w800, color: boss == null ? K.muted : K.ink)),
-                if (boss != null) ...[
-                  const SizedBox(height: 6),
-                  Bar(boss.bossHp / store.bossTotal(boss), color: K.coral),
-                ],
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(color: const Color(0xFF3A1F3E), borderRadius: BorderRadius.circular(14)),
+                  child: const Icon(Icons.pest_control_rounded, color: K.coral, size: 28),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('BOSS DE LA SEMAINE · +300 XP', style: K.body(11, color: const Color(0xFFFFB89A), w: FontWeight.w900)),
+                      Text(has ? boss.title : 'Choisis ta plus grosse tâche pro', style: K.body(15, w: FontWeight.w800)),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded, color: K.muted),
               ],
             ),
-          ),
-          if (boss != null) ...[
-            const SizedBox(width: 10),
-            Text('${boss.bossHp >= 60 ? '${boss.bossHp ~/ 60} h${boss.bossHp % 60 == 0 ? '' : ' ${boss.bossHp % 60}'}' : '${boss.bossHp} min'} restantes', style: K.display(14, color: K.coral, w: FontWeight.w700)),
+            if (has) ...[
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      height: 12,
+                      color: const Color(0xFF3A1F3E),
+                      alignment: Alignment.centerLeft,
+                      child: FractionallySizedBox(
+                        widthFactor: boss.bossProgress / 100,
+                        child: Container(decoration: const BoxDecoration(gradient: LinearGradient(colors: [K.coral, K.gold]))),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text('${boss.bossProgress} %', style: K.display(14, color: K.gold)),
+              ]),
+              const SizedBox(height: 4),
+              Text('${store.bossHits(boss).length} coup${store.bossHits(boss).length > 1 ? 's' : ''} · $minutes min · touche pour attaquer', style: K.body(11, color: K.muted)),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

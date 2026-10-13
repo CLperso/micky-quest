@@ -59,6 +59,7 @@ class Task {
   String condition; // « seulement quand… »
   int postponed; // nombre de reports du rappel
   String calEventId; // événement écrit dans l'agenda du téléphone
+  int bossProgress; // boss : avancement déclaré, 0 à 100
   int mod;
 
   Task({
@@ -81,6 +82,7 @@ class Task {
     this.condition = '',
     this.postponed = 0,
     this.calEventId = '',
+    this.bossProgress = 0,
     this.mod = 0,
   })  : id = id ?? newId(),
         createdDay = createdDay ?? day;
@@ -107,6 +109,7 @@ class Task {
         condition: _s(j['cond']),
         postponed: _i(j['post']),
         calEventId: _s(j['calEv']),
+        bossProgress: _i(j['bossP']),
         mod: _i(j['mod']),
       );
 
@@ -130,6 +133,7 @@ class Task {
         'cond': condition,
         'post': postponed,
         'calEv': calEventId,
+        'bossP': bossProgress,
         'mod': mod,
       };
 }

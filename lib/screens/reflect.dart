@@ -17,6 +17,7 @@ class _RateSheetState extends State<RateSheet> {
   int _diff = 0;
   int _feel = 0;
   int _intr = -1;
+  int _bossP = -1;
   final _helped = TextEditingController();
   final _hard = TextEditingController();
   final _worth = TextEditingController();
@@ -32,6 +33,10 @@ class _RateSheetState extends State<RateSheet> {
   @override
   Widget build(BuildContext context) {
     final s = widget.session;
+    final store = AppScope.of(context);
+    final boss = s.taskId.isEmpty ? null : store.taskById(s.taskId);
+    final isBoss = boss != null && boss.isBoss;
+    if (isBoss && _bossP < 0) _bossP = boss.bossProgress;
     final ratio = s.ratio;
     String verdict;
     if (!s.finished) {
@@ -56,6 +61,34 @@ class _RateSheetState extends State<RateSheet> {
             if (verdict.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text(verdict, style: K.body(14, color: K.muted)),
+            ],
+            if (isBoss) ...[
+              const SizedBox(height: 14),
+              Panel(
+                border: K.coral,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      const Icon(Icons.pest_control_rounded, color: K.coral),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text('Le boss : tu en es où ?', style: K.display(16))),
+                      Text('$_bossP %', style: K.display(18, color: K.coral)),
+                    ]),
+                    Slider(
+                      value: _bossP.toDouble(),
+                      max: 100,
+                      divisions: 20,
+                      activeColor: K.coral,
+                      onChanged: (v) => setState(() => _bossP = v.round()),
+                    ),
+                    Row(children: [
+                      Expanded(child: Text(_bossP >= 100 ? 'Boss vaincu : +300 XP et un objet épique !' : 'Ce coup : ${s.actualMin.round()} min. La jauge de dégâts suit ton avancement.', style: K.body(12, color: K.muted))),
+                      TextButton(onPressed: () => setState(() => _bossP = 100), child: const Text('Vaincu !')),
+                    ]),
+                  ],
+                ),
+              ),
             ],
             const SizedBox(height: 14),
             Text('Interrompue ?', style: K.body(13, color: K.muted)),
@@ -114,9 +147,10 @@ class _RateSheetState extends State<RateSheet> {
                 Expanded(
                   child: PrimaryButton(
                     label: '+2 XP',
-                    onPressed: (_diff == 0 && _feel == 0 && _intr < 0 && _helped.text.trim().isEmpty)
+                    onPressed: (_diff == 0 && _feel == 0 && _intr < 0 && _helped.text.trim().isEmpty && !isBoss)
                         ? null
                         : () async {
+                            if (isBoss && _bossP != boss.bossProgress) await store.setBossProgress(boss, _bossP);
                             await AppScope.read(context).rateSession(s,
                                 difficulty: _diff,
                                 feeling: _feel,

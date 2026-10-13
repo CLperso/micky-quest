@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../main.dart';
 import '../models.dart';
-import '../notifications.dart';
 import '../store.dart';
 import '../theme.dart';
+import 'boss.dart';
 import 'briefing.dart';
 import 'timetable.dart';
 
@@ -60,7 +60,7 @@ class TodayScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 18),
-        const TimetableView(),
+        const PlanningView(),
       ],
     );
     if (!standalone) return body;
@@ -372,7 +372,7 @@ class TaskRow extends StatelessWidget {
           Expanded(
             child: InkWell(
               borderRadius: BorderRadius.circular(8),
-              onTap: () => editTaskSheet(context, t),
+              onTap: () => t.isBoss ? openScreen(context, const BossScreen()) : editTaskSheet(context, t),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -397,13 +397,7 @@ class TaskRow extends StatelessWidget {
           if (!t.done)
             InkWell(
               borderRadius: BorderRadius.circular(999),
-              onTap: () async {
-                final at = await pickWhen(context,
-                    initial: planned ? DateTime.fromMillisecondsSinceEpoch(t.plannedAt) : null, title: 'Quand ?');
-                if (at == null) return;
-                await store.planTask(t, at);
-                await rescheduleAll(store);
-              },
+              onTap: () => whenSheet(context, t),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                 decoration: BoxDecoration(

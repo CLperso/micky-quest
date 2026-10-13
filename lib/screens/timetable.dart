@@ -133,66 +133,118 @@ class _Stepper extends StatelessWidget {
       );
 }
 
-/// « Planifier » depuis la matrice : une heure, ou une condition.
-Future<void> planSheet(BuildContext context, Task t) async {
+/// « Quand ? » : Aujourd'hui, Demain, Cette semaine, Seulement quand… Les trois premiers ouvrent le planning en mode « caser ».
+Future<void> planSheet(BuildContext context, Task t) => whenSheet(context, t);
+
+Future<void> whenSheet(BuildContext context, Task t) async {
   final store = AppScope.read(context);
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  var weekDay = today.add(const Duration(days: 2));
   final choice = await showModalBottomSheet<String>(
     context: context,
-    builder: (ctx) => SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(t.title, style: K.display(18)),
-            const SizedBox(height: 4),
-            Text('Quand est-ce que tu t\'y mets ?', style: K.body(13, color: K.muted)),
-            const SizedBox(height: 8),
-            ListTile(
-              leading: const Icon(Icons.schedule_rounded, color: K.gold),
-              title: Text('À une heure précise', style: K.body(15)),
-              subtitle: Text('Un bloc dans ta journée, avec rappel « c\'est l\'heure »', style: K.body(12, color: K.muted)),
-              onTap: () => Navigator.pop(ctx, 'when'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.view_day_rounded, color: K.lime),
-              title: Text('Choisir un créneau dans « Ma journée »', style: K.body(15)),
-              subtitle: Text('voir les blocs et les événements de l\'agenda avant de choisir', style: K.body(12, color: K.muted)),
-              onTap: () => Navigator.pop(ctx, 'timetable'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.rule_rounded, color: K.cyan),
-              title: Text('Seulement quand…', style: K.body(15)),
-              subtitle: Text('« …j\'ai reçu la réponse de X », « …il fait jour »', style: K.body(12, color: K.muted)),
-              onTap: () => Navigator.pop(ctx, 'cond'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.inbox_rounded, color: K.muted),
-              title: Text('Juste dans « Planifier », sans heure', style: K.body(15)),
-              onTap: () => Navigator.pop(ctx, 'none'),
-            ),
-          ],
+    isScrollControlled: true,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: K.line, borderRadius: BorderRadius.circular(2)))),
+              const SizedBox(height: 10),
+              Text('${t.title}${t.estimateMin > 0 ? ' · ${t.estimateMin} min' : ''}', style: K.display(20)),
+              Text('Quand est-ce que tu t\'y mets ?', style: K.body(13, color: K.muted)),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(child: _tile(ctx, 'Aujourd\'hui', '→ je choisis un créneau', K.lime, K.bg, () => Navigator.pop(ctx, 'today'))),
+                const SizedBox(width: 8),
+                Expanded(child: _tile(ctx, 'Demain', '→ planning de demain', K.cyan, K.bg, () => Navigator.pop(ctx, 'tomorrow'))),
+              ]),
+              const SizedBox(height: 8),
+              Row(children: [
+                Expanded(
+                  child: _tile(ctx, 'Cette semaine', '', K.raised, K.gold, () => Navigator.pop(ctx, 'week'), border: K.gold, child: Row(children: [
+                    for (var i = 0; i < 7; i++)
+                      Builder(builder: (_) {
+                        final d = today.add(Duration(days: i));
+                        final sel = d == weekDay;
+                        const n = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 3),
+                          child: InkWell(
+                            onTap: () => setState(() => weekDay = d),
+                            child: Container(
+                              width: 20,
+                              height: 20,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(color: sel ? K.gold : K.line, borderRadius: BorderRadius.circular(6)),
+                              child: Text(n[d.weekday - 1], style: K.body(10, color: sel ? K.bg : K.ink, w: FontWeight.w900)),
+                            ),
+                          ),
+                        );
+                      }),
+                  ])),
+                ),
+                const SizedBox(width: 8),
+                Expanded(child: _tile(ctx, 'Seulement quand…', t.condition.isNotEmpty ? '« ${t.condition} »' : '« j\'ai reçu la réponse »', K.raised, K.pink, () => Navigator.pop(ctx, 'cond'), border: K.pink)),
+              ]),
+              const SizedBox(height: 10),
+              Center(
+                child: TextButton(
+                  onPressed: () => Navigator.pop(ctx, 'none'),
+                  child: Text('Pas maintenant · juste dans « Planifier », sans date', style: K.body(12, color: K.muted)),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     ),
   );
   if (choice == null || !context.mounted) return;
-  if (choice == 'when') {
-    final at = await pickWhen(context);
-    if (at == null) return;
-    await store.planTask(t, at);
-    await rescheduleAll(store);
-  } else if (choice == 'timetable') {
-    await openScreen(context, TimetableScreen(place: t));
-  } else if (choice == 'cond') {
-    final c = await askText(context, 'Seulement quand…', hint: 'j\'ai reçu la réponse de Nathalie');
-    if (c == null || c.isEmpty) return;
-    await store.setCondition(t, c);
-  } else {
-    await store.moveTask(t, Quad.plan);
+  switch (choice) {
+    case 'today':
+      await openScreen(context, PlanningScreen(day: dayKey(today), place: t));
+      break;
+    case 'tomorrow':
+      await openScreen(context, PlanningScreen(day: dayKey(today.add(const Duration(days: 1))), place: t));
+      break;
+    case 'week':
+      await openScreen(context, PlanningScreen(day: dayKey(weekDay), place: t));
+      break;
+    case 'cond':
+      final c = await askText(context, 'Seulement quand…', hint: 'j\'ai reçu la réponse de Nathalie', initial: t.condition);
+      if (c == null || c.isEmpty) return;
+      await store.setCondition(t, c);
+      break;
+    default:
+      if (t.quad != Quad.plan) await store.moveTask(t, Quad.plan);
   }
 }
+
+Widget _tile(BuildContext ctx, String title, String sub, Color bg, Color fg, VoidCallback onTap, {Color? border, Widget? child}) => Material(
+      color: bg,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Container(
+          height: 92,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: border == null ? null : Border.all(color: border, width: 2)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(title, style: K.display(16, color: fg)),
+              child ?? Text(sub, style: K.body(11, color: fg == K.bg ? K.bg.withValues(alpha: 0.8) : K.muted, w: FontWeight.w800), maxLines: 2, overflow: TextOverflow.ellipsis),
+            ],
+          ),
+        ),
+      ),
+    );
 
 Future<String?> askText(BuildContext context, String title, {String hint = '', String initial = ''}) async {
   final c = TextEditingController(text: initial);
@@ -218,23 +270,445 @@ Future<String?> askText(BuildContext context, String title, {String hint = '', S
   return text?.trim();
 }
 
-/// La journée en blocs, en plein écran.
-class TimetableScreen extends StatelessWidget {
+/// Le planning en plein écran (liste ou grille), éventuellement en mode « caser » une tâche.
+class PlanningScreen extends StatelessWidget {
   final String? day;
   final Task? place;
-  const TimetableScreen({super.key, this.day, this.place});
+  const PlanningScreen({super.key, this.day, this.place});
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Ma journée')),
+        appBar: AppBar(title: Text(place == null ? 'Planning' : 'Caser « ${place!.title} »')),
         body: SafeArea(
           top: false,
           child: ListView(
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 28),
-            children: [TimetableView(day: day, place: place)],
+            children: [PlanningView(day: day, place: place, onPlaced: () => Navigator.pop(context))],
           ),
         ),
       );
+}
+
+/// Ancien nom, gardé pour les écrans qui l'utilisent.
+class TimetableScreen extends PlanningScreen {
+  const TimetableScreen({super.key, super.day, super.place});
+}
+
+/// Liste chronologique du jour (sessions faites, agenda, blocs, trous), avec bascule vers la grille.
+class PlanningView extends StatefulWidget {
+  final String? day;
+  final Task? place;
+  final VoidCallback? onPlaced;
+  const PlanningView({super.key, this.day, this.place, this.onPlaced});
+
+  @override
+  State<PlanningView> createState() => _PlanningViewState();
+}
+
+class _Item {
+  final int start, end;
+  final String kind; // session, agenda, block, free
+  final String title, sub;
+  final Task? task;
+  final bool done;
+  _Item(this.start, this.end, this.kind, this.title, this.sub, {this.task, this.done = false});
+}
+
+class _PlanningViewState extends State<PlanningView> {
+  late DateTime _day;
+  bool _grid = false;
+  List<CalEvent> _events = [];
+  String _eventsFor = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _day = widget.day == null ? DateTime.now() : parseDay(widget.day!);
+    _day = DateTime(_day.year, _day.month, _day.day);
+  }
+
+  String get _key => dayKey(_day);
+
+  Future<void> _loadEvents() async {
+    final store = AppScope.read(context);
+    if (!store.settings.calendarRead) return;
+    final k = _key;
+    if (_eventsFor == k) return;
+    _eventsFor = k;
+    final ev = await PhoneCalendar.eventsOn(_day);
+    if (mounted && _eventsFor == k) setState(() => _events = ev);
+  }
+
+  Future<void> _placeAt(DateTime at) async {
+    final store = AppScope.read(context);
+    final t = widget.place;
+    if (t != null) {
+      await store.planTask(t, at);
+      await rescheduleAll(store);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('« ${t.title} » à ${hm(at)} · rappel programmé')));
+      widget.onPlaced?.call();
+      return;
+    }
+    // sans tâche en main : choisir quoi caser
+    final open = store.openTasks.where((x) => !x.done).toList();
+    final chosen = await showModalBottomSheet<Task?>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.7),
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            children: [
+              Text('À ${hm(at)} : quoi ?', style: K.display(18)),
+              const SizedBox(height: 8),
+              for (final x in open)
+                ListTile(
+                  leading: Container(width: 10, height: 10, decoration: BoxDecoration(color: x.category == 'pro' ? K.lime : x.category == 'perso' ? K.pink : K.quadColors[x.quad], shape: BoxShape.circle)),
+                  title: Text(x.title, style: K.body(15)),
+                  subtitle: x.plannedAt > 0 ? Text('déjà à ${hm(DateTime.fromMillisecondsSinceEpoch(x.plannedAt))}', style: K.body(12, color: K.muted)) : null,
+                  onTap: () => Navigator.pop(ctx, x),
+                ),
+              ListTile(
+                leading: const Icon(Icons.add_rounded, color: K.lime),
+                title: Text('Nouvelle tâche', style: K.body(15)),
+                onTap: () => Navigator.pop(ctx, Task(title: '', day: '')),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (chosen == null || !mounted) return;
+    Task x = chosen;
+    if (x.title.isEmpty) {
+      final title = await askText(context, 'Nouvelle tâche', hint: 'relire l\'intro');
+      if (title == null || title.isEmpty) return;
+      x = await store.addTask(title, quad: Quad.plan);
+    }
+    await store.planTask(x, at);
+    await rescheduleAll(store);
+  }
+
+  List<_Item> _items(AppStore store) {
+    final items = <_Item>[];
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final x in store.sessionsOn(_key)) {
+      final end = x.running ? now : x.end;
+      final cat = store.sessionCategory(x);
+      items.add(_Item(x.start, end, 'session', x.title,
+          '${cat == Act.perso ? 'perso' : 'pro'} · ${((end - x.start) / 60000).round()} min${x.running ? ' · en cours' : x.onTarget ? ' · pari tenu' : x.finished ? '' : ' · décrochée'}',
+          done: true));
+    }
+    for (final e in _events.where((e) => !e.allDay)) {
+      items.add(_Item(e.start.millisecondsSinceEpoch, e.end.millisecondsSinceEpoch, 'agenda', e.title, 'agenda · ${e.end.difference(e.start).inMinutes} min'));
+    }
+    for (final t in store.plannedOn(_key)) {
+      // un bloc déjà couvert par une session faite dessus n'est pas répété
+      if (t.done && items.any((i) => i.kind == 'session' && i.task == null && i.title == t.title)) continue;
+      items.add(_Item(t.plannedAt, t.plannedAt + t.blockMin * 60000, 'block', t.title,
+          '${t.category.isNotEmpty ? t.category : 'tâche'} · ${fmtMin(t.blockMin)}${t.condition.isNotEmpty ? ' · si ${t.condition}' : ''}${t.postponed > 0 ? ' · reporté ×${t.postponed}' : ''}${t.done ? ' · fait' : ' · rappel ${hm(DateTime.fromMillisecondsSinceEpoch(t.plannedAt))}'}',
+          task: t, done: t.done));
+    }
+    items.sort((a, b) => a.start.compareTo(b.start));
+    // trous (≥ 30 min) entre maintenant/le début de journée et la fin de journée
+    final s = store.settings;
+    final dayStart = _day.add(Duration(hours: s.startHour)).millisecondsSinceEpoch;
+    final dayEnd = _day.add(Duration(hours: s.endHour)).millisecondsSinceEpoch;
+    final isToday = _key == store.todayKey;
+    var cursor = isToday ? max(now, dayStart) : dayStart;
+    if (_key.compareTo(store.todayKey) < 0) return items;
+    final out = <_Item>[];
+    for (final i in items) {
+      if (i.start - cursor >= 30 * 60000 && cursor < dayEnd) {
+        out.add(_Item(cursor, i.start, 'free', '', ''));
+      }
+      out.add(i);
+      cursor = max(cursor, i.end);
+    }
+    if (dayEnd - cursor >= 30 * 60000) out.add(_Item(cursor, dayEnd, 'free', '', ''));
+    return out;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    _loadEvents();
+    final isToday = _key == store.todayKey;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    const names = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+    final place = widget.place;
+    final items = _items(store);
+    var nowShown = !isToday;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          const Icon(Icons.view_day_rounded, color: K.gold, size: 20),
+          const SizedBox(width: 8),
+          Expanded(child: Text(isToday ? 'Planning du jour' : '${names[_day.weekday - 1]} ${_day.day}/${_day.month}', style: K.display(18))),
+          IconButton(
+            onPressed: () => setState(() {
+              _day = _day.subtract(const Duration(days: 1));
+              _events = [];
+            }),
+            icon: const Icon(Icons.chevron_left_rounded, color: K.muted),
+          ),
+          IconButton(
+            onPressed: () => setState(() {
+              _day = _day.add(const Duration(days: 1));
+              _events = [];
+            }),
+            icon: const Icon(Icons.chevron_right_rounded, color: K.muted),
+          ),
+          InkWell(
+            borderRadius: BorderRadius.circular(999),
+            onTap: () => setState(() => _grid = !_grid),
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: Icon(_grid ? Icons.view_list_rounded : Icons.grid_on_rounded, color: K.gold, size: 20),
+            ),
+          ),
+        ]),
+        if (place != null)
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(color: K.lime, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: K.lime.withValues(alpha: 0.35), blurRadius: 20, offset: const Offset(0, 8))]),
+            child: Row(children: [
+              const Icon(Icons.back_hand_rounded, color: K.bg),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${place.title}${place.estimateMin > 0 ? ' · ${place.estimateMin} min' : ''}', style: K.body(14, color: K.bg, w: FontWeight.w800)),
+                    Text('Touche un créneau libre, ou « à une heure précise »', style: K.body(11, color: K.bg.withValues(alpha: 0.8), w: FontWeight.w800)),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final at = await pickWhen(context, initial: _day.add(const Duration(hours: 9)), title: 'À quelle heure ?');
+                  if (at != null) await _placeAt(at);
+                },
+                child: Text('heure précise', style: K.body(12, color: K.bg, w: FontWeight.w900)),
+              ),
+            ]),
+          ),
+        if (_grid)
+          TimetableView(key: ValueKey('grid-$_key'), day: _key, place: place)
+        else ...[
+          if (items.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text('Rien ce jour-là.', style: K.body(13, color: K.muted)),
+            ),
+          for (final i in items) ...[
+            if (!nowShown && i.start > now) ...[
+              _nowLine(now),
+              Builder(builder: (_) {
+                nowShown = true;
+                return const SizedBox.shrink();
+              }),
+            ],
+            _row(store, i, place),
+          ],
+          if (!nowShown) _nowLine(now),
+          const SizedBox(height: 8),
+          if (place == null)
+            SecondaryButton(
+              label: '+ Caser une tâche',
+              onPressed: () async {
+                final at = await pickWhen(context, title: 'À quelle heure ?');
+                if (at != null) await _placeAt(at);
+              },
+            ),
+        ],
+      ],
+    );
+  }
+
+  Widget _nowLine(int now) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(children: [
+          const SizedBox(width: 44),
+          Container(width: 8, height: 8, decoration: const BoxDecoration(color: K.coral, shape: BoxShape.circle)),
+          Expanded(child: Container(height: 2, color: K.coral)),
+          const SizedBox(width: 6),
+          Text('${hm(DateTime.fromMillisecondsSinceEpoch(now))} · maintenant', style: K.body(10, color: K.coral, w: FontWeight.w900)),
+        ]),
+      );
+
+  Widget _row(AppStore store, _Item i, Task? place) {
+    final t = i.task;
+    final start = DateTime.fromMillisecondsSinceEpoch(i.start);
+    if (i.kind == 'free') {
+      final mins = ((i.end - i.start) / 60000).round();
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Row(children: [
+          SizedBox(width: 44, child: Text(hm(start), textAlign: TextAlign.right, style: K.body(11, color: K.muted, w: FontWeight.w800))),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Material(
+              color: place != null ? K.lime.withValues(alpha: 0.1) : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => _placeAt(start),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: place != null ? K.lime : K.line, width: 2, strokeAlign: BorderSide.strokeAlignInside)),
+                  child: Row(children: [
+                    Expanded(child: Text('${fmtMin(mins)} libre${place != null ? ' · touche pour caser ici' : ''}', style: K.body(12, color: place != null ? K.lime : K.muted, w: FontWeight.w800))),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(color: place != null ? K.lime : K.raised, borderRadius: BorderRadius.circular(999)),
+                      child: Text('+ caser', style: K.body(11, color: place != null ? K.bg : K.ink, w: FontWeight.w900)),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ]),
+      );
+    }
+    final color = i.kind == 'agenda'
+        ? K.muted
+        : i.kind == 'session'
+            ? (i.sub.startsWith('perso') ? K.pink : K.lime)
+            : (t?.category == 'pro' ? K.lime : t?.category == 'perso' ? K.pink : K.gold);
+    final dim = i.done || i.kind == 'agenda';
+    Widget card = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: i.done ? const Color(0xFF1C1736) : K.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border(left: BorderSide(color: i.done && i.kind != 'session' ? K.line : color, width: 4)),
+      ),
+      child: Row(children: [
+        if (i.kind == 'agenda') const Padding(padding: EdgeInsets.only(right: 6), child: Icon(Icons.event_rounded, color: K.muted, size: 14)),
+        if (i.kind == 'session') Padding(padding: const EdgeInsets.only(right: 6), child: Icon(Icons.check_rounded, color: color, size: 16)),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(i.title, style: K.body(13, color: dim ? K.muted : K.ink, w: FontWeight.w800).copyWith(decoration: i.done && i.kind == 'block' ? TextDecoration.lineThrough : null), maxLines: 2, overflow: TextOverflow.ellipsis),
+              Text(i.sub, style: K.body(11, color: K.muted)),
+            ],
+          ),
+        ),
+        if (t != null && !t.done)
+          InkWell(
+            borderRadius: BorderRadius.circular(999),
+            onTap: () => launchTask(context, t),
+            child: Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              child: const Icon(Icons.play_arrow_rounded, color: K.bg, size: 20),
+            ),
+          ),
+      ]),
+    );
+    if (t != null) {
+      card = Dismissible(
+        key: ValueKey('plan-${t.id}'),
+        direction: DismissDirection.endToStart,
+        background: Container(
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.only(right: 16),
+          decoration: BoxDecoration(color: K.coral.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(12)),
+          child: const Icon(Icons.close_rounded, color: K.coral),
+        ),
+        confirmDismiss: (_) async {
+          await store.unplanTask(t);
+          await rescheduleAll(store);
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('« ${t.title} » retirée du planning (toujours dans tes tâches)')));
+          return false;
+        },
+        child: InkWell(borderRadius: BorderRadius.circular(12), onTap: () => _blockMenu(store, t), child: card),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(width: 44, child: Padding(padding: const EdgeInsets.only(top: 8), child: Text(hm(start), textAlign: TextAlign.right, style: K.body(11, color: K.muted, w: FontWeight.w800)))),
+        const SizedBox(width: 10),
+        Expanded(child: card),
+      ]),
+    );
+  }
+
+  Future<void> _blockMenu(AppStore store, Task t) async {
+    final a = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+              child: Align(alignment: Alignment.centerLeft, child: Text(t.title, style: K.display(18))),
+            ),
+            if (!t.done) ListTile(leading: const Icon(Icons.play_arrow_rounded, color: K.lime), title: const Text('Lancer maintenant'), onTap: () => Navigator.pop(ctx, 'go')),
+            if (!t.done) ListTile(leading: const Icon(Icons.check_rounded, color: K.lime), title: const Text('C\'est fait'), onTap: () => Navigator.pop(ctx, 'done')),
+            ListTile(leading: const Icon(Icons.schedule_rounded, color: K.gold), title: const Text('Déplacer'), onTap: () => Navigator.pop(ctx, 'move')),
+            ListTile(leading: const Icon(Icons.timer_outlined, color: K.cyan), title: Text('Durée du bloc (${fmtMin(t.blockMin)})'), onTap: () => Navigator.pop(ctx, 'len')),
+            ListTile(leading: const Icon(Icons.close_rounded, color: K.coral), title: const Text('Retirer du planning'), onTap: () => Navigator.pop(ctx, 'unplan')),
+            ListTile(leading: const Icon(Icons.delete_outline_rounded, color: K.muted), title: const Text('Supprimer la tâche'), onTap: () => Navigator.pop(ctx, 'delete')),
+          ],
+        ),
+      ),
+    );
+    if (a == null || !mounted) return;
+    switch (a) {
+      case 'go':
+        await launchTask(context, t);
+        break;
+      case 'done':
+        await store.completeTask(t);
+        if (t.done && mounted) await askNext(context, 'Tâche faite !');
+        break;
+      case 'move':
+        final at = await pickWhen(context, initial: DateTime.fromMillisecondsSinceEpoch(t.plannedAt));
+        if (at == null) return;
+        await store.planTask(t, at);
+        await rescheduleAll(store);
+        break;
+      case 'len':
+        final v = await showModalBottomSheet<int>(
+          context: context,
+          builder: (ctx) => SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Wrap(spacing: 8, runSpacing: 8, children: [
+                for (final m in [15, 30, 45, 60, 90, 120, 180, 240])
+                  ActionChip(label: Text(fmtMin(m)), backgroundColor: K.raised, side: BorderSide.none, onPressed: () => Navigator.pop(ctx, m)),
+              ]),
+            ),
+          ),
+        );
+        if (v == null) return;
+        t.plannedMin = v;
+        await store.commit();
+        await PhoneCalendar.writeBlock(store, t);
+        break;
+      case 'unplan':
+        await store.unplanTask(t);
+        await rescheduleAll(store);
+        break;
+      case 'delete':
+        await store.removeTask(t);
+        await rescheduleAll(store);
+        break;
+    }
+  }
 }
 
 /// La journée en blocs : ce qui est prévu, ce qui a été fait. S'intègre dans une liste.

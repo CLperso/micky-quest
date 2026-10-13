@@ -759,6 +759,35 @@ class AppStore extends ChangeNotifier {
     }
     t.isBoss = true;
     t.bossHp = bossTotal(t);
+    t.bossProgress = 0;
+    await commit();
+  }
+
+  /// Sessions passées sur le boss (ses coups), les plus anciennes d'abord.
+  List<SessionRec> bossHits(Task boss) =>
+      sessions.where((s) => s.taskId == boss.id && !s.running).toList()..sort((a, b) => a.start.compareTo(b.start));
+
+  int bossMinutes(Task boss) => bossHits(boss).fold(0, (a, s) => a + s.actualMin.round());
+
+  /// Avancement déclaré sur le boss ; à 100 il est vaincu (+300 XP, objet épique).
+  Future<void> setBossProgress(Task t, int progress) async {
+    t.bossProgress = progress.clamp(0, 100);
+    if (t.bossProgress >= 100 && !t.done) {
+      t.done = true;
+      t.doneAt = DateTime.now().millisecondsSinceEpoch;
+      t.bossHp = 0;
+      _gainXp(300, 'Boss vaincu');
+      final epic = Objects.all.where((o) => o.rarity == 3 && !inventory.contains(o.id)).toList();
+      if (epic.isNotEmpty) {
+        final obj = epic[Random().nextInt(epic.length)];
+        inventory.add(obj.id);
+        lastObject = obj.id;
+        _gainXp(0, 'Butin : ${obj.name}');
+      }
+      pendingCelebration = 'BOSS VAINCU · ${t.title}\n+300 XP';
+      _checkBigBonuses();
+      _checkMedals();
+    }
     await commit();
   }
 
@@ -938,13 +967,8 @@ class AppStore extends ChangeNotifier {
     _gainXp(min(180, minutes).round(), 'Session');
     final t = taskById(s.taskId);
     if (t != null && t.isBoss) {
-      // chaque minute de session enlève un point de vie ; les boss d'avant (100 PV) suivent la même règle
-      t.bossHp = max(0, min(t.bossHp, bossTotal(t)) - max(1, minutes.round()));
-      if (t.bossHp == 0) {
-        t.done = true;
-        t.doneAt = s.end;
-        _gainXp(300, 'Boss vaincu');
-      }
+      // les minutes sont ses coups ; l'avancement, c'est toi qui le dis au débrief
+      t.bossHp = max(0, bossTotal(t) - bossMinutes(t));
     }
     var chest = '';
     if (s.onTarget) {

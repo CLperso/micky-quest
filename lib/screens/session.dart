@@ -271,7 +271,8 @@ class _SessionScreenState extends State<SessionScreen> {
     final chest = await store.endSession(s, finished: finished);
     if (finished && s.taskId.isNotEmpty) {
       final t = store.taskById(s.taskId);
-      if (t != null && !t.done) await store.completeTask(t);
+      // le boss ne se termine pas d'un coup : c'est son avancement, au débrief, qui le vainc
+      if (t != null && !t.done && !t.isBoss) await store.completeTask(t);
     }
     if (perso) {
       if (!mounted) return;
@@ -392,7 +393,7 @@ class _SessionScreenState extends State<SessionScreen> {
             if (t != null && t.category.isNotEmpty)
               Text('QUÊTE ${t.category.toUpperCase()}', style: K.body(12, color: t.category == 'pro' ? K.lime : K.pink, w: FontWeight.w900)),
             if (t != null && t.isBoss)
-              Text('COMBAT CONTRE LE BOSS · ${t.bossHp} min de PV', style: K.body(12, color: K.coral, w: FontWeight.w900)),
+              Text('COMBAT CONTRE LE BOSS · ${t.bossProgress} % · ${store.bossMinutes(t)} min de coups', style: K.body(12, color: K.coral, w: FontWeight.w900)),
             Text(s.title, style: K.display(24)),
             const SizedBox(height: 20),
             Center(
@@ -465,7 +466,7 @@ class _SessionScreenState extends State<SessionScreen> {
               children: [
                 Expanded(child: SecondaryButton(label: 'J\'ai décroché', onPressed: () => _end(false))),
                 const SizedBox(width: 10),
-                Expanded(child: PrimaryButton(label: 'Étape finie', onPressed: () => _end(true))),
+                Expanded(child: PrimaryButton(label: t != null && t.isBoss ? 'Fin du coup' : 'Étape finie', onPressed: () => _end(true))),
               ],
             ),
           ],

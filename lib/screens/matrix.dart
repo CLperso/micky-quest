@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../main.dart';
 import '../models.dart';
 import '../theme.dart';
+import 'boss.dart';
 import 'session.dart';
 import 'timetable.dart';
 import 'today.dart';
@@ -365,6 +366,7 @@ class _MatrixScreenState extends State<MatrixScreen> {
         break;
       case 'boss':
         await store.setBoss(t);
+        if (mounted) openScreen(context, const BossScreen());
         break;
       case 'tomorrow':
         await store.deferTask(t);
