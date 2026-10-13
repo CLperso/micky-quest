@@ -5,7 +5,9 @@ import '../models.dart';
 import '../notifications.dart';
 import '../store.dart';
 import '../theme.dart';
+import 'habits.dart';
 import 'notebook.dart';
+import 'reflect.dart';
 
 /// Onglet « Soir » : accès au feu de camp et aux replays.
 class EveningTab extends StatelessWidget {
@@ -205,6 +207,10 @@ class _EveningScreenState extends State<EveningScreen> {
               ],
             ),
             const SizedBox(height: 12),
+            if (store.activeHabits.isNotEmpty) ...[
+              const HabitsCard(),
+              const SizedBox(height: 12),
+            ],
             Panel(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -216,7 +222,16 @@ class _EveningScreenState extends State<EveningScreen> {
                   ]),
                   const SizedBox(height: 8),
                   for (final t in pending) ...[
-                    Text(t.title, style: K.body(14, w: FontWeight.w800)),
+                    Row(children: [
+                      Expanded(child: Text(t.title, style: K.body(14, w: FontWeight.w800))),
+                      if (!store.reflections.any((r) => r.taskId == t.id && r.kind == 'pasfaite' && dayKey(DateTime.fromMillisecondsSinceEpoch(r.ts)) == day))
+                        TextButton(
+                          onPressed: () => openScreen(context, ReflectionScreen(kind: 'pasfaite', taskId: t.id, title: t.title)),
+                          child: const Text('Pourquoi ?'),
+                        )
+                      else
+                        const Icon(Icons.check_circle_rounded, color: K.coral, size: 20),
+                    ]),
                     const SizedBox(height: 6),
                     Row(children: [
                       Expanded(child: _triageBtn('Demain', K.lime, () => _triage(t, 'tomorrow'))),
@@ -324,6 +339,8 @@ class ReplayScreen extends StatelessWidget {
     'free': K.ink,
     'task': K.lime,
     'pause': K.gold,
+    'habit': K.cyan,
+    'reflect': K.coral,
   };
   static const _actColors = {
     Act.quest: K.lime,

@@ -144,6 +144,27 @@ class _BriefingScreenState extends State<BriefingScreen> {
             StepsEditor(category: 'perso', color: K.pink, label: 'Étapes perso'),
 
             const SectionLabel('3 · Ton plan B'),
+            if (store.recentIfThen.isNotEmpty) ...[
+              Text('Tes plans tirés de tes réflexions :', style: K.body(12, color: K.muted)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final r in store.recentIfThen)
+                    ActionChip(
+                      backgroundColor: K.raised,
+                      side: BorderSide.none,
+                      label: Text('Si ${r.ifCue} → ${r.thenDo}', style: K.body(12)),
+                      onPressed: () => setState(() {
+                        _if.text = r.ifCue;
+                        _then.text = r.thenDo;
+                      }),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
             Panel(
               child: Column(
                 children: [

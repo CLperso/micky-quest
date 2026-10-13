@@ -6,6 +6,7 @@ import 'screens/briefing.dart';
 import 'screens/checkin.dart';
 import 'screens/discoveries.dart';
 import 'screens/evening.dart';
+import 'screens/habits.dart';
 import 'screens/home.dart';
 import 'screens/matrix.dart';
 import 'screens/notebook.dart';
@@ -108,6 +109,9 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
           break;
         case 'soir':
           openScreen(ctx, const EveningScreen());
+          break;
+        case 'habit':
+          openScreen(ctx, const HabitsScreen());
           break;
         case 'session':
           if (store.runningSession != null) openScreen(ctx, const SessionScreen());

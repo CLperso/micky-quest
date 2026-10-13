@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
+import 'models.dart';
 import 'store.dart';
 
 const _checkChannel = 'checkins';
@@ -171,6 +172,34 @@ Future<void> rescheduleAll(AppStore store) async {
     }
   }
 
+  // rappels d'habitudes
+  for (final h in store.activeHabits.where((h) => h.reminderMin >= 0)) {
+    for (var d = 0; d < 2; d++) {
+      final day = DateTime(now.year, now.month, now.day).add(Duration(days: d));
+      final when = day.add(Duration(minutes: h.reminderMin));
+      if (!when.isAfter(now)) continue;
+      if (d == 0 && store.habitLevel(h, store.todayKey) > 0) continue;
+      await _schedule(
+        id: 3000 + (h.id.hashCode.abs() % 400) * 2 + d,
+        when: when,
+        title: h.cue.isNotEmpty ? '${h.cue} : ${h.name}' : 'C\'est l\'heure : ${h.name}',
+        body: h.mini.isNotEmpty ? 'Pas le temps ? La version mini compte : ${h.mini}' : 'Un petit pas suffit.',
+        details: const AndroidNotificationDetails(
+          _dayChannel,
+          'Briefing et feu de camp',
+          importance: Importance.high,
+          priority: Priority.high,
+          color: Color(0xFF4FE3FF),
+          actions: [
+            AndroidNotificationAction('h2', 'Faite'),
+            AndroidNotificationAction('h1', 'Version mini'),
+          ],
+        ),
+        payload: jsonEncode({'type': 'habit', 'habit': h.id, 'day': dayKey(day)}),
+      );
+    }
+  }
+
   // fin de la pause
   final pause = store.activePause;
   if (pause != null && pause.end > now.millisecondsSinceEpoch) {
@@ -276,6 +305,20 @@ Future<void> _handle(NotificationResponse r, {required bool foreground}) async {
   } catch (_) {}
   final action = r.actionId ?? '';
   final id = r.id ?? 0;
+
+  if (action == 'h1' || action == 'h2') {
+    try {
+      final p = jsonDecode(r.payload ?? '{}') as Map<String, dynamic>;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
+      final list = prefs.getStringList(kPendingHabitsKey) ?? [];
+      list.add(jsonEncode({'habit': p['habit'], 'day': p['day'], 'level': action == 'h2' ? 2 : 1}));
+      await prefs.setStringList(kPendingHabitsKey, list);
+    } catch (_) {}
+    await _plugin.cancel(id);
+    if (foreground) onOpenFromNotification?.call('refresh');
+    return;
+  }
 
   if (action.isEmpty || action == 'other') {
     if (foreground) onOpenFromNotification?.call(type.isEmpty ? 'checkin' : type);

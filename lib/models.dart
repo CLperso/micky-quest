@@ -120,6 +120,9 @@ class SessionRec {
   int end; // 0 = en cours
   int predictedMin;
   bool finished; // étape terminée (sinon interrompue)
+  int difficulty; // 0 = non évaluée, 1 facile, 2 correct, 3 dur
+  int feeling; // 0 = non évalué, 1 pénible, 2 neutre, 3 agréable
+  String helped;
   int mod;
 
   SessionRec({
@@ -130,6 +133,9 @@ class SessionRec {
     this.end = 0,
     required this.predictedMin,
     this.finished = false,
+    this.difficulty = 0,
+    this.feeling = 0,
+    this.helped = '',
     this.mod = 0,
   }) : id = id ?? newId();
 
@@ -148,6 +154,9 @@ class SessionRec {
         end: _i(j['end']),
         predictedMin: _i(j['pred']),
         finished: _b(j['fin']),
+        difficulty: _i(j['diff']),
+        feeling: _i(j['feel']),
+        helped: _s(j['helped']),
         mod: _i(j['mod']),
       );
 
@@ -159,6 +168,9 @@ class SessionRec {
         'end': end,
         'pred': predictedMin,
         'fin': finished,
+        'diff': difficulty,
+        'feel': feeling,
+        'helped': helped,
         'mod': mod,
       };
 }
@@ -524,5 +536,144 @@ class Stroke {
         'w': width,
         if (highlighter) 'h': true,
         'p': pts.map((v) => (v * 10000).round() / 10000).toList(),
+      };
+}
+
+/// Habitude à ancrer : un déclencheur, une version complète et une version mini.
+class Habit {
+  String id;
+  String name;
+  String cue; // « après mon café »
+  String mini; // version minimale qui compte les jours difficiles
+  int color;
+  int reminderMin; // minutes depuis minuit, -1 = pas de rappel
+  bool archived;
+  String created;
+  int order;
+  int mod;
+
+  Habit({
+    String? id,
+    required this.name,
+    this.cue = '',
+    this.mini = '',
+    this.color = 0xFFB8FF3C,
+    this.reminderMin = -1,
+    this.archived = false,
+    required this.created,
+    this.order = 0,
+    this.mod = 0,
+  }) : id = id ?? newId();
+
+  static const maxActive = 3;
+
+  factory Habit.fromJson(Map<String, dynamic> j) => Habit(
+        id: _s(j['id']),
+        name: _s(j['name']),
+        cue: _s(j['cue']),
+        mini: _s(j['mini']),
+        color: _i(j['color'], 0xFFB8FF3C),
+        reminderMin: _i(j['remind'], -1),
+        archived: _b(j['archived']),
+        created: _s(j['created']),
+        order: _i(j['order']),
+        mod: _i(j['mod']),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'cue': cue,
+        'mini': mini,
+        'color': color,
+        'remind': reminderMin,
+        'archived': archived,
+        'created': created,
+        'order': order,
+        'mod': mod,
+      };
+}
+
+/// Une coche d'habitude pour un jour : 0 = rien, 1 = version mini, 2 = complète.
+class HabitLog {
+  String habitId;
+  String day;
+  int level;
+  int mod;
+
+  HabitLog({required this.habitId, required this.day, required this.level, this.mod = 0});
+
+  String get id => '$habitId|$day';
+
+  factory HabitLog.fromJson(Map<String, dynamic> j) =>
+      HabitLog(habitId: _s(j['habit']), day: _s(j['day']), level: _i(j['level']), mod: _i(j['mod']));
+
+  Map<String, dynamic> toJson() => {'habit': habitId, 'day': day, 'level': level, 'mod': mod};
+}
+
+/// Retour sur un décrochage ou une tâche pas faite, sans jugement.
+class Reflection {
+  String id;
+  int ts;
+  String taskId;
+  String title;
+  String kind; // decroche, pasfaite
+  List<String> reasons;
+  String text;
+  String ifCue;
+  String thenDo;
+  int mod;
+
+  Reflection({
+    String? id,
+    required this.ts,
+    this.taskId = '',
+    this.title = '',
+    required this.kind,
+    List<String>? reasons,
+    this.text = '',
+    this.ifCue = '',
+    this.thenDo = '',
+    this.mod = 0,
+  })  : id = id ?? newId(),
+        reasons = reasons ?? [];
+
+  static const suggestions = [
+    'Trop flou, je ne savais pas par où commencer',
+    'Trop gros d\'un coup',
+    'Peur de mal faire',
+    'Ennui, pas assez stimulant',
+    'Pas l\'énergie',
+    'Interrompue',
+    'Je l\'ai oubliée',
+    'Autre chose est devenu urgent',
+    'Pas vraiment important finalement',
+    'Émotion difficile',
+  ];
+
+  factory Reflection.fromJson(Map<String, dynamic> j) => Reflection(
+        id: _s(j['id']),
+        ts: _i(j['ts']),
+        taskId: _s(j['task']),
+        title: _s(j['title']),
+        kind: _s(j['kind']),
+        reasons: ((j['reasons'] as List?) ?? []).map((e) => e.toString()).toList(),
+        text: _s(j['text']),
+        ifCue: _s(j['if']),
+        thenDo: _s(j['then']),
+        mod: _i(j['mod']),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'ts': ts,
+        'task': taskId,
+        'title': title,
+        'kind': kind,
+        'reasons': reasons,
+        'text': text,
+        'if': ifCue,
+        'then': thenDo,
+        'mod': mod,
       };
 }

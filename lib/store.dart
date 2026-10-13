@@ -9,6 +9,7 @@ import 'models.dart';
 
 const kStateKey = 'quest_state_v1';
 const kPendingKey = 'pending_checkins_v1';
+const kPendingHabitsKey = 'pending_habits_v1';
 
 const xpPerLevel = 400;
 
@@ -43,6 +44,9 @@ class AppStore extends ChangeNotifier {
   List<String> inventory = [];
   List<Pause> pauses = [];
   List<NoteMeta> notes = [];
+  List<Habit> habits = [];
+  List<HabitLog> habitLogs = [];
+  List<Reflection> reflections = [];
   Settings settings = Settings();
   String lastChest = '';
 
@@ -77,11 +81,24 @@ class AppStore extends ChangeNotifier {
         inventory = ((j['inventory'] as List?) ?? []).map((e) => e.toString()).toList();
         pauses = list('pauses').map(Pause.fromJson).toList();
         notes = list('notes').map(NoteMeta.fromJson).toList();
+        habits = list('habits').map(Habit.fromJson).toList();
+        habitLogs = list('habitLogs').map(HabitLog.fromJson).toList();
+        reflections = list('reflections').map(Reflection.fromJson).toList();
         settings = Settings.fromJson(Map<String, dynamic>.from((j['settings'] as Map?) ?? {}));
         lastChest = (j['lastChest'] as String?) ?? '';
       } catch (e) {
         debugPrint('État illisible : $e');
       }
+    }
+    if (habits.isEmpty && !(_prefs.getBool('habits_seeded') ?? false)) {
+      habits.add(Habit(
+        name: 'Kannada',
+        cue: 'Après mon petit-déjeuner',
+        mini: '2 minutes : revoir 3 mots',
+        color: 0xFF4FE3FF,
+        created: todayKey,
+      ));
+      await _prefs.setBool('habits_seeded', true);
     }
     _stamp(init: true);
     _rollOver();
@@ -98,6 +115,9 @@ class AppStore extends ChangeNotifier {
         'plans': {for (final e in plans.values) e.day: e.toJson()},
         'pauses': {for (final e in pauses) e.id: e.toJson()},
         'notes': {for (final e in notes) e.id: e.toJson()},
+        'habits': {for (final e in habits) e.id: e.toJson()},
+        'habitLogs': {for (final e in habitLogs) e.id: e.toJson()},
+        'reflections': {for (final e in reflections) e.id: e.toJson()},
       };
 
   /// Date les enregistrements qui ont changé depuis la dernière fois.
@@ -132,6 +152,15 @@ class AppStore extends ChangeNotifier {
     }
     for (final e in notes) {
       check('notes', e.id, e.toJson(), (m) => e.mod = m);
+    }
+    for (final e in habits) {
+      check('habits', e.id, e.toJson(), (m) => e.mod = m);
+    }
+    for (final e in habitLogs) {
+      check('habitLogs', e.id, e.toJson(), (m) => e.mod = m);
+    }
+    for (final e in reflections) {
+      check('reflections', e.id, e.toJson(), (m) => e.mod = m);
     }
   }
 
@@ -175,6 +204,11 @@ class AppStore extends ChangeNotifier {
     mergeInto<LogEntry>(logs, list('logs'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, LogEntry.fromJson);
     mergeInto<Pause>(pauses, list('pauses'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Pause.fromJson);
     mergeInto<NoteMeta>(notes, list('notes'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, NoteMeta.fromJson);
+    mergeInto<Habit>(habits, list('habits'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Habit.fromJson);
+    mergeInto<HabitLog>(
+        habitLogs, list('habitLogs'), (e) => e.id, (j) => '${j['habit']}|${j['day']}', (e) => e.mod, HabitLog.fromJson);
+    mergeInto<Reflection>(
+        reflections, list('reflections'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Reflection.fromJson);
     for (final j in list('plans')) {
       final d = j['day'] as String;
       final m = (j['mod'] as num?)?.toInt() ?? 0;
@@ -218,6 +252,9 @@ class AppStore extends ChangeNotifier {
       'inventory': inventory,
       'pauses': pauses.map((e) => e.toJson()).toList(),
       'notes': notes.map((e) => e.toJson()).toList(),
+      'habits': habits.map((e) => e.toJson()).toList(),
+      'habitLogs': habitLogs.map((e) => e.toJson()).toList(),
+      'reflections': reflections.map((e) => e.toJson()).toList(),
       'settings': settings.toJson(),
       'lastChest': lastChest,
     };
@@ -245,8 +282,25 @@ class AppStore extends ChangeNotifier {
   /// Réponses données depuis les notifications (appli fermée).
   Future<void> mergePending({bool notify = true}) async {
     await _prefs.reload();
+    final hl = _prefs.getStringList(kPendingHabitsKey) ?? [];
+    if (hl.isNotEmpty) {
+      await _prefs.setStringList(kPendingHabitsKey, []);
+      for (final raw in hl) {
+        try {
+          final m = jsonDecode(raw) as Map<String, dynamic>;
+          for (final h in habits) {
+            if (h.id == m['habit']) {
+              await cycleHabit(h, day: m['day'] as String?, to: (m['level'] as num).toInt());
+            }
+          }
+        } catch (_) {}
+      }
+    }
     final list = _prefs.getStringList(kPendingKey) ?? [];
-    if (list.isEmpty) return;
+    if (list.isEmpty) {
+      if (hl.isNotEmpty && notify) notifyListeners();
+      return;
+    }
     for (final s in list) {
       try {
         final m = jsonDecode(s) as Map<String, dynamic>;
@@ -608,6 +662,19 @@ class AppStore extends ChangeNotifier {
                   : 'free';
       ev.add(ReplayEvent(l.ts, kind, LogKind.labels[l.kind] ?? 'Note', l.note, l.photo));
     }
+    for (final l in habitLogs.where((l) => l.day == day && l.level > 0)) {
+      Habit? h;
+      for (final x in habits) {
+        if (x.id == l.habitId) h = x;
+      }
+      if (h == null) continue;
+      ev.add(ReplayEvent(l.mod, 'habit', 'Habitude · ${h.name}', l.level == 2 ? 'version complète' : 'version mini'));
+    }
+    for (final r in reflections.where((r) => dayKey(DateTime.fromMillisecondsSinceEpoch(r.ts)) == day)) {
+      final parts = [...r.reasons, if (r.text.isNotEmpty) r.text];
+      if (r.ifCue.isNotEmpty) parts.add('si ${r.ifCue}, alors ${r.thenDo}');
+      ev.add(ReplayEvent(r.ts, 'reflect', 'Réflexion · ${r.title}', parts.join(' · ')));
+    }
     for (final p in pauses) {
       if (dayKey(DateTime.fromMillisecondsSinceEpoch(p.start)) != day) continue;
       final until = p.end == 0 ? 'en cours' : 'jusqu\'à ${DateTime.fromMillisecondsSinceEpoch(p.end).hour}h${DateTime.fromMillisecondsSinceEpoch(p.end).minute.toString().padLeft(2, '0')}';
@@ -709,19 +776,65 @@ class AppStore extends ChangeNotifier {
       }
     }
 
-    // 3. Déclencheur principal de décrochage.
+    // 3. Déclencheur principal de décrochage (check-ins et réflexions).
     {
-      final r = checkins.where((c) => c.reason.isNotEmpty).toList();
-      if (r.length >= 6) {
+      final reasons = <String>[
+        for (final c in checkins)
+          if (c.reason.isNotEmpty) c.reason,
+        for (final r in reflections) ...r.reasons,
+      ];
+      if (reasons.length >= 6) {
         final count = <String, int>{};
-        for (final c in r) {
-          count[c.reason] = (count[c.reason] ?? 0) + 1;
+        for (final c in reasons) {
+          count[c] = (count[c] ?? 0) + 1;
         }
         final top = count.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
         out.add(Discovery('why', 'Ton piège principal',
-            '« ${top.first.key} » explique ${(100 * top.first.value / r.length).round()} % de tes décrochages.', 1, ''));
+            '« ${top.first.key} » revient dans ${(100 * top.first.value / reasons.length).round()} % de tes décrochages.', 1, ''));
       } else {
-        out.add(Discovery('why', 'Ton piège principal', '', r.length / 6, '6 décrochages expliqués'));
+        out.add(Discovery('why', 'Ton piège principal', '', reasons.length / 6, '6 décrochages expliqués'));
+      }
+    }
+
+    // 3 bis. Difficulté ressentie et estimation.
+    {
+      final rated = sessions.where((x) => x.finished && x.ratio > 0 && x.difficulty > 0).toList();
+      final hard = rated.where((x) => x.difficulty == 3).toList();
+      final easy = rated.where((x) => x.difficulty < 3).toList();
+      if (hard.length >= 3 && easy.length >= 3) {
+        double med(List<SessionRec> l) {
+          final r = l.map((x) => x.ratio).toList()..sort();
+          return r[r.length ~/ 2];
+        }
+
+        final mh = med(hard), me = med(easy);
+        String f(double v) => '×${v.toStringAsFixed(1).replaceAll('.', ',')}';
+        out.add(Discovery('hard', 'Les tâches dures et ton estimation',
+            mh > me + 0.15
+                ? 'Quand une tâche te paraît dure, elle prend ${f(mh)} le temps prévu (contre ${f(me)} sinon). Découpe-les plus finement.'
+                : 'Tu estimes aussi bien les tâches dures (${f(mh)}) que les faciles (${f(me)}).',
+            1, ''));
+      } else {
+        out.add(Discovery('hard', 'Les tâches dures et ton estimation', '',
+            (min(hard.length, 3) + min(easy.length, 3)) / 6, '3 sessions notées « dur » et 3 autres'));
+      }
+    }
+
+    // 3 ter. Ce qui rend une session agréable.
+    {
+      final felt = sessions.where((x) => x.feeling > 0 && x.end > 0).toList();
+      if (felt.length >= 8) {
+        final nice = felt.where((x) => x.feeling == 3).toList();
+        final rest = felt.where((x) => x.feeling < 3).toList();
+        double meanMin(List<SessionRec> l) => l.isEmpty ? 0 : l.map((x) => x.predictedMin).reduce((a, b) => a + b) / l.length;
+        final txt = nice.isEmpty
+            ? 'Aucune session agréable pour l\'instant : essaie des blocs plus courts ou une tâche plus variée.'
+            : meanMin(nice) < meanMin(rest) - 5
+                ? 'Tes sessions agréables sont plus courtes (${meanMin(nice).round()} min en moyenne) : les petits blocs te réussissent.'
+                : 'Tes sessions agréables durent environ ${meanMin(nice).round()} min : la durée n\'est pas ce qui te freine.';
+        out.add(Discovery('feel', 'Ce qui te fait du bien', txt, 1, ''));
+      } else {
+        out.add(Discovery('feel', 'Ce qui te fait du bien', '', felt.length / 8, '8 sessions évaluées'));
       }
     }
 
@@ -878,6 +991,133 @@ class AppStore extends ChangeNotifier {
   }
 
   Future<void> updateSettings() async => commit();
+
+  // ---------- Habitudes ----------
+
+  List<Habit> get activeHabits => habits.where((h) => !h.archived).toList()..sort((a, b) => a.order.compareTo(b.order));
+
+  int habitLevel(Habit h, String day) {
+    for (final l in habitLogs) {
+      if (l.habitId == h.id && l.day == day) return l.level;
+    }
+    return 0;
+  }
+
+  /// Fait (complète) → mini → rien, à chaque toucher.
+  Future<int> cycleHabit(Habit h, {String? day, int? to}) async {
+    final d = day ?? todayKey;
+    HabitLog? log;
+    for (final l in habitLogs) {
+      if (l.habitId == h.id && l.day == d) log = l;
+    }
+    final cur = log?.level ?? 0;
+    final next = to ?? (cur == 0 ? 2 : (cur == 2 ? 1 : 0));
+    if (log == null) {
+      log = HabitLog(habitId: h.id, day: d, level: next);
+      habitLogs.add(log);
+    } else {
+      log.level = next;
+    }
+    if (cur == 0 && next > 0) _gainXp(next == 2 ? 15 : 8, 'Habitude');
+    if (cur > 0 && next == 0) _gainXp(cur == 2 ? -15 : -8, 'Habitude annulée');
+    if (cur == 2 && next == 1) _gainXp(-7, 'Habitude en mini');
+    await commit();
+    return next;
+  }
+
+  /// Force de l'habitude (0 à 1) : monte avec chaque jour fait, baisse doucement sinon.
+  /// Rater un jour ne remet rien à zéro.
+  double habitStrength(Habit h) {
+    if (h.created.isEmpty) return 0;
+    var d = parseDay(h.created);
+    final end = DateTime.now();
+    final done = <String, int>{};
+    for (final l in habitLogs) {
+      if (l.habitId == h.id) done[l.day] = l.level;
+    }
+    var s = 0.0;
+    var guard = 0;
+    while (!d.isAfter(end) && guard++ < 2000) {
+      final lv = done[dayKey(d)] ?? 0;
+      final v = lv == 2 ? 1.0 : (lv == 1 ? 0.7 : 0.0);
+      final isToday = dayKey(d) == todayKey;
+      // aujourd'hui ne compte que si c'est déjà fait
+      if (!isToday || v > 0) s += 0.07 * (v - s);
+      d = d.add(const Duration(days: 1));
+    }
+    return s.clamp(0.0, 1.0);
+  }
+
+  static String strengthLabel(double s) {
+    if (s < 0.15) return 'Graine';
+    if (s < 0.4) return 'Pousse';
+    if (s < 0.65) return 'Racines';
+    if (s < 0.85) return 'Bien ancrée';
+    return 'Automatique';
+  }
+
+  int habitDaysDone(Habit h, {int last = 7}) {
+    final from = dayKey(DateTime.now().subtract(Duration(days: last - 1)));
+    return habitLogs.where((l) => l.habitId == h.id && l.level > 0 && l.day.compareTo(from) >= 0).length;
+  }
+
+  Future<String?> saveHabit(Habit h) async {
+    if (!habits.contains(h)) {
+      if (activeHabits.length >= Habit.maxActive) {
+        return 'Trois habitudes à la fois au maximum. Mets-en une en pause d\'abord.';
+      }
+      h.order = habits.length;
+      habits.add(h);
+    }
+    await commit();
+    return null;
+  }
+
+  Future<String?> setHabitArchived(Habit h, bool archived) async {
+    if (!archived && activeHabits.length >= Habit.maxActive) {
+      return 'Trois habitudes à la fois au maximum.';
+    }
+    h.archived = archived;
+    await commit();
+    return null;
+  }
+
+  // ---------- Évaluations et réflexions ----------
+
+  Future<void> rateSession(SessionRec s, {int? difficulty, int? feeling, String? helped}) async {
+    final first = s.difficulty == 0 && s.feeling == 0;
+    if (difficulty != null) s.difficulty = difficulty;
+    if (feeling != null) s.feeling = feeling;
+    if (helped != null) s.helped = helped;
+    if (first && (s.difficulty > 0 || s.feeling > 0)) _gainXp(5, 'Auto-évaluation');
+    await commit();
+  }
+
+  /// Enregistre une réflexion ; le « si… alors » devient le plan B de demain s'il est libre.
+  Future<void> addReflection(Reflection r) async {
+    reflections.add(r);
+    _gainXp(10, 'Réflexion');
+    if (r.ifCue.isNotEmpty && r.thenDo.isNotEmpty) {
+      final morning = DateTime.now().hour < 12;
+      final target = plan(morning ? todayKey : tomorrowKey);
+      if (target.planIf.isEmpty && target.planThen.isEmpty) {
+        target.planIf = r.ifCue;
+        target.planThen = r.thenDo;
+      }
+    }
+    await commit();
+  }
+
+  List<Reflection> get recentIfThen {
+    final seen = <String>{};
+    final out = <Reflection>[];
+    for (final r in reflections.reversed) {
+      if (r.ifCue.isEmpty || r.thenDo.isEmpty) continue;
+      if (seen.add('${r.ifCue}|${r.thenDo}')) out.add(r);
+      if (out.length >= 4) break;
+    }
+    return out;
+  }
 
   // ---------- Mode occupée ----------
 

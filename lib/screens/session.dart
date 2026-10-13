@@ -7,7 +7,7 @@ import '../main.dart';
 import '../models.dart';
 import '../notifications.dart';
 import '../theme.dart';
-import 'checkin.dart';
+import 'reflect.dart';
 
 /// Choix de la tâche et du pari de durée.
 class StartSessionSheet extends StatefulWidget {
@@ -185,20 +185,16 @@ class _SessionScreenState extends State<SessionScreen> {
     }
     await rescheduleAll(store);
     if (!mounted) return;
-    final mins = s.actualMin.round();
-    if (chest.isNotEmpty) {
-      await showChest(context, chest);
-    } else if (finished && mounted) {
-      final r = s.ratio;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(r > 1.2
-            ? '$mins min au lieu de ${s.predictedMin}. Ton multiplicateur apprend !'
-            : '$mins min au lieu de ${s.predictedMin}. Plus rapide que prévu !'),
-      ));
-    }
+    if (chest.isNotEmpty) await showChest(context, chest);
+    if (!mounted) return;
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => AppScope(store: store, child: RateSheet(session: s)),
+    );
     if (!mounted) return;
     Navigator.pop(context);
-    if (!finished) openScreen(context, const CheckinScreen());
+    if (!finished) openScreen(context, ReflectionScreen(kind: 'decroche', taskId: s.taskId, title: s.title));
   }
 
   @override

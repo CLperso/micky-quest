@@ -12,6 +12,8 @@ class DiscoveriesScreen extends StatelessWidget {
     'gold': Icons.star_rounded,
     'mult': Icons.timer_rounded,
     'why': Icons.psychology_alt_rounded,
+    'hard': Icons.fitness_center_rounded,
+    'feel': Icons.favorite_rounded,
     LogKind.energy: Icons.bolt_rounded,
     LogKind.coffee: Icons.coffee_rounded,
     'cycle': Icons.water_drop_rounded,

@@ -7,6 +7,7 @@ import '../store.dart';
 import '../theme.dart';
 import 'briefing.dart';
 import 'checkin.dart';
+import 'habits.dart';
 import 'settings.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -137,6 +138,8 @@ class HomeScreen extends StatelessWidget {
             ],
           ),
         ),
+        const SizedBox(height: 14),
+        const HabitsCard(),
         const SizedBox(height: 18),
 
         Row(
