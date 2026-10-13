@@ -122,7 +122,7 @@ Future<void> rescheduleAll(AppStore store) async {
   // fenêtre de la session en cours, sans check-in
   DateTime? quietFrom, quietTo;
   final run = store.runningSession;
-  if (run != null && !s.checkinsDuringSession) {
+  if (run != null && run.silent) {
     quietFrom = DateTime.fromMillisecondsSinceEpoch(run.start);
     quietTo = quietFrom.add(Duration(minutes: max(run.predictedMin + 15, (run.predictedMin * 1.5).round())));
   }
@@ -139,7 +139,7 @@ Future<void> rescheduleAll(AppStore store) async {
       if (!t.isAfter(now.add(const Duration(minutes: 1)))) continue;
       if (quietFrom != null && t.isAfter(quietFrom) && t.isBefore(quietTo!)) continue;
       if (store.pausedAt(t)) continue;
-      final inSession = run != null && s.checkinsDuringSession && d == 0 && t.isBefore(now.add(const Duration(hours: 3)));
+      final inSession = run != null && !run.silent && d == 0 && t.isBefore(now.add(const Duration(hours: 3)));
       await _schedule(
         id: 2000 + d * 200 + i,
         when: t,

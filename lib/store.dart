@@ -543,12 +543,15 @@ class AppStore extends ChangeNotifier {
     return null;
   }
 
-  Future<SessionRec> startSession(String taskId, String title, int predicted) async {
+  Future<SessionRec> startSession(String taskId, String title, int predicted,
+      {String category = '', bool silent = true}) async {
     final s = SessionRec(
       taskId: taskId,
       title: title,
       start: DateTime.now().millisecondsSinceEpoch,
       predictedMin: predicted,
+      category: category,
+      silent: silent,
     );
     sessions.add(s);
     final t = taskById(taskId);
@@ -654,6 +657,7 @@ class AppStore extends ChangeNotifier {
       final parts = <String>[];
       final task = c.taskId.isEmpty ? null : taskById(c.taskId);
       if (task != null) parts.add(task.title);
+      if (c.label.isNotEmpty) parts.add(c.label);
       if (c.sinceMin >= 0) parts.add('depuis ${c.sinceMin} min');
       if (c.reason.isNotEmpty) parts.add('raison : ${c.reason.toLowerCase()}');
       if (c.mood > 0) parts.add('humeur ${moodLabels[c.mood - 1].toLowerCase()}');
@@ -701,16 +705,23 @@ class AppStore extends ChangeNotifier {
   Map<String, double> minutesByTask(String day) {
     final m = <String, double>{};
     for (final s in sessionsOn(day)) {
+      final k = s.taskId.isNotEmpty ? s.taskId : 'label:${s.title}';
       if (s.running) {
-        m[s.taskId] = (m[s.taskId] ?? 0) + DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(s.start)).inMinutes;
+        m[k] = (m[k] ?? 0) + DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(s.start)).inMinutes;
       } else {
-        m[s.taskId] = (m[s.taskId] ?? 0) + s.actualMin;
+        m[k] = (m[k] ?? 0) + s.actualMin;
       }
     }
     final cs = checkinsOn(day)..sort((a, b) => a.ts.compareTo(b.ts));
     for (var i = 0; i < cs.length; i++) {
       final c = cs[i];
-      if (c.taskId.isEmpty) continue;
+      if (c.taskId.isEmpty && c.label.isEmpty) continue;
+      if (c.taskId.isEmpty) {
+        if (_duringSession(c.ts)) continue;
+        final k = 'label:${c.label}';
+        m[k] = (m[k] ?? 0) + _checkinMinutes(cs, i);
+        continue;
+      }
       // pendant une session, le temps est déjà compté
       if (sessionsOn(day).any((s) => s.taskId == c.taskId && c.ts >= s.start && (s.running || c.ts <= s.end))) continue;
       double mins;
@@ -726,6 +737,15 @@ class AppStore extends ChangeNotifier {
   }
 
   double minutesOnTask(Task t, String day) => minutesByTask(day)[t.id] ?? 0;
+
+  /// Catégorie d'une session : la sienne, sinon celle de sa tâche (pro par défaut).
+  String sessionCategory(SessionRec s) {
+    if (s.category.isNotEmpty) return s.category;
+    return taskById(s.taskId)?.category == 'perso' ? Act.perso : Act.pro;
+  }
+
+  /// Nom lisible d'une clé de minutesByTask (identifiant de tâche ou « label:… »).
+  String keyTitle(String k) => k.startsWith('label:') ? k.substring(6) : (taskById(k)?.title ?? 'Tâche');
 
   /// Catégorie d'un check-in : pro, perso, pause, phone ou none.
   String categoryOf(CheckIn c) {
@@ -750,8 +770,7 @@ class AppStore extends ChangeNotifier {
     final m = <String, double>{};
     void add(String k, double v) => m[k] = (m[k] ?? 0) + v;
     for (final s in sessionsOn(day)) {
-      final t = taskById(s.taskId);
-      add(t?.category == 'perso' ? Act.perso : Act.pro,
+      add(sessionCategory(s),
           s.running ? DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(s.start)).inMinutes.toDouble() : s.actualMin);
     }
     final cs = checkinsOn(day)..sort((a, b) => a.ts.compareTo(b.ts));
@@ -787,7 +806,7 @@ class AppStore extends ChangeNotifier {
     }
 
     for (final s in sessions) {
-      if (s.start < from || taskById(s.taskId)?.category == 'perso') continue;
+      if (s.start < from || sessionCategory(s) != Act.pro) continue;
       spread(s.start, s.running ? DateTime.now().millisecondsSinceEpoch : s.end);
     }
     final cs = checkins.where((c) => c.ts >= from).toList()..sort((a, b) => a.ts.compareTo(b.ts));
@@ -1244,7 +1263,7 @@ class AppStore extends ChangeNotifier {
       if (!t.isBefore(now)) break;
       if (pausedAt(t)) continue;
       final ts = t.millisecondsSinceEpoch;
-      if (!settings.checkinsDuringSession && sessions.any((s) => ts >= s.start && (s.running || ts <= s.end))) continue;
+      if (sessions.any((s) => s.silent && ts >= s.start && (s.running || ts <= s.end))) continue;
       final half = interval * 60000 ~/ 2;
       if (answered.any((a) => (a - ts).abs() <= half)) continue;
       out.add(t);

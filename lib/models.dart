@@ -120,6 +120,8 @@ class SessionRec {
   int end; // 0 = en cours
   int predictedMin;
   bool finished; // étape terminée (sinon interrompue)
+  String category; // pro ou perso, vide = selon la tâche
+  bool silent; // pas de check-in pendant la session
   int difficulty; // 0 = non évaluée, 1 facile, 2 correct, 3 dur
   int feeling; // 0 = non évalué, 1 pénible, 2 neutre, 3 agréable
   String helped;
@@ -133,6 +135,8 @@ class SessionRec {
     this.end = 0,
     required this.predictedMin,
     this.finished = false,
+    this.category = '',
+    this.silent = true,
     this.difficulty = 0,
     this.feeling = 0,
     this.helped = '',
@@ -154,6 +158,8 @@ class SessionRec {
         end: _i(j['end']),
         predictedMin: _i(j['pred']),
         finished: _b(j['fin']),
+        category: _s(j['cat']),
+        silent: j['silent'] != false,
         difficulty: _i(j['diff']),
         feeling: _i(j['feel']),
         helped: _s(j['helped']),
@@ -168,6 +174,8 @@ class SessionRec {
         'end': end,
         'pred': predictedMin,
         'fin': finished,
+        'cat': category,
+        'silent': silent,
         'diff': difficulty,
         'feel': feeling,
         'helped': helped,
@@ -198,6 +206,10 @@ class Act {
     pro: 'thèse, cours, mails de boulot…',
     perso: 'se préparer, ménage, courses, soi…',
   };
+  static const presets = {
+    pro: ['Rédaction', 'Analyses', 'Lecture', 'Mails', 'Réunion', 'Cours', 'Admin pro'],
+    perso: ['Se préparer', 'Transport', 'Repas, cuisine', 'Ménage, courses', 'Sport', 'Repos', 'Social', 'Admin perso', 'Rendez-vous'],
+  };
 
   /// Travail (pro) ou vie perso : du temps sur quelque chose de choisi.
   static bool isWork(String a) => a == pro || a == quest || a == other;
@@ -222,6 +234,7 @@ class CheckIn {
   int energy; // -1 = non renseignée, 0 à 100
   String note;
   String taskId; // quête ou tâche en cours, si précisée
+  String label; // activité libre (se préparer, transport…)
   int sinceMin; // depuis combien de minutes, -1 = non précisé
   int mod;
 
@@ -233,6 +246,7 @@ class CheckIn {
     this.energy = -1,
     this.note = '',
     this.taskId = '',
+    this.label = '',
     this.sinceMin = -1,
     this.mod = 0,
   });
@@ -247,6 +261,7 @@ class CheckIn {
         energy: _i(j['energy'], -1),
         note: _s(j['note']),
         taskId: _s(j['task']),
+        label: _s(j['label']),
         sinceMin: _i(j['since'], -1),
         mod: _i(j['mod']),
       );
@@ -254,6 +269,7 @@ class CheckIn {
   Map<String, dynamic> toJson() => {
         'mod': mod,
         'task': taskId,
+        'label': label,
         'since': sinceMin,
         'ts': ts,
         'act': activity,

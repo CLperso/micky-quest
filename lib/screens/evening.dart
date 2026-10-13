@@ -414,7 +414,7 @@ class ReplayScreen extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 2),
                         child: Row(children: [
-                          Expanded(child: Text(store.taskById(e.key)?.title ?? 'Tâche', style: K.body(13))),
+                          Expanded(child: Text(store.keyTitle(e.key), style: K.body(13))),
                           Text('${e.value.round()} min', style: K.body(13, color: K.lime, w: FontWeight.w800)),
                         ]),
                       ),

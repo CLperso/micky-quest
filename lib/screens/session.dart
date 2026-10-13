@@ -22,7 +22,9 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
   String? _taskId;
   final _free = TextEditingController();
   int _min = 25;
-  static const _choices = [5, 10, 15, 20, 25, 30, 45, 60, 90];
+  String _cat = '';
+  bool _silent = true;
+  static const _choices = [5, 10, 15, 20, 25, 30, 45, 60, 90, 120, 180, 240];
 
   @override
   void initState() {
@@ -30,11 +32,19 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
     _taskId = widget.preselect;
   }
 
+  bool _init = false;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final t = _taskId == null ? null : AppScope.read(context).taskById(_taskId!);
+    final store = AppScope.read(context);
+    final t = _taskId == null ? null : store.taskById(_taskId!);
     if (t != null && t.estimateMin > 0) _min = t.estimateMin;
+    if (!_init) {
+      _init = true;
+      _silent = !store.settings.checkinsDuringSession;
+      if (t != null && t.category.isNotEmpty) _cat = t.category;
+    }
   }
 
   @override
@@ -98,10 +108,51 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
                 controller: _free,
                 textCapitalization: TextCapitalization.sentences,
                 onChanged: (_) => setState(() => _taskId = null),
-                decoration: const InputDecoration(hintText: 'Ou autre chose…'),
+                decoration: const InputDecoration(hintText: 'Ou autre chose… (tatoueur, transport, ménage)'),
               ),
-              const SizedBox(height: 16),
-              Text('Ton pari : $_min min', style: K.display(18, color: K.cyan)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final p in [...Act.presets[Act.perso]!, ...Act.presets[Act.pro]!])
+                    ActionChip(
+                      label: Text(p, style: K.body(12)),
+                      backgroundColor: K.raised,
+                      side: BorderSide.none,
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => setState(() {
+                        _free.text = p;
+                        _taskId = null;
+                        _cat = Act.presets[Act.perso]!.contains(p) ? Act.perso : Act.pro;
+                      }),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Text('Compter en', style: K.body(13, color: K.muted)),
+                  const SizedBox(width: 8),
+                  for (final c in [Act.pro, Act.perso])
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ChoiceChip(
+                        label: Text(c == Act.pro ? 'Pro' : 'Perso'),
+                        selected: _cat == c,
+                        onSelected: (_) => setState(() => _cat = _cat == c ? '' : c),
+                        selectedColor: c == Act.pro ? K.lime : K.pink,
+                        labelStyle: K.body(13, color: _cat == c ? K.bg : K.ink),
+                        backgroundColor: K.raised,
+                        side: BorderSide.none,
+                        showCheckmark: false,
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text('Ton pari : ${_min >= 60 ? '${_min ~/ 60} h${_min % 60 == 0 ? '' : ' ${_min % 60}'}' : '$_min min'}',
+                  style: K.display(18, color: K.cyan)),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 6,
@@ -123,22 +174,22 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
               const SizedBox(height: 8),
               Text('Finis entre ${(_min * 0.8).round()} et ${(_min * 1.2).round()} min pour gagner un coffre.',
                   style: K.body(13, color: K.muted)),
-              const SizedBox(height: 16),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text('Pas de check-in pendant la session', style: K.body(14)),
+                subtitle: Text('Le temps est compté d\'un bloc sur cette activité.', style: K.body(12, color: K.muted)),
+                value: _silent,
+                onChanged: (v) => setState(() => _silent = v),
+              ),
+              const SizedBox(height: 8),
               PrimaryButton(
                 label: 'Je parie $_min min',
                 onPressed: (_taskId == null && _free.text.trim().isEmpty)
                     ? null
                     : () async {
-                        var id = _taskId;
-                        var title = '';
-                        if (id == null) {
-                          final t = await store.addTask(_free.text.trim(), estimate: _min, quad: Quad.doNow);
-                          id = t.id;
-                          title = t.title;
-                        } else {
-                          title = store.taskById(id)?.title ?? '';
-                        }
-                        await store.startSession(id, title, _min);
+                        final id = _taskId ?? '';
+                        final title = id.isEmpty ? _free.text.trim() : (store.taskById(id)?.title ?? '');
+                        await store.startSession(id, title, _min, category: _cat, silent: _silent);
                         if (context.mounted) Navigator.pop(context, true);
                       },
               ),
@@ -179,7 +230,7 @@ class _SessionScreenState extends State<SessionScreen> {
     final s = store.runningSession;
     if (s == null) return;
     final chest = await store.endSession(s, finished: finished);
-    if (finished) {
+    if (finished && s.taskId.isNotEmpty) {
       final t = store.taskById(s.taskId);
       if (t != null && !t.done) await store.completeTask(t);
     }
@@ -221,7 +272,7 @@ class _SessionScreenState extends State<SessionScreen> {
           Padding(
             padding: const EdgeInsets.only(right: 14),
             child: Center(
-              child: Pill(store.settings.checkinsDuringSession ? 'Check-ins actifs' : 'Check-ins en pause'),
+              child: Pill(s.silent ? 'Check-ins en pause' : 'Check-ins actifs'),
             ),
           ),
         ],

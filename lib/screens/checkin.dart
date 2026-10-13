@@ -26,6 +26,7 @@ class CheckinScreen extends StatefulWidget {
 class _CheckinScreenState extends State<CheckinScreen> {
   String _act = '';
   String _taskId = '';
+  String _label = '';
   int _since = -1;
   String _reason = '';
   final _why = TextEditingController();
@@ -43,6 +44,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
     if (e != null) {
       _act = e.activity;
       _taskId = e.taskId;
+      _label = e.label;
       _since = e.sinceMin;
       _mood = e.mood;
       if (e.energy >= 0) {
@@ -166,6 +168,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
     if (e != null) {
       e.activity = _act;
       e.taskId = Act.isOnTask(_act) ? _taskId : '';
+      e.label = Act.isOnTask(_act) && _taskId.isEmpty ? _label : '';
       e.sinceMin = _since;
       e.reason = reason;
       e.mood = _mood;
@@ -181,6 +184,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
       ts: (widget.at ?? DateTime.now()).millisecondsSinceEpoch,
       activity: _act,
       taskId: Act.isOnTask(_act) ? _taskId : '',
+      label: Act.isOnTask(_act) && _taskId.isEmpty ? _label : '',
       sinceMin: _since,
       reason: reason,
       mood: _mood,
@@ -264,10 +268,24 @@ class _CheckinScreenState extends State<CheckinScreen> {
                     const SizedBox(height: 4),
                     Text(Act.hints[_act]!, style: K.body(12, color: K.muted)),
                     const SizedBox(height: 12),
-                    Text('Sur quelle tâche ? (facultatif)', style: K.display(15)),
+                    Text('Sur quoi ?', style: K.display(15)),
                     const SizedBox(height: 8),
-                    if (tasks.isEmpty)
-                      Text('Aucune tâche du jour : ajoute-les dans Quêtes ou au briefing.', style: K.body(13, color: K.muted)),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final p in Act.presets[_act]!)
+                          _chip(p, _label == p && _taskId.isEmpty, K.gold, () => setState(() {
+                                _label = _label == p ? '' : p;
+                                if (_label.isNotEmpty) _taskId = '';
+                              })),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(tasks.where((t) => t.category.isEmpty || t.category == _act).isEmpty
+                        ? 'Tes étapes de quête du jour apparaîtront ici (briefing ou Quêtes).'
+                        : 'Ou une de tes tâches du jour :', style: K.body(12, color: K.muted)),
+                    const SizedBox(height: 6),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
@@ -277,7 +295,10 @@ class _CheckinScreenState extends State<CheckinScreen> {
                             t.category.isNotEmpty ? '${t.category == 'pro' ? 'PRO' : 'PERSO'} · ${t.title}' : t.title,
                             _taskId == t.id,
                             t.category == 'perso' ? K.pink : K.lime,
-                            () => setState(() => _taskId = _taskId == t.id ? '' : t.id),
+                            () => setState(() {
+                              _taskId = _taskId == t.id ? '' : t.id;
+                              if (_taskId.isNotEmpty) _label = '';
+                            }),
                           ),
                       ],
                     ),

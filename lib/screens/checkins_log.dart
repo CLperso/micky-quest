@@ -104,6 +104,7 @@ class _CheckinsLogScreenState extends State<CheckinsLogScreen> {
       if (c.activity.isNotEmpty) parts.add(Act.labels[c.activity] ?? c.activity);
       final t = c.taskId.isEmpty ? null : store.taskById(c.taskId);
       if (t != null) parts.add(t.title);
+      if (c.label.isNotEmpty) parts.add(c.label);
       if (c.sinceMin >= 0) parts.add('${c.sinceMin} min');
       if (c.mood > 0) parts.add(AppStore.moodLabels[c.mood - 1].toLowerCase());
       if (c.energy >= 0) parts.add('énergie ${c.energy} %');
