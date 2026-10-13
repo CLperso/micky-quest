@@ -12,6 +12,7 @@ import 'checkin.dart';
 import 'checkins_log.dart';
 import 'habits.dart';
 import 'settings.dart';
+import 'timetable.dart';
 
 class HomeScreen extends StatelessWidget {
   final void Function(int) onGoTo;
@@ -158,9 +159,23 @@ class HomeScreen extends StatelessWidget {
         Row(
           children: [
             Expanded(child: Text('Quêtes du jour', style: K.display(20))),
+            TextButton.icon(
+              onPressed: () => openScreen(context, const TimetableScreen()),
+              icon: const Icon(Icons.view_day_rounded, color: K.gold, size: 18),
+              label: const Text('Ma journée'),
+            ),
             TextButton(onPressed: () => openScreen(context, const BriefingScreen()), child: const Text('Modifier')),
           ],
         ),
+        Builder(builder: (context) {
+          final next = store.plannedOn(store.todayKey).where((t) => !t.done && t.plannedAt > DateTime.now().millisecondsSinceEpoch).toList();
+          if (next.isEmpty) return const SizedBox.shrink();
+          final t = next.first;
+          return Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 6),
+            child: Text('Prochain bloc : ${hm(DateTime.fromMillisecondsSinceEpoch(t.plannedAt))} · ${t.title}', style: K.body(13, color: K.gold)),
+          );
+        }),
         const SizedBox(height: 6),
         _questCard(context, 'pro', 'PRO', plan.pro, K.lime),
         const SizedBox(height: 10),

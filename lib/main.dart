@@ -14,6 +14,7 @@ import 'screens/home.dart';
 import 'screens/matrix.dart';
 import 'screens/notebook.dart';
 import 'screens/session.dart';
+import 'screens/timetable.dart';
 import 'store.dart';
 import 'sync.dart';
 import 'theme.dart';
@@ -139,6 +140,22 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
           break;
         case 'session':
           if (store.runningSession != null) openScreen(ctx, const SessionScreen());
+          break;
+        case 'remind':
+          final p = pendingReminder;
+          pendingReminder = null;
+          if (p == null) break;
+          final t = store.taskById(p.task);
+          if (t == null || t.done || t.removed) break;
+          if (p.action == 'go') {
+            store.answerReminder(t, p.ts, 'go');
+            await store.commit();
+            if (ctx.mounted) launchTask(ctx, t);
+          } else if (p.action == 'later') {
+            openScreen(ctx, PostponeScreen(task: t, ts: p.ts));
+          } else {
+            openScreen(ctx, ReminderScreen(task: t, ts: p.ts));
+          }
           break;
       }
     };

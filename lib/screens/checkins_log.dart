@@ -7,6 +7,7 @@ import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
 import 'checkin.dart';
+import 'timetable.dart';
 
 /// Journal des check-ins d'une journée : répondus (à corriger) et manqués (à compléter).
 class CheckinsLogScreen extends StatefulWidget {
@@ -43,11 +44,14 @@ class _CheckinsLogScreenState extends State<CheckinsLogScreen> {
       for (final c in answered) _Row(DateTime.fromMillisecondsSinceEpoch(c.ts), c),
       for (final t in slots)
         if (!answered.any((c) => (c.ts - t.millisecondsSinceEpoch).abs() <= half)) _Row(t, null),
+      for (final r in store.remindersOn(key)) _Row(DateTime.fromMillisecondsSinceEpoch(r.ts), null, remind: r),
+      if (isToday)
+        for (final m in store.missedReminders()) _Row(DateTime.fromMillisecondsSinceEpoch(m.ts), null, missedTask: m.task),
     ]..sort((a, b) => a.time.compareTo(b.time));
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Journal des check-ins'),
+        title: const Text('Journal'),
         actions: [
           IconButton(
             tooltip: 'Jour précédent',
@@ -67,7 +71,7 @@ class _CheckinsLogScreenState extends State<CheckinsLogScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
           children: [
-            Text('Touche une ligne pour corriger ou compléter.', style: K.body(13, color: K.muted)),
+            Text('Check-ins et rappels « c\'est l\'heure ». Touche une ligne pour corriger ou compléter.', style: K.body(13, color: K.muted)),
             const SizedBox(height: 10),
             if (rows.isEmpty) Text('Rien ce jour-là.', style: K.body(14, color: K.muted)),
             for (final r in rows) _tile(context, store, r),
@@ -87,6 +91,7 @@ class _CheckinsLogScreenState extends State<CheckinsLogScreen> {
   }
 
   Widget _tile(BuildContext context, AppStore store, _Row r) {
+    if (r.remind != null || r.missedTask != null) return _remindTile(context, store, r);
     final c = r.checkin;
     final cat = c == null ? '' : store.categoryOf(c);
     final color = c == null
@@ -138,8 +143,104 @@ class _CheckinsLogScreenState extends State<CheckinsLogScreen> {
   }
 }
 
+  Widget _remindTile(BuildContext context, AppStore store, _Row r) {
+    final rem = r.remind;
+    final title = rem?.title ?? r.missedTask!.title;
+    final answer = rem == null ? 'Sans réponse · touche pour dire ce que tu as fait' : (Remind.labels[rem.answer] ?? rem.answer) + (rem.detail.isNotEmpty ? ' · ${rem.detail}' : '');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: K.card,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => _correctReminder(context, store, r),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                const Icon(Icons.alarm_rounded, color: K.gold, size: 18),
+                const SizedBox(width: 6),
+                SizedBox(width: 48, child: Text(hm(r.time), style: K.body(14, w: FontWeight.w800))),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: K.body(13, w: FontWeight.w800)),
+                      Text(answer, style: K.body(12, color: rem == null ? K.muted : K.gold)),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.edit_rounded, color: K.muted, size: 20),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _correctReminder(BuildContext context, AppStore store, _Row r) async {
+    final task = r.missedTask ?? store.taskById(r.remind!.taskId);
+    final ts = r.time.millisecondsSinceEpoch;
+    final a = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                child: Align(alignment: Alignment.centerLeft, child: Text('Rappel de ${hm(r.time)} : qu\'est-ce que tu as fait ?', style: K.display(16))),
+              ),
+              for (final e in Remind.labels.entries)
+                if (e.key.isNotEmpty)
+                  ListTile(
+                    title: Text(e.value, style: K.body(15)),
+                    trailing: (r.remind?.answer == e.key) ? const Icon(Icons.check_rounded, color: K.lime) : null,
+                    onTap: () => Navigator.pop(ctx, e.key),
+                  ),
+              if (task != null && !task.done)
+                ListTile(
+                  leading: const Icon(Icons.open_in_new_rounded, color: K.gold),
+                  title: Text('Ouvrir « Pas tout de suite »', style: K.body(15)),
+                  onTap: () => Navigator.pop(ctx, '_open'),
+                ),
+              if (r.remind != null)
+                ListTile(
+                  leading: const Icon(Icons.delete_outline_rounded, color: K.coral),
+                  title: Text('Supprimer cette ligne', style: K.body(15)),
+                  onTap: () => Navigator.pop(ctx, '_delete'),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (a == null || !context.mounted) return;
+    if (a == '_open' && task != null) {
+      openScreen(context, PostponeScreen(task: task, ts: ts));
+      return;
+    }
+    if (a == '_delete') {
+      store.reminders.remove(r.remind);
+      await store.commit();
+      return;
+    }
+    if (task != null) {
+      store.answerReminder(task, ts, a);
+    } else if (r.remind != null) {
+      r.remind!.answer = a;
+    }
+    await store.commit();
+  }
+}
+
 class _Row {
   final DateTime time;
   final CheckIn? checkin;
-  _Row(this.time, this.checkin);
+  final Remind? remind;
+  final Task? missedTask;
+  _Row(this.time, this.checkin, {this.remind, this.missedTask});
 }

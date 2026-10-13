@@ -75,6 +75,17 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
               const SizedBox(height: 4),
               Text('Sur quoi tu pars ?', style: K.body(14, color: K.muted)),
               const SizedBox(height: 8),
+              if (store.switchingToday.length >= 3) ...[
+                Panel(
+                  border: K.coral,
+                  padding: const EdgeInsets.all(10),
+                  child: Text(
+                    'Tu as entamé ${store.switchingToday.length} tâches aujourd\'hui sans en finir une. Dr K dirait : finis une expérience avant d\'en ouvrir une autre. Reprends ${store.switchingToday.first.title} ?',
+                    style: K.body(13),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
               for (final t in open.take(12))
                 InkWell(
                   borderRadius: BorderRadius.circular(14),

@@ -10,6 +10,7 @@ import 'models.dart';
 const kStateKey = 'quest_state_v1';
 const kPendingKey = 'pending_checkins_v1';
 const kPendingHabitsKey = 'pending_habits_v1';
+const kPendingRemindKey = 'pending_reminders_v1';
 
 const xpPerLevel = 1000;
 
@@ -48,6 +49,7 @@ class AppStore extends ChangeNotifier {
   List<HabitLog> habitLogs = [];
   List<Reflection> reflections = [];
   List<Expense> expenses = [];
+  List<Remind> reminders = [];
   Settings settings = Settings();
   String lastChest = '';
 
@@ -95,6 +97,7 @@ class AppStore extends ChangeNotifier {
         habitLogs = list('habitLogs').map(HabitLog.fromJson).toList();
         reflections = list('reflections').map(Reflection.fromJson).toList();
         expenses = list('expenses').map(Expense.fromJson).toList();
+        reminders = list('reminders').map(Remind.fromJson).toList();
         settings = Settings.fromJson(Map<String, dynamic>.from((j['settings'] as Map?) ?? {}));
         lastChest = (j['lastChest'] as String?) ?? '';
       } catch (e) {
@@ -130,6 +133,7 @@ class AppStore extends ChangeNotifier {
         'habitLogs': {for (final e in habitLogs) e.id: e.toJson()},
         'reflections': {for (final e in reflections) e.id: e.toJson()},
         'expenses': {for (final e in expenses) e.id: e.toJson()},
+        'reminders': {for (final e in reminders) e.id: e.toJson()},
       };
 
   /// Date les enregistrements qui ont changé depuis la dernière fois.
@@ -176,6 +180,9 @@ class AppStore extends ChangeNotifier {
     }
     for (final e in expenses) {
       check('expenses', e.id, e.toJson(), (m) => e.mod = m);
+    }
+    for (final e in reminders) {
+      check('reminders', e.id, e.toJson(), (m) => e.mod = m);
     }
   }
 
@@ -225,6 +232,7 @@ class AppStore extends ChangeNotifier {
     mergeInto<Reflection>(
         reflections, list('reflections'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Reflection.fromJson);
     mergeInto<Expense>(expenses, list('expenses'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Expense.fromJson);
+    mergeInto<Remind>(reminders, list('reminders'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Remind.fromJson);
     for (final j in list('plans')) {
       final d = j['day'] as String;
       final m = (j['mod'] as num?)?.toInt() ?? 0;
@@ -272,11 +280,14 @@ class AppStore extends ChangeNotifier {
       'habitLogs': habitLogs.map((e) => e.toJson()).toList(),
       'reflections': reflections.map((e) => e.toJson()).toList(),
       'expenses': expenses.map((e) => e.toJson()).toList(),
+      'reminders': reminders.map((e) => e.toJson()).toList(),
       'settings': settings.toJson(),
       'lastChest': lastChest,
     };
     await _prefs.setString(kStateKey, jsonEncode(j));
   }
+
+  static String _s(Object? v) => (v as String?) ?? '';
 
   Future<void> commit() async {
     await save();
@@ -292,6 +303,7 @@ class AppStore extends ChangeNotifier {
       if (!t.done && !t.removed && t.day.compareTo(today) < 0) {
         t.day = today;
         t.deferred = true;
+        t.plannedAt = 0;
       }
     }
   }
@@ -313,9 +325,25 @@ class AppStore extends ChangeNotifier {
         } catch (_) {}
       }
     }
+    final rl = _prefs.getStringList(kPendingRemindKey) ?? [];
+    if (rl.isNotEmpty) {
+      await _prefs.setStringList(kPendingRemindKey, []);
+      for (final raw in rl) {
+        try {
+          final m = jsonDecode(raw) as Map<String, dynamic>;
+          final t = taskById(_s(m['task']));
+          if (t == null) continue;
+          final mins = (m['snooze'] as num?)?.toInt() ?? 0;
+          if (mins > 0) {
+            await postpone(t, minutes: mins, at: (m['ts'] as num?)?.toInt(), save: false);
+          }
+        } catch (_) {}
+      }
+      await save();
+    }
     final list = _prefs.getStringList(kPendingKey) ?? [];
     if (list.isEmpty) {
-      if (hl.isNotEmpty && notify) notifyListeners();
+      if ((hl.isNotEmpty || rl.isNotEmpty) && notify) notifyListeners();
       return;
     }
     for (final s in list) {
@@ -662,6 +690,93 @@ class AppStore extends ChangeNotifier {
 
   List<Task> get deferredToday => tasks.where((t) => t.deferred && !t.done && !t.removed && t.day == todayKey).toList();
 
+  // ---------- Timetable et rappels ----------
+
+  /// Tâches placées dans la journée (bloc prévu), triées par heure.
+  List<Task> plannedOn(String day) =>
+      tasks.where((t) => !t.removed && t.plannedAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(t.plannedAt)) == day).toList()
+        ..sort((a, b) => a.plannedAt.compareTo(b.plannedAt));
+
+  /// Place une tâche à une heure : elle passe dans « Planifier » si elle était à trier.
+  Future<void> planTask(Task t, DateTime at, {int? minutes, String condition = ''}) async {
+    t.plannedAt = at.millisecondsSinceEpoch;
+    if (minutes != null) t.plannedMin = minutes;
+    t.day = dayKey(at);
+    t.condition = condition;
+    if (t.quad == Quad.inbox) t.quad = Quad.plan;
+    await commit();
+  }
+
+  /// « Seulement quand… » : pas d'heure, une condition.
+  Future<void> setCondition(Task t, String condition) async {
+    t.condition = condition.trim();
+    t.plannedAt = 0;
+    if (t.quad == Quad.inbox) t.quad = Quad.plan;
+    await commit();
+  }
+
+  Future<void> unplanTask(Task t) async {
+    t.plannedAt = 0;
+    await commit();
+  }
+
+  Remind? reminderFor(Task t, int ts) {
+    for (final r in reminders) {
+      if (r.taskId == t.id && (r.ts - ts).abs() < 60000) return r;
+    }
+    return null;
+  }
+
+  /// Note la réponse au rappel (créé s'il n'existe pas).
+  Remind answerReminder(Task t, int ts, String answer, {String detail = ''}) {
+    var r = reminderFor(t, ts);
+    if (r == null) {
+      r = Remind(taskId: t.id, title: t.title, ts: ts);
+      reminders.add(r);
+    }
+    r.answer = answer;
+    r.detail = detail;
+    return r;
+  }
+
+  /// Reporte le rappel de N minutes. Renvoie vrai si c'est le 3e report (Micky propose de découper).
+  Future<bool> postpone(Task t, {required int minutes, int? at, bool save = true}) async {
+    final ts = at ?? (t.plannedAt > 0 ? t.plannedAt : DateTime.now().millisecondsSinceEpoch);
+    answerReminder(t, ts, '+$minutes');
+    final base = max(ts, DateTime.now().millisecondsSinceEpoch);
+    t.plannedAt = base + minutes * 60000;
+    t.postponed++;
+    if (save) await commit();
+    return t.postponed >= 3;
+  }
+
+  /// Rappels d'aujourd'hui passés et restés sans réponse (pour le journal).
+  List<({Task task, int ts})> missedReminders() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final out = <({Task task, int ts})>[];
+    for (final t in plannedOn(todayKey)) {
+      if (t.done || t.plannedAt > now) continue;
+      if (reminderFor(t, t.plannedAt) != null) continue;
+      out.add((task: t, ts: t.plannedAt));
+    }
+    return out;
+  }
+
+  List<Remind> remindersOn(String day) =>
+      reminders.where((r) => dayKey(DateTime.fromMillisecondsSinceEpoch(r.ts)) == day).toList()
+        ..sort((a, b) => a.ts.compareTo(b.ts));
+
+  /// Tâches entamées aujourd'hui (session lancée) et pas finies : alerte « tu switches ».
+  List<Task> get switchingToday {
+    final ids = <String>{};
+    for (final s in sessionsOn(todayKey)) {
+      if (s.taskId.isEmpty) continue;
+      final t = taskById(s.taskId);
+      if (t != null && !t.done && !t.removed) ids.add(t.id);
+    }
+    return [for (final id in ids) taskById(id)!];
+  }
+
   // ---------- Sessions ----------
 
   SessionRec? get runningSession {
@@ -883,6 +998,10 @@ class AppStore extends ChangeNotifier {
     for (final e in expenses.where((e) => !e.removed && dayKey(DateTime.fromMillisecondsSinceEpoch(e.ts)) == day)) {
       ev.add(ReplayEvent(e.ts, 'expense', 'Dépense · ${e.amount.toStringAsFixed(2).replaceAll('.', ',')} €',
           '${Expense.labels[e.category] ?? e.category}${e.why.isNotEmpty ? ' · ${e.why}' : ''}'));
+    }
+    for (final r in remindersOn(day)) {
+      ev.add(ReplayEvent(r.ts, 'remind', 'Rappel · ${r.title}',
+          '${Remind.labels[r.answer] ?? r.answer}${r.detail.isNotEmpty ? ' · ${r.detail}' : ''}'));
     }
     for (final p in pauses) {
       if (dayKey(DateTime.fromMillisecondsSinceEpoch(p.start)) != day) continue;

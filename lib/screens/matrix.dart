@@ -5,6 +5,7 @@ import '../main.dart';
 import '../models.dart';
 import '../theme.dart';
 import 'session.dart';
+import 'timetable.dart';
 
 class MatrixScreen extends StatefulWidget {
   final bool standalone;
@@ -53,7 +54,7 @@ class _MatrixScreenState extends State<MatrixScreen> {
           if (!widget.standalone) Text('Tri des quêtes', style: K.display(24)),
           Text(
             _selected == null
-                ? 'Appui long puis glisse une tâche dans sa case. Touche-la pour plus d\'options.'
+                ? 'Touche une tâche pour la ranger en un geste (ou glisse-la).'
                 : 'Touche le titre d\'une case pour y ranger la tâche choisie.',
             style: K.body(13, color: _selected == null ? K.muted : K.gold),
           ),
@@ -223,6 +224,14 @@ class _MatrixScreenState extends State<MatrixScreen> {
                   const SizedBox(width: 4),
                   const Icon(Icons.history_rounded, size: 14, color: K.coral),
                 ],
+                if (t.plannedAt > 0) ...[
+                  const SizedBox(width: 4),
+                  Text(hm(DateTime.fromMillisecondsSinceEpoch(t.plannedAt)), style: K.body(10, color: sel ? K.bg : K.gold, w: FontWeight.w900)),
+                ],
+                if (t.condition.isNotEmpty) ...[
+                  const SizedBox(width: 4),
+                  Icon(Icons.rule_rounded, size: 14, color: sel ? K.bg : K.cyan),
+                ],
               ],
             ),
           ),
@@ -247,18 +256,40 @@ class _MatrixScreenState extends State<MatrixScreen> {
     final store = AppScope.read(context);
     final action = await showModalBottomSheet<String>(
       context: context,
+      isScrollControlled: true,
       builder: (ctx) => SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(t.title, style: K.display(18)),
+              if (t.plannedAt > 0 || t.condition.isNotEmpty)
+                Text(
+                  t.plannedAt > 0
+                      ? 'prévu à ${hm(DateTime.fromMillisecondsSinceEpoch(t.plannedAt))}'
+                      : 'seulement quand ${t.condition}',
+                  style: K.body(12, color: K.muted),
+                ),
+              const SizedBox(height: 10),
+              Text('Ranger dans', style: K.body(12, color: K.muted, w: FontWeight.w900)),
+              const SizedBox(height: 6),
+              Row(children: [
+                Expanded(child: _big(ctx, Quad.doNow, t)),
+                const SizedBox(width: 8),
+                Expanded(child: _big(ctx, Quad.plan, t)),
+              ]),
+              const SizedBox(height: 8),
+              Row(children: [
+                Expanded(child: _big(ctx, Quad.light, t)),
+                const SizedBox(width: 8),
+                Expanded(child: _big(ctx, Quad.drop, t)),
+              ]),
               const SizedBox(height: 8),
               _opt(ctx, 'start', Icons.play_arrow_rounded, 'Lancer une session', K.lime),
               _opt(ctx, 'done', Icons.check_rounded, 'C\'est fait', K.lime),
-              _opt(ctx, 'select', Icons.open_with_rounded, 'Ranger dans une case', K.cyan),
+              _opt(ctx, 'when', Icons.schedule_rounded, 'Mettre une heure ou une condition', K.gold),
               _opt(ctx, 'boss', Icons.pest_control_rounded, t.isBoss ? 'Déjà boss de la semaine' : 'En faire le boss de la semaine', K.coral),
               _opt(ctx, 'tomorrow', Icons.wb_twilight_rounded, 'Reporter à demain', K.gold),
               _opt(ctx, 'delete', Icons.delete_outline_rounded, 'Effacer', K.dim),
@@ -268,6 +299,14 @@ class _MatrixScreenState extends State<MatrixScreen> {
       ),
     );
     if (!mounted || action == null) return;
+    if (Quad.all.contains(action)) {
+      if (action == Quad.plan && t.plannedAt == 0 && t.condition.isEmpty) {
+        await planSheet(context, t);
+      } else {
+        await _move(t.id, action);
+      }
+      return;
+    }
     switch (action) {
       case 'start':
         final ok = await showModalBottomSheet<bool>(
@@ -280,12 +319,9 @@ class _MatrixScreenState extends State<MatrixScreen> {
       case 'done':
         await store.completeTask(t);
         if (t.done && context.mounted) await askNext(context, 'Tâche faite !');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bien joué ! XP gagnée')));
-        }
         break;
-      case 'select':
-        setState(() => _selected = t.id);
+      case 'when':
+        await planSheet(context, t);
         break;
       case 'boss':
         await store.setBoss(t);
@@ -297,6 +333,30 @@ class _MatrixScreenState extends State<MatrixScreen> {
         await store.removeTask(t);
         break;
     }
+  }
+
+  Widget _big(BuildContext ctx, String q, Task t) {
+    final c = K.quadColors[q]!;
+    final on = t.quad == q;
+    return SizedBox(
+      height: 64,
+      child: OutlinedButton(
+        style: OutlinedButton.styleFrom(
+          backgroundColor: on ? c : K.quadBg[q],
+          side: BorderSide(color: c, width: 2),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+        ),
+        onPressed: () => Navigator.pop(ctx, q),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(Quad.titles[q]!, style: K.display(14, color: on ? K.bg : c)),
+            Text(Quad.hints[q]!, style: K.body(10, color: on ? K.bg : K.muted), textAlign: TextAlign.center),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _opt(BuildContext ctx, String id, IconData icon, String label, Color c) => ListTile(

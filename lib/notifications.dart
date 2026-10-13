@@ -17,8 +17,11 @@ const _quietChannel = 'confirmations';
 
 final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
 
-/// Ouvre un écran quand on touche une notification (type : checkin, briefing, soir, session).
+/// Ouvre un écran quand on touche une notification (type : checkin, briefing, soir, session, remind).
 void Function(String type)? onOpenFromNotification;
+
+/// Rappel touché : tâche, heure prévue et bouton utilisé ('', go, later).
+({String task, int ts, String action})? pendingReminder;
 
 const _initSettings = InitializationSettings(
   android: AndroidInitializationSettings('@mipmap/ic_launcher'),
@@ -212,6 +215,32 @@ Future<void> rescheduleAll(AppStore store) async {
     }
   }
 
+  // rappels « c'est l'heure » des blocs prévus
+  for (final t in store.tasks) {
+    if (t.done || t.removed || t.plannedAt == 0) continue;
+    final when = DateTime.fromMillisecondsSinceEpoch(t.plannedAt);
+    if (!when.isAfter(now) || when.isAfter(now.add(const Duration(days: 2)))) continue;
+    await _schedule(
+      id: 4000 + (t.id.hashCode.abs() % 900),
+      when: when,
+      title: 'C\'est l\'heure : ${t.title}',
+      body: t.condition.isNotEmpty ? 'Seulement quand ${t.condition}.' : 'Bloc prévu de ${t.blockMin} min. Je lance, ou pas tout de suite ?',
+      details: AndroidNotificationDetails(
+        _dayChannel,
+        'Briefing et feu de camp',
+        importance: Importance.high,
+        priority: Priority.high,
+        color: const Color(0xFFFFD24A),
+        actions: const [
+          AndroidNotificationAction('go', 'Je lance', showsUserInterface: true),
+          AndroidNotificationAction('snooze', '+10 min', cancelNotification: true),
+          AndroidNotificationAction('later', 'Replanifier', showsUserInterface: true),
+        ],
+      ),
+      payload: jsonEncode({'type': 'remind', 'task': t.id, 'ts': t.plannedAt}),
+    );
+  }
+
   // fin de la pause
   final pause = store.activePause;
   if (pause != null && pause.end > now.millisecondsSinceEpoch) {
@@ -331,6 +360,45 @@ Future<void> _handle(NotificationResponse r, {required bool foreground}) async {
     } catch (_) {}
     await _plugin.cancel(id);
     if (foreground) onOpenFromNotification?.call('refresh');
+    return;
+  }
+
+  if (type == 'remind') {
+    try {
+      final p = jsonDecode(r.payload ?? '{}') as Map<String, dynamic>;
+      final plannedTs = (p['ts'] as num?)?.toInt() ?? ts;
+      if (action == 'snooze') {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.reload();
+        final list = prefs.getStringList(kPendingRemindKey) ?? [];
+        list.add(jsonEncode({'task': task, 'snooze': 10, 'ts': plannedTs}));
+        await prefs.setStringList(kPendingRemindKey, list);
+        // le rappel revient dans 10 min, même appli fermée
+        await _schedule(
+          id: id,
+          when: DateTime.now().add(const Duration(minutes: 10)),
+          title: r.payload != null ? 'On y retourne ?' : 'C\'est l\'heure',
+          body: 'Les 10 minutes sont passées. Je lance, ou pas tout de suite ?',
+          details: AndroidNotificationDetails(
+            _dayChannel,
+            'Briefing et feu de camp',
+            importance: Importance.high,
+            priority: Priority.high,
+            color: const Color(0xFFFFD24A),
+            actions: const [
+              AndroidNotificationAction('go', 'Je lance', showsUserInterface: true),
+              AndroidNotificationAction('snooze', '+10 min', cancelNotification: true),
+              AndroidNotificationAction('later', 'Replanifier', showsUserInterface: true),
+            ],
+          ),
+          payload: jsonEncode({'type': 'remind', 'task': task, 'ts': plannedTs + 10 * 60000}),
+        );
+        if (foreground) onOpenFromNotification?.call('refresh');
+        return;
+      }
+      pendingReminder = (task: task, ts: plannedTs, action: action);
+    } catch (_) {}
+    if (foreground) onOpenFromNotification?.call('remind');
     return;
   }
 

@@ -54,6 +54,10 @@ class Task {
   int bossHp;
   bool removed;
   int order;
+  int plannedAt; // créneau prévu (ms), 0 = pas placé dans la journée
+  int plannedMin; // durée du bloc prévu
+  String condition; // « seulement quand… »
+  int postponed; // nombre de reports du rappel
   int mod;
 
   Task({
@@ -71,9 +75,15 @@ class Task {
     this.bossHp = 100,
     this.removed = false,
     this.order = 0,
+    this.plannedAt = 0,
+    this.plannedMin = 0,
+    this.condition = '',
+    this.postponed = 0,
     this.mod = 0,
   })  : id = id ?? newId(),
         createdDay = createdDay ?? day;
+
+  int get blockMin => plannedMin > 0 ? plannedMin : (estimateMin > 0 ? estimateMin : 30);
 
   factory Task.fromJson(Map<String, dynamic> j) => Task(
         id: _s(j['id']),
@@ -90,6 +100,10 @@ class Task {
         bossHp: _i(j['hp'], 100),
         removed: _b(j['removed']),
         order: _i(j['order']),
+        plannedAt: _i(j['at']),
+        plannedMin: _i(j['atMin']),
+        condition: _s(j['cond']),
+        postponed: _i(j['post']),
         mod: _i(j['mod']),
       );
 
@@ -108,8 +122,54 @@ class Task {
         'hp': bossHp,
         'removed': removed,
         'order': order,
+        'at': plannedAt,
+        'atMin': plannedMin,
+        'cond': condition,
+        'post': postponed,
         'mod': mod,
       };
+}
+
+/// Un rappel « c'est l'heure » et la réponse donnée (corrigeable dans le journal).
+class Remind {
+  String id;
+  String taskId;
+  String title;
+  int ts; // heure du rappel
+  String answer; // go, +5, +10, +15, +30, plustard, demain, agenda, condition, bloque, annule, '' (sans réponse)
+  String detail;
+  int mod;
+
+  Remind({String? id, required this.taskId, required this.title, required this.ts, this.answer = '', this.detail = '', this.mod = 0})
+      : id = id ?? newId();
+
+  static const labels = {
+    '': 'Sans réponse',
+    'go': 'Lancée',
+    '+5': '+5 min',
+    '+10': '+10 min',
+    '+15': '+15 min',
+    '+30': '+30 min',
+    'plustard': 'Plus tard aujourd\'hui',
+    'demain': 'Demain',
+    'agenda': 'Agenda',
+    'condition': 'Seulement quand…',
+    'bloque': 'Ça bloque',
+    'annule': 'Annulée',
+  };
+
+  factory Remind.fromJson(Map<String, dynamic> j) => Remind(
+        id: _s(j['id']),
+        taskId: _s(j['task']),
+        title: _s(j['title']),
+        ts: _i(j['ts']),
+        answer: _s(j['answer']),
+        detail: _s(j['detail']),
+        mod: _i(j['mod']),
+      );
+
+  Map<String, dynamic> toJson() =>
+      {'id': id, 'task': taskId, 'title': title, 'ts': ts, 'answer': answer, 'detail': detail, 'mod': mod};
 }
 
 class SessionRec {
