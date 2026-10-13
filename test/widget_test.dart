@@ -59,7 +59,7 @@ void main() {
     phone(t);
     captureErrors();
     await check(t, HomeScreen(onGoTo: (_) {}), 'QG');
-    expect(find.text('Tes stats de personnage'), findsOneWidget);
+    expect(find.text('Check-ins actifs'), findsOneWidget);
   });
   testWidgets('Matrice', (t) async {
     phone(t);
@@ -101,7 +101,7 @@ void main() {
     if (e != null && !e.toString().contains('overflowed')) {
       fail('Shell a planté : $e\n${details.join('\n')}');
     }
-    expect(find.text('Tes stats de personnage'), findsOneWidget);
+    expect(find.text('Check-ins actifs'), findsOneWidget);
     for (final tab in ['Quêtes', 'Découvertes', 'Soir', 'QG']) {
       await t.tap(find.text(tab));
       await t.pump(const Duration(milliseconds: 300));
