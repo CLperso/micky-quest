@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../main.dart';
+import '../crash.dart';
 import '../models.dart';
 import '../notifications.dart';
 import '../store.dart';
@@ -27,6 +28,10 @@ class HomeScreen extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
       children: [
+        CrashBanner(onClear: () async {
+          await clearCrash();
+          store.refresh();
+        }),
         Row(
           children: [
             SizedBox(

@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'crash.dart';
 import 'notifications.dart';
 import 'screens/briefing.dart';
 import 'screens/checkin.dart';
@@ -25,21 +28,33 @@ class AppScope extends InheritedNotifier<AppStore> {
 
 final navKey = GlobalKey<NavigatorState>();
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
-    systemNavigationBarColor: K.bg,
-  ));
-  final store = AppStore();
-  await store.load();
-  try {
-    await initNotifications();
-  } catch (e) {
-    debugPrint('Notifications indisponibles : $e');
-  }
-  runApp(AppScope(store: store, child: const MickyQuestApp()));
+void main() {
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    FlutterError.onError = (d) {
+      FlutterError.presentError(d);
+      recordCrash(d.exception, d.stack);
+    };
+    ErrorWidget.builder = crashBox;
+    await loadCrash();
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: K.bg,
+    ));
+    final store = AppStore();
+    try {
+      await store.load();
+    } catch (e, st) {
+      await recordCrash(e, st);
+    }
+    try {
+      await initNotifications();
+    } catch (e) {
+      debugPrint('Notifications indisponibles : $e');
+    }
+    runApp(AppScope(store: store, child: const MickyQuestApp()));
+  }, (e, st) => recordCrash(e, st));
 }
 
 class MickyQuestApp extends StatelessWidget {

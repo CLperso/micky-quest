@@ -65,5 +65,8 @@ jobs:
           tag_name: v1.0.${{ github.run_number }}
           name: Micky Quest v1.0.${{ github.run_number }}
           body: Télécharge micky-quest.apk depuis ton téléphone pour l'installer ou le mettre à jour.
-          files: micky-quest.apk
+          files: |
+            micky-quest.apk
+            test.txt
+            analyze.txt
           make_latest: true
