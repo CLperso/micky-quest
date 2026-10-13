@@ -14,7 +14,10 @@ class CheckinScreen extends StatefulWidget {
 
   /// Heure du check-in auquel on répond (en retard), sinon maintenant.
   final DateTime? at;
-  const CheckinScreen({super.key, this.focusLog, this.at});
+
+  /// Check-in existant à corriger.
+  final CheckIn? existing;
+  const CheckinScreen({super.key, this.focusLog, this.at, this.existing});
 
   @override
   State<CheckinScreen> createState() => _CheckinScreenState();
@@ -36,6 +39,25 @@ class _CheckinScreenState extends State<CheckinScreen> {
   @override
   void initState() {
     super.initState();
+    final e = widget.existing;
+    if (e != null) {
+      _act = e.activity;
+      _taskId = e.taskId;
+      _since = e.sinceMin;
+      _mood = e.mood;
+      if (e.energy >= 0) {
+        _energy = e.energy.toDouble();
+        _energySet = true;
+      }
+      _note.text = e.note;
+      final parts = e.reason.split(' · ');
+      if (parts.isNotEmpty && Act.reasons.contains(parts.first)) {
+        _reason = parts.first;
+        _why.text = parts.skip(1).join(' · ');
+      } else {
+        _why.text = e.reason;
+      }
+    }
     if (widget.focusLog == LogKind.meal) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _meal());
     } else if (widget.focusLog == LogKind.free) {
@@ -139,12 +161,28 @@ class _CheckinScreenState extends State<CheckinScreen> {
       return;
     }
     final why = _why.text.trim();
+    final reason = Act.isWork(_act) ? '' : [if (_reason.isNotEmpty) _reason, if (why.isNotEmpty) why].join(' · ');
+    final e = widget.existing;
+    if (e != null) {
+      e.activity = _act;
+      e.taskId = Act.isOnTask(_act) ? _taskId : '';
+      e.sinceMin = _since;
+      e.reason = reason;
+      e.mood = _mood;
+      e.energy = _energySet ? _energy.round() : -1;
+      e.note = _note.text.trim();
+      await store.commit();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Check-in corrigé')));
+      Navigator.pop(context);
+      return;
+    }
     await store.addCheckIn(CheckIn(
       ts: (widget.at ?? DateTime.now()).millisecondsSinceEpoch,
       activity: _act,
       taskId: Act.isOnTask(_act) ? _taskId : '',
       sinceMin: _since,
-      reason: Act.isWork(_act) ? '' : [if (_reason.isNotEmpty) _reason, if (why.isNotEmpty) why].join(' · '),
+      reason: reason,
       mood: _mood,
       energy: _energySet ? _energy.round() : -1,
       note: _note.text.trim(),
@@ -165,12 +203,29 @@ class _CheckinScreenState extends State<CheckinScreen> {
         return rank(a).compareTo(rank(b));
       });
     final run = store.runningSession;
-    if (run != null && _act.isEmpty && _taskId.isEmpty && widget.focusLog == null) {
+    if (run != null && _act.isEmpty && _taskId.isEmpty && widget.focusLog == null && widget.existing == null) {
       _act = store.taskById(run.taskId)?.category == 'perso' ? Act.perso : Act.pro;
       _taskId = run.taskId;
     }
     return Scaffold(
-      appBar: AppBar(title: Text(logsFirst ? 'Noter' : (widget.at == null ? 'Check-in' : 'Check-in de ${hm(widget.at!)}'))),
+      appBar: AppBar(
+        title: Text(logsFirst
+            ? 'Noter'
+            : widget.existing != null
+                ? 'Corriger · ${hm(DateTime.fromMillisecondsSinceEpoch(widget.existing!.ts))}'
+                : (widget.at == null ? 'Check-in' : 'Check-in de ${hm(widget.at!)}')),
+        actions: [
+          if (widget.existing != null)
+            IconButton(
+              tooltip: 'Supprimer',
+              onPressed: () async {
+                await store.removeCheckIn(widget.existing!);
+                if (context.mounted) Navigator.pop(context);
+              },
+              icon: const Icon(Icons.delete_outline_rounded, color: K.coral),
+            ),
+        ],
+      ),
       body: SafeArea(
         top: false,
         child: ListView(
@@ -333,7 +388,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
             const SizedBox(height: 10),
             if (!logsFirst) ...logs,
             const SizedBox(height: 16),
-            PrimaryButton(label: 'Envoyer · +5 XP', onPressed: _send),
+            PrimaryButton(label: widget.existing != null ? 'Enregistrer la correction' : 'Envoyer · +5 XP', onPressed: _send),
           ],
         ),
       ),

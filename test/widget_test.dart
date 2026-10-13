@@ -7,6 +7,7 @@ import 'package:micky_quest/screens/discoveries.dart';
 import 'package:micky_quest/screens/evening.dart';
 import 'package:micky_quest/screens/home.dart';
 import 'package:micky_quest/screens/checkin.dart';
+import 'package:micky_quest/screens/checkins_log.dart';
 import 'package:micky_quest/screens/habits.dart';
 import 'package:micky_quest/screens/matrix.dart';
 import 'package:micky_quest/store.dart';
@@ -79,6 +80,11 @@ void main() {
     await t.tap(find.text('Perso'));
     await t.pump();
     expect(find.text('Depuis combien de temps ?'), findsOneWidget);
+  });
+  testWidgets('Journal des check-ins', (t) async {
+    phone(t);
+    captureErrors();
+    await check(t, const CheckinsLogScreen(), 'Journal');
   });
   testWidgets('Habitudes', (t) async {
     phone(t);

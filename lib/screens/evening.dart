@@ -5,6 +5,7 @@ import '../models.dart';
 import '../notifications.dart';
 import '../store.dart';
 import '../theme.dart';
+import 'checkin.dart';
 import 'habits.dart';
 import 'notebook.dart';
 import 'reflect.dart';
@@ -463,7 +464,15 @@ class ReplayScreen extends StatelessWidget {
                     ]),
                   ),
                   Expanded(
-                    child: Container(
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: ev[i].kind != 'mood'
+                          ? null
+                          : () {
+                              final c = store.checkins.where((c) => c.ts == ev[i].ts).toList();
+                              if (c.isNotEmpty) openScreen(context, CheckinScreen(existing: c.first));
+                            },
+                      child: Container(
                       margin: const EdgeInsets.only(bottom: 8),
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(color: K.card, borderRadius: BorderRadius.circular(14)),
@@ -484,6 +493,7 @@ class ReplayScreen extends StatelessWidget {
                           ],
                         ],
                       ),
+                    ),
                     ),
                   ),
                 ],

@@ -601,7 +601,13 @@ class AppStore extends ChangeNotifier {
 
   Future<void> addCheckIn(CheckIn c) async {
     checkins.add(c);
+    checkins.sort((a, b) => a.ts.compareTo(b.ts));
     _gainXp(5, 'Check-in');
+    await commit();
+  }
+
+  Future<void> removeCheckIn(CheckIn c) async {
+    checkins.remove(c);
     await commit();
   }
 

@@ -8,6 +8,7 @@ import '../store.dart';
 import '../theme.dart';
 import 'briefing.dart';
 import 'checkin.dart';
+import 'checkins_log.dart';
 import 'habits.dart';
 import 'settings.dart';
 
@@ -512,7 +513,7 @@ class _PauseSheetState extends State<_PauseSheet> {
 }
 
 
-/// Check-ins du jour restés sans réponse : on peut y répondre après coup.
+/// Check-ins du jour : répondus et sans réponse, avec accès au journal pour corriger.
 class MissedCheckins extends StatelessWidget {
   const MissedCheckins({super.key});
 
@@ -520,12 +521,13 @@ class MissedCheckins extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = AppScope.of(context);
     final missed = store.missedCheckins();
-    if (missed.isEmpty) return const SizedBox.shrink();
+    final answered = store.checkinsOn(store.todayKey).length;
+    if (missed.isEmpty && answered == 0) return const SizedBox.shrink();
     final shown = missed.length > 4 ? missed.sublist(missed.length - 4) : missed;
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Panel(
-        border: K.cyan.withValues(alpha: 0.6),
+        border: missed.isEmpty ? null : K.cyan.withValues(alpha: 0.6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -534,32 +536,33 @@ class MissedCheckins extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  missed.length == 1 ? 'Un check-in sans réponse' : '${missed.length} check-ins sans réponse',
+                  '$answered check-in${answered > 1 ? 's' : ''} aujourd\'hui'
+                  '${missed.isEmpty ? '' : ' · ${missed.length} sans réponse'}',
                   style: K.body(14, w: FontWeight.w800),
                 ),
               ),
+              TextButton(
+                onPressed: () => openScreen(context, const CheckinsLogScreen()),
+                child: const Text('Journal'),
+              ),
             ]),
-            const SizedBox(height: 4),
-            Text('Touche une heure pour dire ce que tu faisais à ce moment-là.', style: K.body(12, color: K.muted)),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final t in shown)
-                  ActionChip(
-                    label: Text(hm(t), style: K.body(13, w: FontWeight.w800)),
-                    backgroundColor: K.raised,
-                    side: BorderSide.none,
-                    onPressed: () => openScreen(context, CheckinScreen(at: t)),
-                  ),
-                if (missed.length > shown.length)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text('+ ${missed.length - shown.length} plus tôt', style: K.body(12, color: K.muted)),
-                  ),
-              ],
-            ),
+            if (missed.isNotEmpty) ...[
+              Text('Touche une heure pour dire ce que tu faisais à ce moment-là.', style: K.body(12, color: K.muted)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final t in shown)
+                    ActionChip(
+                      label: Text(hm(t), style: K.body(13, w: FontWeight.w800)),
+                      backgroundColor: K.raised,
+                      side: BorderSide.none,
+                      onPressed: () => openScreen(context, CheckinScreen(at: t)),
+                    ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
