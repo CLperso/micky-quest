@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../agenda.dart';
 import '../calendar.dart';
@@ -250,9 +251,12 @@ class TimetableView extends StatefulWidget {
 
 class _TimetableViewState extends State<TimetableView> {
   late DateTime _day;
-  static const _hourH = 64.0;
+  static const _hourH = 56.0;
+  static const _left = 46.0;
   List<CalEvent> _events = [];
   String _eventsFor = '';
+  String? _dragId;
+  double _dragDy = 0;
 
   @override
   void initState() {
@@ -297,7 +301,7 @@ class _TimetableViewState extends State<TimetableView> {
               const SizedBox(height: 8),
               for (final t in open)
                 ListTile(
-                  leading: Container(width: 10, height: 10, decoration: BoxDecoration(color: K.quadColors[t.quad], shape: BoxShape.circle)),
+                  leading: Container(width: 10, height: 10, decoration: BoxDecoration(color: t.category == 'pro' ? K.lime : t.category == 'perso' ? K.pink : K.quadColors[t.quad], shape: BoxShape.circle)),
                   title: Text(t.title, style: K.body(15)),
                   subtitle: t.plannedAt > 0 ? Text('déjà à ${hm(DateTime.fromMillisecondsSinceEpoch(t.plannedAt))}', style: K.body(12, color: K.muted)) : null,
                   onTap: () => Navigator.pop(ctx, t),
@@ -323,6 +327,8 @@ class _TimetableViewState extends State<TimetableView> {
     await rescheduleAll(store);
   }
 
+  Color _taskColor(Task t) => t.category == 'pro' ? K.lime : t.category == 'perso' ? K.pink : (K.quadColors[t.quad] ?? K.gold);
+
   @override
   Widget build(BuildContext context) {
     final store = AppScope.of(context);
@@ -343,150 +349,219 @@ class _TimetableViewState extends State<TimetableView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-            Row(children: [
-              Expanded(child: Text(isToday ? 'Aujourd\'hui' : '${names[_day.weekday - 1]} ${_day.day}/${_day.month}', style: K.display(18))),
-              IconButton(
-                onPressed: () => setState(() {
-                  _day = _day.subtract(const Duration(days: 1));
-                  _events = [];
-                }),
-                icon: const Icon(Icons.chevron_left_rounded, color: K.muted),
-              ),
-              IconButton(
-                onPressed: () => setState(() {
-                  _day = _day.add(const Duration(days: 1));
-                  _events = [];
-                }),
-                icon: const Icon(Icons.chevron_right_rounded, color: K.muted),
-              ),
-            ]),
-            Text(
-              widget.place != null && widget.place!.plannedAt == 0
-                  ? 'Touche l\'heure où tu veux faire « ${widget.place!.title} ».'
-                  : planned.isEmpty
-                  ? 'Touche une heure pour y poser une tâche. Micky te dira « c\'est l\'heure ».'
-                  : '${planned.length} bloc${planned.length > 1 ? 's' : ''} prévu${planned.length > 1 ? 's' : ''} · en vert, ce que tu as vraiment fait.',
-              style: K.body(13, color: K.muted),
-            ),
-            if (allDay.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Wrap(spacing: 6, runSpacing: 6, children: [for (final e in allDay) Pill(e.title, color: K.muted, fill: K.card)]),
-            ],
-            if (s.calendarId.isEmpty && s.calendarRead)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text('Connecte ton agenda dans Réglages pour voir tes événements ici et y écrire tes blocs.', style: K.body(12, color: K.muted)),
-              ),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: (endH - startH + 1) * _hourH,
-              child: Stack(
-                children: [
-                  // événements de l'agenda du téléphone (gris, derrière)
-                  for (final e in timed)
-                    Positioned(
-                      top: top(e.start.millisecondsSinceEpoch) + 8,
-                      left: 48,
-                      right: 4,
-                      height: max(18, e.end.difference(e.start).inMinutes / 60 * _hourH),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: K.card.withValues(alpha: 0.9),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: K.line),
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        child: Text('${hm(e.start)} · ${e.title}', style: K.body(11, color: K.muted, w: FontWeight.w800), maxLines: 1, overflow: TextOverflow.ellipsis),
+        Row(children: [
+          const Icon(Icons.view_day_rounded, color: K.gold, size: 20),
+          const SizedBox(width: 8),
+          Expanded(child: Text(isToday ? 'Planning du jour' : '${names[_day.weekday - 1]} ${_day.day}/${_day.month}', style: K.display(18))),
+          IconButton(
+            onPressed: () => setState(() {
+              _day = _day.subtract(const Duration(days: 1));
+              _events = [];
+            }),
+            icon: const Icon(Icons.chevron_left_rounded, color: K.muted),
+          ),
+          IconButton(
+            onPressed: () => setState(() {
+              _day = _day.add(const Duration(days: 1));
+              _events = [];
+            }),
+            icon: const Icon(Icons.chevron_right_rounded, color: K.muted),
+          ),
+        ]),
+        Text(
+          widget.place != null && widget.place!.plannedAt == 0
+              ? 'Touche l\'heure où tu veux faire « ${widget.place!.title} ».'
+              : 'Touche une heure pour y poser une tâche · glisse un bloc pour le déplacer · touche-le pour le retirer.',
+          style: K.body(12, color: K.muted),
+        ),
+        if (allDay.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Wrap(spacing: 6, runSpacing: 6, children: [for (final e in allDay) Pill(e.title, color: K.muted, fill: K.card)]),
+        ],
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(color: K.card, borderRadius: BorderRadius.circular(18)),
+          padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
+          child: SizedBox(
+            height: (endH - startH + 1) * _hourH,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                // heures et lignes
+                for (var h = startH; h <= endH; h++) ...[
+                  Positioned(
+                    top: (h - startH) * _hourH,
+                    left: 0,
+                    right: 0,
+                    height: _hourH,
+                    child: InkWell(
+                      onTap: () => _addAt(_day.add(Duration(hours: h))),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(width: _left, child: Padding(padding: const EdgeInsets.only(top: 1), child: Text('${h.toString().padLeft(2, '0')}:00', style: K.body(11, color: K.muted, w: FontWeight.w800)))),
+                          Expanded(child: Container(height: 1, color: K.line, margin: const EdgeInsets.only(top: 8))),
+                        ],
                       ),
                     ),
-                  // grille des heures
-                  for (var h = startH; h <= endH; h++)
-                    Positioned(
-                      top: (h - startH) * _hourH,
-                      left: 0,
+                  ),
+                  Positioned(
+                    top: (h - startH) * _hourH + _hourH / 2 + 8,
+                    left: _left,
+                    right: 0,
+                    child: Container(height: 1, color: K.line.withValues(alpha: 0.4)),
+                  ),
+                ],
+                // événements de l'agenda du téléphone
+                for (final e in timed)
+                  Positioned(
+                    top: top(e.start.millisecondsSinceEpoch) + 8,
+                    left: _left,
+                    right: 0,
+                    height: max(20, e.end.difference(e.start).inMinutes / 60 * _hourH),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: K.raised.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border(left: BorderSide(color: K.muted, width: 3)),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      child: Row(children: [
+                        const Icon(Icons.event_rounded, color: K.muted, size: 12),
+                        const SizedBox(width: 4),
+                        Expanded(child: Text('${hm(e.start)} ${e.title}', style: K.body(11, color: K.muted, w: FontWeight.w800), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      ]),
+                    ),
+                  ),
+                // sessions réelles : liseré à gauche du bloc
+                for (final x in sessions)
+                  Positioned(
+                    top: top(x.start) + 8,
+                    left: _left - 8,
+                    width: 6,
+                    height: max(6, ((x.running ? now.millisecondsSinceEpoch : x.end) - x.start) / 3600000 * _hourH),
+                    child: Tooltip(
+                      message: '${x.title} · ${x.actualMin.round()} min',
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: store.sessionCategory(x) == Act.perso ? K.pink : K.lime,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                    ),
+                  ),
+                // blocs prévus (déplaçables)
+                for (final t in planned)
+                  Builder(builder: (context) {
+                    final c = _taskColor(t);
+                    final dragging = _dragId == t.id;
+                    final y = top(t.plannedAt) + 8 + (dragging ? _dragDy : 0);
+                    final h = max(28.0, t.blockMin / 60 * _hourH);
+                    return Positioned(
+                      top: y,
+                      left: _left + 8,
                       right: 0,
-                      height: _hourH,
-                      child: InkWell(
-                        onTap: () => _addAt(_day.add(Duration(hours: h))),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(width: 44, child: Text('${h.toString().padLeft(2, '0')} h', style: K.body(12, color: K.muted))),
-                            Expanded(child: Container(height: 1, color: K.line, margin: const EdgeInsets.only(top: 8))),
-                          ],
-                        ),
-                      ),
-                    ),
-                  // sessions réelles
-                  for (final x in sessions)
-                    Positioned(
-                      top: top(x.start) + 8,
-                      left: 48,
-                      width: 70,
-                      height: max(14, ((x.running ? now.millisecondsSinceEpoch : x.end) - x.start) / 3600000 * _hourH),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: (store.sessionCategory(x) == Act.perso ? K.pink : K.lime).withValues(alpha: 0.35),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: store.sessionCategory(x) == Act.perso ? K.pink : K.lime),
-                        ),
-                        padding: const EdgeInsets.all(3),
-                        child: Text(x.title, style: K.body(10), maxLines: 2, overflow: TextOverflow.ellipsis),
-                      ),
-                    ),
-                  // blocs prévus
-                  for (final t in planned)
-                    Positioned(
-                      top: top(t.plannedAt) + 8,
-                      left: 124,
-                      right: 4,
-                      height: max(30, t.blockMin / 60 * _hourH),
-                      child: Material(
-                        color: t.done ? K.raised : K.card,
-                        borderRadius: BorderRadius.circular(10),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(10),
-                          onTap: () => _blockOptions(t),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: t.done ? K.line : (K.quadColors[t.quad] ?? K.gold), width: 2),
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    '${hm(DateTime.fromMillisecondsSinceEpoch(t.plannedAt))} · ${t.title}${t.condition.isNotEmpty ? ' · si ${t.condition}' : ''}',
-                                    style: K.body(12, color: t.done ? K.muted : K.ink, w: FontWeight.w800)
-                                        .copyWith(decoration: t.done ? TextDecoration.lineThrough : null),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                      height: h,
+                      child: GestureDetector(
+                        onTap: () => _blockOptions(t),
+                        onLongPressStart: (_) {
+                          HapticFeedback.selectionClick();
+                          setState(() {
+                            _dragId = t.id;
+                            _dragDy = 0;
+                          });
+                        },
+                        onLongPressMoveUpdate: (d) => setState(() => _dragDy = d.offsetFromOrigin.dy),
+                        onLongPressEnd: (_) async {
+                          final minutes = (_dragDy / _hourH * 60 / 15).round() * 15;
+                          setState(() {
+                            _dragId = null;
+                            _dragDy = 0;
+                          });
+                          if (minutes == 0) return;
+                          final at = DateTime.fromMillisecondsSinceEpoch(t.plannedAt).add(Duration(minutes: minutes));
+                          await store.planTask(t, at);
+                          await rescheduleAll(store);
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 120),
+                          decoration: BoxDecoration(
+                            color: t.done ? K.raised : c.withValues(alpha: dragging ? 0.5 : 0.22),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border(left: BorderSide(color: t.done ? K.muted : c, width: 4)),
+                            boxShadow: dragging ? const [BoxShadow(color: Colors.black54, blurRadius: 12, offset: Offset(0, 6))] : null,
+                          ),
+                          padding: const EdgeInsets.fromLTRB(8, 3, 6, 3),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(t.title,
+                                        style: K.body(12, color: t.done ? K.muted : K.ink, w: FontWeight.w800)
+                                            .copyWith(decoration: t.done ? TextDecoration.lineThrough : null),
+                                        maxLines: h > 40 ? 2 : 1,
+                                        overflow: TextOverflow.ellipsis),
+                                    if (h > 40)
+                                      Text(
+                                        '${hm(DateTime.fromMillisecondsSinceEpoch(t.plannedAt))} · ${fmtMin(t.blockMin)}${t.condition.isNotEmpty ? ' · si ${t.condition}' : ''}${t.postponed > 0 ? ' · reporté ×${t.postponed}' : ''}',
+                                        style: K.body(10, color: K.muted),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                  ],
                                 ),
-                                if (t.postponed > 0) Pill('×${t.postponed}', color: K.coral),
-                              ],
-                            ),
+                              ),
+                              if (dragging)
+                                Text(hm(DateTime.fromMillisecondsSinceEpoch(t.plannedAt).add(Duration(minutes: (_dragDy / _hourH * 60 / 15).round() * 15))),
+                                    style: K.body(12, color: K.gold, w: FontWeight.w900))
+                              else if (t.category.isNotEmpty)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                  decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(6)),
+                                  child: Text(t.category == 'pro' ? 'PRO' : 'PERSO', style: K.body(8, color: K.bg, w: FontWeight.w900)),
+                                ),
+                            ],
                           ),
                         ),
                       ),
-                    ),
-                  // maintenant
-                  if (isToday)
-                    Positioned(
-                      top: top(now.millisecondsSinceEpoch) + 8,
-                      left: 40,
-                      right: 0,
+                    );
+                  }),
+                // maintenant
+                if (isToday)
+                  Positioned(
+                    top: top(now.millisecondsSinceEpoch) + 8,
+                    left: _left - 10,
+                    right: 0,
+                    child: IgnorePointer(
                       child: Row(children: [
                         Container(width: 8, height: 8, decoration: const BoxDecoration(color: K.coral, shape: BoxShape.circle)),
                         Expanded(child: Container(height: 2, color: K.coral)),
                       ]),
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
-          ],
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(children: [
+          Container(width: 10, height: 4, decoration: BoxDecoration(color: K.lime, borderRadius: BorderRadius.circular(2))),
+          const SizedBox(width: 4),
+          Text('session faite', style: K.body(10, color: K.muted)),
+          const SizedBox(width: 10),
+          Container(width: 10, height: 10, decoration: BoxDecoration(color: K.lime.withValues(alpha: 0.22), borderRadius: BorderRadius.circular(3), border: const Border(left: BorderSide(color: K.lime, width: 2)))),
+          const SizedBox(width: 4),
+          Text('bloc prévu', style: K.body(10, color: K.muted)),
+          const SizedBox(width: 10),
+          const Icon(Icons.event_rounded, color: K.muted, size: 10),
+          const SizedBox(width: 4),
+          Text('agenda', style: K.body(10, color: K.muted)),
+        ]),
+      ],
     );
   }
 
@@ -504,9 +579,12 @@ class _TimetableViewState extends State<TimetableView> {
             ),
             if (!t.done)
               ListTile(leading: const Icon(Icons.play_arrow_rounded, color: K.lime), title: const Text('Lancer maintenant'), onTap: () => Navigator.pop(ctx, 'go')),
-            ListTile(leading: const Icon(Icons.schedule_rounded, color: K.gold), title: const Text('Déplacer'), onTap: () => Navigator.pop(ctx, 'move')),
+            if (!t.done)
+              ListTile(leading: const Icon(Icons.check_rounded, color: K.lime), title: const Text('C\'est fait'), onTap: () => Navigator.pop(ctx, 'done')),
+            ListTile(leading: const Icon(Icons.schedule_rounded, color: K.gold), title: const Text('Déplacer à une autre heure'), onTap: () => Navigator.pop(ctx, 'move')),
             ListTile(leading: const Icon(Icons.timer_outlined, color: K.cyan), title: Text('Durée du bloc (${fmtMin(t.blockMin)})'), onTap: () => Navigator.pop(ctx, 'len')),
-            ListTile(leading: const Icon(Icons.close_rounded, color: K.muted), title: const Text('Retirer de la journée'), onTap: () => Navigator.pop(ctx, 'unplan')),
+            ListTile(leading: const Icon(Icons.close_rounded, color: K.coral), title: const Text('Retirer du planning'), subtitle: Text('la tâche reste dans ta liste', style: K.body(12, color: K.muted)), onTap: () => Navigator.pop(ctx, 'unplan')),
+            ListTile(leading: const Icon(Icons.delete_outline_rounded, color: K.muted), title: const Text('Supprimer la tâche'), onTap: () => Navigator.pop(ctx, 'delete')),
           ],
         ),
       ),
@@ -515,6 +593,10 @@ class _TimetableViewState extends State<TimetableView> {
     switch (a) {
       case 'go':
         await launchTask(context, t);
+        break;
+      case 'done':
+        await store.completeTask(t);
+        if (t.done && mounted) await askNext(context, 'Tâche faite !');
         break;
       case 'move':
         final at = await pickWhen(context, initial: DateTime.fromMillisecondsSinceEpoch(t.plannedAt));
@@ -546,6 +628,10 @@ class _TimetableViewState extends State<TimetableView> {
         break;
       case 'unplan':
         await store.unplanTask(t);
+        await rescheduleAll(store);
+        break;
+      case 'delete':
+        await store.removeTask(t);
         await rescheduleAll(store);
         break;
     }

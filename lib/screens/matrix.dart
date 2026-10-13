@@ -6,6 +6,7 @@ import '../models.dart';
 import '../theme.dart';
 import 'session.dart';
 import 'timetable.dart';
+import 'today.dart';
 
 class MatrixScreen extends StatefulWidget {
   final bool standalone;
@@ -64,9 +65,9 @@ class _MatrixScreenState extends State<MatrixScreen> {
             ]),
           Text(
             _selected == null
-                ? 'Touche une tâche pour la ranger en un geste (ou glisse-la).'
+                ? 'Touche une tâche pour la ranger (ou glisse-la). ☀ = dans Aujourd\'hui : Faire maintenant, étapes de quête, heure du jour.'
                 : 'Touche le titre d\'une case pour y ranger la tâche choisie.',
-            style: K.body(13, color: _selected == null ? K.muted : K.gold),
+            style: K.body(12, color: _selected == null ? K.muted : K.gold),
           ),
           const SizedBox(height: 8),
           TextField(
@@ -207,6 +208,10 @@ class _MatrixScreenState extends State<MatrixScreen> {
   Widget _chip(Task t, String q) {
     final c = K.quadColors[q]!;
     final sel = _selected == t.id;
+    final store = AppScope.of(context);
+    final questName = t.category == 'pro' ? store.today.pro : t.category == 'perso' ? store.today.perso : '';
+    final quest = questName.isEmpty ? '' : (questName.length > 16 ? '${questName.substring(0, 16)}…' : questName);
+    final today = store.inToday(t);
     Widget box({bool dragging = false}) => Material(
           color: Colors.transparent,
           child: Container(
@@ -224,8 +229,20 @@ class _MatrixScreenState extends State<MatrixScreen> {
                   const Icon(Icons.pest_control_rounded, size: 14, color: K.coral),
                   const SizedBox(width: 4),
                 ],
+                if (today && t.category.isEmpty) ...[
+                  Icon(Icons.wb_sunny_rounded, size: 13, color: sel ? K.bg : K.gold),
+                  const SizedBox(width: 3),
+                ],
+                if (t.category.isNotEmpty) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    decoration: BoxDecoration(color: t.category == 'pro' ? K.lime : K.pink, borderRadius: BorderRadius.circular(6)),
+                    child: Text(t.category == 'pro' ? 'PRO' : 'PERSO', style: K.body(9, color: K.bg, w: FontWeight.w900)),
+                  ),
+                  const SizedBox(width: 4),
+                ],
                 Flexible(
-                  child: Text(t.title,
+                  child: Text(quest.isNotEmpty ? '$quest / ${t.title}' : t.title,
                       style: K.body(12, color: sel ? K.bg : K.ink, w: FontWeight.w800),
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis),
@@ -300,6 +317,10 @@ class _MatrixScreenState extends State<MatrixScreen> {
               _opt(ctx, 'start', Icons.play_arrow_rounded, 'Lancer une session', K.lime),
               _opt(ctx, 'done', Icons.check_rounded, 'C\'est fait', K.lime),
               _opt(ctx, 'when', Icons.schedule_rounded, 'Mettre une heure ou une condition', K.gold),
+              if (t.category != 'pro') _opt(ctx, 'qpro', Icons.flag_rounded, 'Ajouter à la quête pro du jour', K.lime),
+              if (t.category != 'perso') _opt(ctx, 'qperso', Icons.flag_rounded, 'Ajouter à la quête perso du jour', K.pink),
+              if (t.category.isNotEmpty) _opt(ctx, 'qnone', Icons.flag_outlined, 'Sortir de la quête (reste dans Aujourd\'hui)', K.muted),
+              _opt(ctx, 'edit', Icons.edit_rounded, 'Modifier (titre, pari)', K.cyan),
               _opt(ctx, 'boss', Icons.pest_control_rounded, t.isBoss ? 'Déjà boss de la semaine' : 'En faire le boss de la semaine', K.coral),
               _opt(ctx, 'tomorrow', Icons.wb_twilight_rounded, 'Reporter à demain', K.gold),
               _opt(ctx, 'delete', Icons.delete_outline_rounded, 'Effacer', K.dim),
@@ -328,6 +349,19 @@ class _MatrixScreenState extends State<MatrixScreen> {
         break;
       case 'when':
         await planSheet(context, t);
+        break;
+      case 'qpro':
+        await store.editTask(t, category: 'pro');
+        break;
+      case 'qperso':
+        await store.editTask(t, category: 'perso');
+        break;
+      case 'qnone':
+        await store.editTask(t, category: '');
+        await store.moveTask(t, Quad.doNow);
+        break;
+      case 'edit':
+        await editTaskSheet(context, t);
         break;
       case 'boss':
         await store.setBoss(t);

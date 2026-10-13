@@ -660,6 +660,57 @@ class AppStore extends ChangeNotifier {
     return t;
   }
 
+  /// Réordonne les étapes d'une quête.
+  Future<void> reorderSteps(String category, int oldIndex, int newIndex) async {
+    final steps = questSteps(category);
+    if (oldIndex < 0 || oldIndex >= steps.length) return;
+    final moved = steps.removeAt(oldIndex);
+    steps.insert(newIndex.clamp(0, steps.length), moved);
+    for (var i = 0; i < steps.length; i++) {
+      steps[i].order = i;
+    }
+    await commit();
+  }
+
+  /// Change le titre, le pari ou la quête d'une tâche.
+  Future<void> editTask(Task t, {String? title, int? estimate, String? category}) async {
+    if (title != null && title.trim().isNotEmpty) t.title = title.trim();
+    if (estimate != null) t.estimateMin = estimate;
+    if (category != null) {
+      t.category = category;
+      if (category.isNotEmpty) {
+        t.day = todayKey;
+        if (t.quad == Quad.inbox) t.quad = Quad.doNow;
+        t.order = questSteps(category).length;
+      }
+    }
+    await commit();
+  }
+
+  /// Toutes les étapes faites : on clôt la quête (+15 XP, une fois par jour et par quête).
+  Future<bool> closeQuest(String category) async {
+    final reason = 'Quête ${category == 'pro' ? 'pro' : 'perso'} close';
+    if (_claimedToday(reason)) return false;
+    _gainXp(category == 'pro' ? 15 : 5, reason);
+    await commit();
+    return true;
+  }
+
+  Future<void> setQuestTitle(String category, String title) async {
+    if (category == 'pro') {
+      today.pro = title.trim();
+    } else {
+      today.perso = title.trim();
+    }
+    await commit();
+  }
+
+  /// Vrai si la tâche fait partie d'Aujourd'hui (quête, Faire maintenant, heure aujourd'hui, reportée, boss).
+  bool inToday(Task t) =>
+      !t.done && !t.removed && t.day.compareTo(todayKey) <= 0 &&
+      (t.category.isNotEmpty || t.quad == Quad.doNow || t.deferred || t.isBoss ||
+          (t.plannedAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(t.plannedAt)) == todayKey));
+
   Future<void> moveTask(Task t, String quad) async {
     t.quad = quad;
     await commit();
