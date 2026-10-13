@@ -47,6 +47,7 @@ class AppStore extends ChangeNotifier {
   List<Habit> habits = [];
   List<HabitLog> habitLogs = [];
   List<Reflection> reflections = [];
+  List<Expense> expenses = [];
   Settings settings = Settings();
   String lastChest = '';
 
@@ -84,6 +85,7 @@ class AppStore extends ChangeNotifier {
         habits = list('habits').map(Habit.fromJson).toList();
         habitLogs = list('habitLogs').map(HabitLog.fromJson).toList();
         reflections = list('reflections').map(Reflection.fromJson).toList();
+        expenses = list('expenses').map(Expense.fromJson).toList();
         settings = Settings.fromJson(Map<String, dynamic>.from((j['settings'] as Map?) ?? {}));
         lastChest = (j['lastChest'] as String?) ?? '';
       } catch (e) {
@@ -118,6 +120,7 @@ class AppStore extends ChangeNotifier {
         'habits': {for (final e in habits) e.id: e.toJson()},
         'habitLogs': {for (final e in habitLogs) e.id: e.toJson()},
         'reflections': {for (final e in reflections) e.id: e.toJson()},
+        'expenses': {for (final e in expenses) e.id: e.toJson()},
       };
 
   /// Date les enregistrements qui ont changé depuis la dernière fois.
@@ -161,6 +164,9 @@ class AppStore extends ChangeNotifier {
     }
     for (final e in reflections) {
       check('reflections', e.id, e.toJson(), (m) => e.mod = m);
+    }
+    for (final e in expenses) {
+      check('expenses', e.id, e.toJson(), (m) => e.mod = m);
     }
   }
 
@@ -209,6 +215,7 @@ class AppStore extends ChangeNotifier {
         habitLogs, list('habitLogs'), (e) => e.id, (j) => '${j['habit']}|${j['day']}', (e) => e.mod, HabitLog.fromJson);
     mergeInto<Reflection>(
         reflections, list('reflections'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Reflection.fromJson);
+    mergeInto<Expense>(expenses, list('expenses'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Expense.fromJson);
     for (final j in list('plans')) {
       final d = j['day'] as String;
       final m = (j['mod'] as num?)?.toInt() ?? 0;
@@ -255,6 +262,7 @@ class AppStore extends ChangeNotifier {
       'habits': habits.map((e) => e.toJson()).toList(),
       'habitLogs': habitLogs.map((e) => e.toJson()).toList(),
       'reflections': reflections.map((e) => e.toJson()).toList(),
+      'expenses': expenses.map((e) => e.toJson()).toList(),
       'settings': settings.toJson(),
       'lastChest': lastChest,
     };
@@ -692,6 +700,10 @@ class AppStore extends ChangeNotifier {
       final parts = [...r.reasons, if (r.text.isNotEmpty) r.text];
       if (r.ifCue.isNotEmpty) parts.add('si ${r.ifCue}, alors ${r.thenDo}');
       ev.add(ReplayEvent(r.ts, 'reflect', 'Réflexion · ${r.title}', parts.join(' · ')));
+    }
+    for (final e in expenses.where((e) => !e.removed && dayKey(DateTime.fromMillisecondsSinceEpoch(e.ts)) == day)) {
+      ev.add(ReplayEvent(e.ts, 'expense', 'Dépense · ${e.amount.toStringAsFixed(2).replaceAll('.', ',')} €',
+          '${Expense.labels[e.category] ?? e.category}${e.why.isNotEmpty ? ' · ${e.why}' : ''}'));
     }
     for (final p in pauses) {
       if (dayKey(DateTime.fromMillisecondsSinceEpoch(p.start)) != day) continue;
@@ -1274,6 +1286,37 @@ class AppStore extends ChangeNotifier {
       out.add(t);
     }
     return out;
+  }
+
+  // ---------- Dépenses ----------
+
+  String monthKey(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}';
+
+  List<Expense> expensesInMonth(DateTime d) {
+    final k = monthKey(d);
+    return expenses.where((e) => !e.removed && monthKey(DateTime.fromMillisecondsSinceEpoch(e.ts)) == k).toList()
+      ..sort((a, b) => b.ts.compareTo(a.ts));
+  }
+
+  double spentInMonth(DateTime d) => expensesInMonth(d).fold(0.0, (a, e) => a + e.amount);
+  double remainingThisMonth() => settings.monthlyBudget - spentInMonth(DateTime.now());
+
+  Map<String, double> spentByCategory(DateTime d) {
+    final m = <String, double>{};
+    for (final e in expensesInMonth(d)) {
+      m[e.category] = (m[e.category] ?? 0) + e.amount;
+    }
+    return m;
+  }
+
+  Future<void> addExpense(Expense e) async {
+    expenses.add(e);
+    await commit();
+  }
+
+  Future<void> removeExpense(Expense e) async {
+    e.removed = true;
+    await commit();
   }
 
   // ---------- Mode occupée ----------

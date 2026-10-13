@@ -407,6 +407,7 @@ class Settings {
   String syncToken;
   int lastSync;
   bool stylusOnly;
+  double monthlyBudget;
 
   Settings({
     this.startHour = 9,
@@ -426,6 +427,7 @@ class Settings {
     this.syncToken = '',
     this.lastSync = 0,
     this.stylusOnly = true,
+    this.monthlyBudget = 0,
   });
 
   factory Settings.fromJson(Map<String, dynamic> j) => Settings(
@@ -446,6 +448,7 @@ class Settings {
         syncToken: _s(j['syncToken']),
         lastSync: _i(j['lastSync']),
         stylusOnly: j['stylusOnly'] != false,
+        monthlyBudget: (j['budget'] as num?)?.toDouble() ?? 0,
       );
 
   Map<String, dynamic> toJson() => {
@@ -466,6 +469,7 @@ class Settings {
         'syncToken': syncToken,
         'lastSync': lastSync,
         'stylusOnly': stylusOnly,
+        'budget': monthlyBudget,
       };
 }
 
@@ -713,4 +717,43 @@ class Reflection {
         'then': thenDo,
         'mod': mod,
       };
+}
+
+/// Une dépense : montant, pourquoi, catégorie.
+class Expense {
+  String id;
+  int ts;
+  double amount;
+  String why;
+  String category;
+  bool removed;
+  int mod;
+
+  Expense({String? id, required this.ts, required this.amount, this.why = '', this.category = 'autre', this.removed = false, this.mod = 0})
+      : id = id ?? newId();
+
+  static const categories = ['courses', 'resto', 'transport', 'loisirs', 'santé', 'maison', 'vêtements', 'autre'];
+  static const labels = {
+    'courses': 'Courses',
+    'resto': 'Resto, café',
+    'transport': 'Transport',
+    'loisirs': 'Loisirs',
+    'santé': 'Santé',
+    'maison': 'Maison',
+    'vêtements': 'Vêtements, soin',
+    'autre': 'Autre',
+  };
+
+  factory Expense.fromJson(Map<String, dynamic> j) => Expense(
+        id: _s(j['id']),
+        ts: _i(j['ts']),
+        amount: (j['amount'] as num?)?.toDouble() ?? 0,
+        why: _s(j['why']),
+        category: _s(j['cat'], 'autre'),
+        removed: _b(j['removed']),
+        mod: _i(j['mod']),
+      );
+
+  Map<String, dynamic> toJson() =>
+      {'id': id, 'ts': ts, 'amount': amount, 'why': why, 'cat': category, 'removed': removed, 'mod': mod};
 }

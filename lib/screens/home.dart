@@ -7,6 +7,7 @@ import '../notifications.dart';
 import '../store.dart';
 import '../theme.dart';
 import 'briefing.dart';
+import 'budget.dart';
 import 'checkin.dart';
 import 'checkins_log.dart';
 import 'habits.dart';
@@ -146,6 +147,8 @@ class HomeScreen extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         const HabitsCard(),
+        const SizedBox(height: 14),
+        const BudgetCard(),
         const SizedBox(height: 18),
 
         Row(

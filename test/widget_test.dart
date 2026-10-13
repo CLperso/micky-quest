@@ -6,6 +6,7 @@ import 'package:micky_quest/main.dart';
 import 'package:micky_quest/screens/discoveries.dart';
 import 'package:micky_quest/screens/evening.dart';
 import 'package:micky_quest/screens/home.dart';
+import 'package:micky_quest/screens/budget.dart';
 import 'package:micky_quest/screens/checkin.dart';
 import 'package:micky_quest/screens/checkins_log.dart';
 import 'package:micky_quest/screens/habits.dart';
@@ -85,6 +86,11 @@ void main() {
     phone(t);
     captureErrors();
     await check(t, const CheckinsLogScreen(), 'Journal');
+  });
+  testWidgets('Dépenses', (t) async {
+    phone(t);
+    captureErrors();
+    await check(t, const BudgetScreen(), 'Dépenses');
   });
   testWidgets('Habitudes', (t) async {
     phone(t);
