@@ -295,7 +295,7 @@ class Act {
   };
   static const presets = {
     pro: ['Rédaction', 'Analyses', 'Lecture', 'Mails', 'Réunion', 'Cours', 'Admin pro'],
-    perso: ['Se préparer', 'Transport', 'Repas, cuisine', 'Ménage, courses', 'Sport', 'Repos', 'Social', 'Admin perso', 'Rendez-vous'],
+    perso: ['Se préparer', 'Transport', 'Repas, cuisine', 'Ménage, courses', 'Sport', 'Repos', 'Social', 'Admin perso', 'Rendez-vous', 'Projet'],
   };
 
   /// Travail (pro) ou vie perso : du temps sur quelque chose de choisi.
@@ -526,6 +526,7 @@ class Settings {
   int lastSync;
   bool stylusOnly;
   double monthlyBudget;
+  List<String> projects; // projets perso précisés dans les check-ins (« ces apps »…)
 
   Settings({
     this.startHour = 9,
@@ -546,7 +547,8 @@ class Settings {
     this.lastSync = 0,
     this.stylusOnly = true,
     this.monthlyBudget = 0,
-  });
+    List<String>? projects,
+  }) : projects = projects ?? [];
 
   factory Settings.fromJson(Map<String, dynamic> j) => Settings(
         startHour: _i(j['start'], 9),
@@ -567,6 +569,7 @@ class Settings {
         lastSync: _i(j['lastSync']),
         stylusOnly: j['stylusOnly'] != false,
         monthlyBudget: (j['budget'] as num?)?.toDouble() ?? 0,
+        projects: ((j['projects'] as List?) ?? []).map((e) => e.toString()).toList(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -588,6 +591,7 @@ class Settings {
         'lastSync': lastSync,
         'stylusOnly': stylusOnly,
         'budget': monthlyBudget,
+        'projects': projects,
       };
 }
 

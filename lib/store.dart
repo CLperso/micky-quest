@@ -698,6 +698,42 @@ class AppStore extends ChangeNotifier {
 
   List<Task> get deferredToday => tasks.where((t) => t.deferred && !t.done && !t.removed && t.day == todayKey).toList();
 
+  /// Heure du premier moment de travail pro du jour (session ou check-in), ou null.
+  DateTime? workStart(String day) {
+    int? best;
+    for (final x in sessionsOn(day)) {
+      if (sessionCategory(x) == Act.pro && (best == null || x.start < best)) best = x.start;
+    }
+    for (final c in checkinsOn(day)) {
+      if (categoryOf(c) != Act.pro) continue;
+      final t = c.ts - (c.sinceMin >= 0 ? c.sinceMin : min(settings.intervalMin, 30)) * 60000;
+      if (best == null || t < best) best = t;
+    }
+    return best == null ? null : DateTime.fromMillisecondsSinceEpoch(best);
+  }
+
+  /// Minutes passées à se préparer (check-ins et sessions « Se préparer »).
+  double prepMinutes(String day) => minutesByTask(day)['label:Se préparer'] ?? 0;
+
+  /// Ajoute un projet perso précisé dans un check-in, réutilisable ensuite.
+  Future<void> addProject(String name) async {
+    final n = name.trim();
+    if (n.isEmpty || settings.projects.contains(n)) return;
+    settings.projects.add(n);
+    await commit();
+  }
+
+  /// Une étape pro précisée au check-in : elle rejoint le briefing du jour (+2 XP).
+  Future<Task> addStepFromCheckin(String title) async {
+    for (final t in questSteps('pro')) {
+      if (t.title.toLowerCase() == title.trim().toLowerCase()) return t;
+    }
+    final t = await addTask(title, category: 'pro', quad: Quad.doNow);
+    _gainXp(2, 'Étape précisée');
+    await commit();
+    return t;
+  }
+
   // ---------- Timetable et rappels ----------
 
   /// Tâches placées dans la journée (bloc prévu), triées par heure.
@@ -1441,6 +1477,31 @@ class AppStore extends ChangeNotifier {
             'Le ${_days[ok.first]}, tu es le plus souvent sur tes quêtes ; le ${_days[ok.last]}, le moins.', 1, ''));
       } else {
         out.add(Discovery('day', 'Ton jour le plus fort', '', ok.length / 4, 'des check-ins sur 4 jours différents'));
+      }
+    }
+
+    // 7 bis. Heure de début et temps de préparation.
+    {
+      final starts = <double>[];
+      final preps = <double>[];
+      for (var i = 0; i < 14; i++) {
+        final d = dayKey(DateTime.now().subtract(Duration(days: i)));
+        final st = workStart(d);
+        if (st != null) {
+          starts.add(st.hour + st.minute / 60);
+          preps.add(prepMinutes(d));
+        }
+      }
+      if (starts.length >= 5) {
+        final ms = starts.reduce((a, b) => a + b) / starts.length;
+        final mp = preps.reduce((a, b) => a + b) / preps.length;
+        final h = ms.floor(), m = ((ms - h) * 60).round();
+        out.add(Discovery('start', 'Ton heure de démarrage',
+            'Tu commences à travailler vers ${h}h${m.toString().padLeft(2, '0')} en moyenne, après ${mp.round()} min de préparation. '
+            '${mp > 60 ? 'Un point de spawn préparé la veille peut raccourcir ça.' : 'Chaque demi-heure gagnée le matin se retrouve dans ta barre Focus.'}',
+            1, ''));
+      } else {
+        out.add(Discovery('start', 'Ton heure de démarrage', '', starts.length / 5, '5 jours avec du travail pro noté'));
       }
     }
 

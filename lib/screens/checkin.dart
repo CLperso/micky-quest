@@ -9,6 +9,7 @@ import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
 import 'block.dart';
+import 'timetable.dart' show askText;
 
 class CheckinScreen extends StatefulWidget {
   final String? focusLog;
@@ -326,10 +327,39 @@ class _CheckinScreenState extends State<CheckinScreen> {
                       runSpacing: 8,
                       children: [
                         for (final p in Act.presets[_act]!)
-                          _chip(p, _label == p && _taskId.isEmpty, K.gold, () => setState(() {
-                                _label = _label == p ? '' : p;
-                                if (_label.isNotEmpty) _taskId = '';
-                              })),
+                          if (p == 'Projet')
+                            _chip('Projet…', false, K.pink, () async {
+                              final n = await askText(context, 'Quel projet ?', hint: 'ces apps, le blog, la déco…');
+                              if (n == null || n.isEmpty || !mounted) return;
+                              await store.addProject(n);
+                              setState(() {
+                                _label = 'Projet : $n';
+                                _taskId = '';
+                              });
+                            })
+                          else
+                            _chip(p, _label == p && _taskId.isEmpty, K.gold, () => setState(() {
+                                  _label = _label == p ? '' : p;
+                                  if (_label.isNotEmpty) _taskId = '';
+                                })),
+                        if (_act == Act.perso)
+                          for (final n in store.settings.projects)
+                            _chip('Projet : $n', _label == 'Projet : $n' && _taskId.isEmpty, K.pink, () => setState(() {
+                                  _label = _label == 'Projet : $n' ? '' : 'Projet : $n';
+                                  if (_label.isNotEmpty) _taskId = '';
+                                })),
+                        if (_act == Act.pro)
+                          _chip('Préciser… (+2 XP)', false, K.lime, () async {
+                            final n = await askText(context, 'Sur quoi exactement ?', hint: 'relire l\'intro, coder les analyses…');
+                            if (n == null || n.isEmpty || !mounted) return;
+                            final t = await store.addStepFromCheckin(n);
+                            if (!mounted) return;
+                            setState(() {
+                              _taskId = t.id;
+                              _label = '';
+                            });
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Étape ajoutée à ton briefing · +2 XP')));
+                          }),
                       ],
                     ),
                     const SizedBox(height: 10),

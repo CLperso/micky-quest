@@ -213,6 +213,19 @@ class _EveningScreenState extends State<EveningScreen> {
                 Expanded(child: _tile(bets.isEmpty ? '—' : '${(100 * won / bets.length).round()} %', 'paris réussis', K.gold)),
               ],
             ),
+            const SizedBox(height: 8),
+            Builder(builder: (context) {
+              final start = store.workStart(day);
+              final prep = store.prepMinutes(day).round();
+              final pro = store.proMinutesOn(day).round();
+              return Row(children: [
+                Expanded(child: _tile(start == null ? '—' : hm(start), 'début du travail', start == null ? K.muted : (start.hour >= 11 ? K.coral : K.lime))),
+                const SizedBox(width: 8),
+                Expanded(child: _tile(pro >= 60 ? '${pro ~/ 60} h ${(pro % 60).toString().padLeft(2, '0')}' : '$pro min', 'de pro en tout', K.lime)),
+                const SizedBox(width: 8),
+                Expanded(child: _tile(prep >= 60 ? '${prep ~/ 60} h ${(prep % 60).toString().padLeft(2, '0')}' : '$prep min', 'à me préparer', prep > 60 ? K.coral : K.cyan)),
+              ]);
+            }),
             const SizedBox(height: 12),
             _GainsRecap(day: day),
             const SizedBox(height: 12),
@@ -385,6 +398,18 @@ class ReplayScreen extends StatelessWidget {
         children: [
           Text('Tout ce que tu as fait, sans jugement', style: K.body(13, color: K.muted)),
           const SizedBox(height: 12),
+          Builder(builder: (context) {
+            final start = store.workStart(day);
+            final prep = store.prepMinutes(day).round();
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(children: [
+                Expanded(child: _tile(start == null ? '—' : hm(start), 'début du travail', start == null ? K.muted : (start.hour >= 11 ? K.coral : K.lime))),
+                const SizedBox(width: 8),
+                Expanded(child: _tile(prep >= 60 ? '${prep ~/ 60} h ${(prep % 60).toString().padLeft(2, '0')}' : '$prep min', 'à me préparer', prep > 60 ? K.coral : K.cyan)),
+              ]),
+            );
+          }),
           Row(children: [
             Expanded(child: _tile(mins >= 60 ? '${mins ~/ 60} h ${(mins % 60).toString().padLeft(2, '0')}' : '$mins min', 'de pro', K.lime)),
             const SizedBox(width: 8),

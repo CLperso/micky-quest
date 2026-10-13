@@ -31,6 +31,7 @@ class _DiscoveriesScreenState extends State<DiscoveriesScreen> {
     'cycle': Icons.water_drop_rounded,
     'day': Icons.calendar_month_rounded,
     'sleep': Icons.bedtime_rounded,
+    'start': Icons.wb_sunny_rounded,
   };
   static const _colors = [K.gold, K.cyan, K.coral, K.lime, K.pink];
 
