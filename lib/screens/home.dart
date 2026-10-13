@@ -331,6 +331,7 @@ class HomeScreen extends StatelessWidget {
   }
 
   Widget _bossCard(BuildContext context, Task? boss) {
+    final store = AppScope.of(context);
     return Panel(
       color: const Color(0xFF2A1630),
       border: K.coral,
