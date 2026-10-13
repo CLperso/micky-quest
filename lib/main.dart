@@ -259,7 +259,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
               children: [
                 _navItem(0, Icons.home_rounded, 'QG'),
                 _navItem(1, Icons.grid_view_rounded, 'Quêtes'),
-                Expanded(child: Center(child: focusBtn)),
+                Expanded(child: SizedBox(height: 58, child: Center(child: focusBtn))),
                 _navItem(3, Icons.travel_explore_rounded, 'Découvertes'),
                 _navItem(4, Icons.local_fire_department_rounded, 'Soir'),
                 if (tablet) _navItem(5, Icons.draw_rounded, 'Carnet'),

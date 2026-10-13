@@ -23,8 +23,7 @@ class HabitsCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text('Habitudes', style: K.display(16)),
-              const Spacer(),
+              Expanded(child: Text('Habitudes', style: K.display(16))),
               TextButton(
                 onPressed: () => openScreen(context, const HabitsScreen()),
                 child: Text(list.isEmpty ? 'Ajouter' : 'Gérer'),

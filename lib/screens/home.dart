@@ -123,8 +123,7 @@ class HomeScreen extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Text('Tes stats de personnage', style: K.display(16)),
-                  const Spacer(),
+                  Expanded(child: Text('Tes stats de personnage', style: K.display(16))),
                   if (phase != null) Pill('Cycle J$cday · $phase', color: K.pink),
                 ],
               ),
@@ -149,8 +148,7 @@ class HomeScreen extends StatelessWidget {
 
         Row(
           children: [
-            Text('Quêtes du jour', style: K.display(20)),
-            const Spacer(),
+            Expanded(child: Text('Quêtes du jour', style: K.display(20))),
             TextButton(onPressed: () => openScreen(context, const BriefingScreen()), child: const Text('Modifier')),
           ],
         ),
