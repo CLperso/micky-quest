@@ -17,6 +17,7 @@ import 'screens/matrix.dart';
 import 'screens/notebook.dart';
 import 'screens/session.dart';
 import 'screens/timetable.dart';
+import 'screens/today.dart';
 import 'store.dart';
 import 'sync.dart';
 import 'theme.dart';
@@ -242,7 +243,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
               ],
             )
           : HomeScreen(onGoTo: goTo),
-      _limit(const MatrixScreen(), wide ? 900 : null),
+      _limit(QuestsTab(matrix: const MatrixScreen()), wide ? 900 : null),
       const SizedBox.shrink(),
       _limit(const DiscoveriesScreen(), wide ? 820 : null),
       _limit(const EveningTab(), wide ? 760 : null),

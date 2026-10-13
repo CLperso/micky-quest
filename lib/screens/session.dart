@@ -122,7 +122,7 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
                 controller: _free,
                 textCapitalization: TextCapitalization.sentences,
                 onChanged: (_) => setState(() => _taskId = null),
-                decoration: const InputDecoration(hintText: 'Ou autre chose… (tatoueur, transport, ménage)'),
+                decoration: const InputDecoration(hintText: 'Ou autre chose… (transport, ménage, rendez-vous)'),
               ),
               const SizedBox(height: 8),
               Wrap(
@@ -392,7 +392,7 @@ class _SessionScreenState extends State<SessionScreen> {
             if (t != null && t.category.isNotEmpty)
               Text('QUÊTE ${t.category.toUpperCase()}', style: K.body(12, color: t.category == 'pro' ? K.lime : K.pink, w: FontWeight.w900)),
             if (t != null && t.isBoss)
-              Text('COMBAT CONTRE LE BOSS · ${t.bossHp} PV', style: K.body(12, color: K.coral, w: FontWeight.w900)),
+              Text('COMBAT CONTRE LE BOSS · ${t.bossHp} min de PV', style: K.body(12, color: K.coral, w: FontWeight.w900)),
             Text(s.title, style: K.display(24)),
             const SizedBox(height: 20),
             Center(

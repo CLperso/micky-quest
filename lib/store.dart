@@ -695,12 +695,15 @@ class AppStore extends ChangeNotifier {
     if (t.calEventId.isNotEmpty) await _planChanged();
   }
 
+  /// Points de vie du boss = minutes de travail estimées (5 h si rien n'est précisé).
+  int bossTotal(Task t) => t.estimateMin > 0 ? max(60, t.estimateMin) : 300;
+
   Future<void> setBoss(Task t) async {
     for (final x in tasks) {
       x.isBoss = false;
     }
     t.isBoss = true;
-    t.bossHp = 100;
+    t.bossHp = bossTotal(t);
     await commit();
   }
 
@@ -880,7 +883,8 @@ class AppStore extends ChangeNotifier {
     _gainXp(min(180, minutes).round(), 'Session');
     final t = taskById(s.taskId);
     if (t != null && t.isBoss) {
-      t.bossHp = max(0, t.bossHp - max(5, (minutes / 3).round())); // 5 h de travail pour l'abattre
+      // chaque minute de session enlève un point de vie ; les boss d'avant (100 PV) suivent la même règle
+      t.bossHp = max(0, min(t.bossHp, bossTotal(t)) - max(1, minutes.round()));
       if (t.bossHp == 0) {
         t.done = true;
         t.doneAt = s.end;

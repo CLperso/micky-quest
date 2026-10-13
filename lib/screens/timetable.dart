@@ -217,19 +217,38 @@ Future<String?> askText(BuildContext context, String title, {String hint = '', S
   return text?.trim();
 }
 
-/// La journée en blocs : ce qui est prévu, ce qui a été fait.
-class TimetableScreen extends StatefulWidget {
+/// La journée en blocs, en plein écran.
+class TimetableScreen extends StatelessWidget {
   final String? day;
-
-  /// Tâche à poser : touche une heure et elle y va.
   final Task? place;
   const TimetableScreen({super.key, this.day, this.place});
 
   @override
-  State<TimetableScreen> createState() => _TimetableScreenState();
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: const Text('Ma journée')),
+        body: SafeArea(
+          top: false,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 28),
+            children: [TimetableView(day: day, place: place)],
+          ),
+        ),
+      );
 }
 
-class _TimetableScreenState extends State<TimetableScreen> {
+/// La journée en blocs : ce qui est prévu, ce qui a été fait. S'intègre dans une liste.
+class TimetableView extends StatefulWidget {
+  final String? day;
+
+  /// Tâche à poser : touche une heure et elle y va.
+  final Task? place;
+  const TimetableView({super.key, this.day, this.place});
+
+  @override
+  State<TimetableView> createState() => _TimetableViewState();
+}
+
+class _TimetableViewState extends State<TimetableView> {
   late DateTime _day;
   static const _hourH = 64.0;
   List<CalEvent> _events = [];
@@ -321,31 +340,26 @@ class _TimetableScreenState extends State<TimetableScreen> {
     final timed = _events.where((e) => !e.allDay).toList();
 
     const names = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(isToday ? 'Ma journée' : '${names[_day.weekday - 1]} ${_day.day}/${_day.month}'),
-        actions: [
-          IconButton(
-            onPressed: () => setState(() {
-              _day = _day.subtract(const Duration(days: 1));
-              _events = [];
-            }),
-            icon: const Icon(Icons.chevron_left_rounded),
-          ),
-          IconButton(
-            onPressed: () => setState(() {
-              _day = _day.add(const Duration(days: 1));
-              _events = [];
-            }),
-            icon: const Icon(Icons.chevron_right_rounded),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        top: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 28),
-          children: [
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+            Row(children: [
+              Expanded(child: Text(isToday ? 'Aujourd\'hui' : '${names[_day.weekday - 1]} ${_day.day}/${_day.month}', style: K.display(18))),
+              IconButton(
+                onPressed: () => setState(() {
+                  _day = _day.subtract(const Duration(days: 1));
+                  _events = [];
+                }),
+                icon: const Icon(Icons.chevron_left_rounded, color: K.muted),
+              ),
+              IconButton(
+                onPressed: () => setState(() {
+                  _day = _day.add(const Duration(days: 1));
+                  _events = [];
+                }),
+                icon: const Icon(Icons.chevron_right_rounded, color: K.muted),
+              ),
+            ]),
             Text(
               widget.place != null && widget.place!.plannedAt == 0
                   ? 'Touche l\'heure où tu veux faire « ${widget.place!.title} ».'
@@ -473,8 +487,6 @@ class _TimetableScreenState extends State<TimetableScreen> {
               ),
             ),
           ],
-        ),
-      ),
     );
   }
 

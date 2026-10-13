@@ -15,6 +15,7 @@ import 'settings.dart';
 import 'timetable.dart';
 import 'block.dart';
 import 'house.dart';
+import 'today.dart';
 
 class HomeScreen extends StatelessWidget {
   final void Function(int) onGoTo;
@@ -346,14 +347,14 @@ class HomeScreen extends StatelessWidget {
                     style: K.body(boss == null ? 13 : 15, w: FontWeight.w800, color: boss == null ? K.muted : K.ink)),
                 if (boss != null) ...[
                   const SizedBox(height: 6),
-                  Bar(boss.bossHp / 100, color: K.coral),
+                  Bar(boss.bossHp / store.bossTotal(boss), color: K.coral),
                 ],
               ],
             ),
           ),
           if (boss != null) ...[
             const SizedBox(width: 10),
-            Text('${boss.bossHp} PV', style: K.display(15, color: K.coral, w: FontWeight.w700)),
+            Text('${boss.bossHp >= 60 ? '${boss.bossHp ~/ 60} h${boss.bossHp % 60 == 0 ? '' : ' ${boss.bossHp % 60}'}' : '${boss.bossHp} min'} restantes', style: K.display(14, color: K.coral, w: FontWeight.w700)),
           ],
         ],
       ),
@@ -452,14 +453,14 @@ class TimetableCard extends StatelessWidget {
     return Panel(
       border: K.gold,
       child: InkWell(
-        onTap: () => openScreen(context, const TimetableScreen()),
+        onTap: () => openScreen(context, const TodayScreen(standalone: true)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
               const Icon(Icons.view_day_rounded, color: K.gold),
               const SizedBox(width: 8),
-              Expanded(child: Text('Ma journée', style: K.display(16))),
+              Expanded(child: Text('Aujourd\'hui · tâches et planning', style: K.display(16))),
               Text(planned.isEmpty ? 'planifier' : '${planned.length} bloc${planned.length > 1 ? 's' : ''}', style: K.body(12, color: K.gold, w: FontWeight.w800)),
               const Icon(Icons.chevron_right_rounded, color: K.muted),
             ]),
