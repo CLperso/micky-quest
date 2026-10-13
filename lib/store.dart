@@ -1195,7 +1195,11 @@ class AppStore extends ChangeNotifier {
       if (c.label.isNotEmpty) parts.add(c.label);
       if (c.sinceMin >= 0) parts.add('depuis ${c.sinceMin} min');
       if (c.reason.isNotEmpty) parts.add('raison : ${c.reason.toLowerCase()}');
-      if (c.mood > 0) parts.add('humeur ${moodLabels[c.mood - 1].toLowerCase()}');
+      if (c.emotion.isNotEmpty) {
+        parts.add('${c.emotion}${c.cause.isNotEmpty ? ' (${c.cause})' : ''}');
+      } else if (c.mood > 0) {
+        parts.add('humeur ${moodLabels[c.mood - 1].toLowerCase()}');
+      }
       if (c.energy >= 0) parts.add('énergie ${c.energy} %');
       if (c.note.isNotEmpty) parts.add(c.note);
       ev.add(ReplayEvent(c.ts, 'mood', 'Check-in · ${(Act.labels[c.activity] ?? 'humeur').toLowerCase()}', parts.join(' · ')));

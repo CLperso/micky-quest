@@ -111,7 +111,12 @@ class _CheckinsLogScreenState extends State<CheckinsLogScreen> {
       if (t != null) parts.add(t.title);
       if (c.label.isNotEmpty) parts.add(c.label);
       if (c.sinceMin >= 0) parts.add('${c.sinceMin} min');
-      if (c.mood > 0) parts.add(AppStore.moodLabels[c.mood - 1].toLowerCase());
+      if (c.emotion.isNotEmpty) {
+        parts.add(c.emotion);
+      } else if (c.mood > 0) {
+        parts.add(AppStore.moodLabels[c.mood - 1].toLowerCase());
+      }
+      if (c.cause.isNotEmpty) parts.add('à cause de ${c.cause}');
       if (c.energy >= 0) parts.add('énergie ${c.energy} %');
       if (c.reason.isNotEmpty) parts.add(c.reason);
       if (c.note.isNotEmpty) parts.add(c.note);

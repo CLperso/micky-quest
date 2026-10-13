@@ -340,6 +340,8 @@ class CheckIn {
   String taskId; // quête ou tâche en cours, si précisée
   String label; // activité libre (se préparer, transport…)
   int sinceMin; // depuis combien de minutes, -1 = non précisé
+  String emotion; // le mot le plus juste (grille des émotions)
+  String cause; // la tâche, mon corps, quelqu'un, je ne sais pas
   int mod;
 
   CheckIn({
@@ -352,6 +354,8 @@ class CheckIn {
     this.taskId = '',
     this.label = '',
     this.sinceMin = -1,
+    this.emotion = '',
+    this.cause = '',
     this.mod = 0,
   });
 
@@ -367,6 +371,8 @@ class CheckIn {
         taskId: _s(j['task']),
         label: _s(j['label']),
         sinceMin: _i(j['since'], -1),
+        emotion: _s(j['emo']),
+        cause: _s(j['cause']),
         mod: _i(j['mod']),
       );
 
@@ -375,6 +381,8 @@ class CheckIn {
         'task': taskId,
         'label': label,
         'since': sinceMin,
+        'emo': emotion,
+        'cause': cause,
         'ts': ts,
         'act': activity,
         'why': reason,

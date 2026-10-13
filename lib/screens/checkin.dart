@@ -37,6 +37,10 @@ class _CheckinScreenState extends State<CheckinScreen> {
   final _why = TextEditingController();
   static const _sinceChoices = [5, 15, 30, 45, 60, 90];
   int _mood = 0;
+  int _gridR = -1, _gridC = -1; // grille : rangée 0 = beaucoup d'énergie, colonne 0 = désagréable
+  String _emotion = '';
+  String _cause = '';
+  bool _pauseAsked = false;
   double _energy = 50;
   bool _energySet = false;
   final _note = TextEditingController();
@@ -55,6 +59,12 @@ class _CheckinScreenState extends State<CheckinScreen> {
       if (e.energy >= 0) {
         _energy = e.energy.toDouble();
         _energySet = true;
+      }
+      _emotion = e.emotion;
+      _cause = e.cause;
+      if (e.mood > 0 && e.energy >= 0) {
+        _gridC = e.mood - 1;
+        _gridR = (4 - (e.energy / 25).round()).clamp(0, 4);
       }
       _note.text = e.note;
       final parts = e.reason.split(' · ');
@@ -222,6 +232,8 @@ class _CheckinScreenState extends State<CheckinScreen> {
       e.mood = _mood;
       e.energy = _energySet ? _energy.round() : -1;
       e.note = _note.text.trim();
+      e.emotion = _emotion;
+      e.cause = _cause;
       await store.commit();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Check-in corrigé')));
@@ -238,6 +250,8 @@ class _CheckinScreenState extends State<CheckinScreen> {
       mood: _mood,
       energy: _energySet ? _energy.round() : -1,
       note: _note.text.trim(),
+      emotion: _emotion,
+      cause: _cause,
     ));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Check-in envoyé · +1 XP')));
@@ -446,59 +460,53 @@ class _CheckinScreenState extends State<CheckinScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Comment tu te sens ?', style: K.display(17)),
+                  const SizedBox(height: 2),
+                  Text('Touche la case qui te ressemble : agréable ↔ désagréable, beaucoup ↔ peu d\'énergie.', style: K.body(12, color: K.muted)),
                   const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      for (var i = 1; i <= 5; i++)
-                        Expanded(
-                          child: Semantics(
-                            button: true,
-                            selected: _mood == i,
-                            label: AppStore.moodLabels[i - 1],
-                            child: GestureDetector(
-                              onTap: () => setState(() => _mood = _mood == i ? 0 : i),
-                              child: Column(
-                                children: [
-                                  AnimatedContainer(
-                                    duration: const Duration(milliseconds: 150),
-                                    width: _mood == i ? 50 : 44,
-                                    height: _mood == i ? 50 : 44,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: _mood == i ? K.moodColors[i - 1] : K.raised,
-                                      border: Border.all(color: K.moodColors[i - 1], width: 2),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(AppStore.moodLabels[i - 1],
-                                      style: K.body(11, color: _mood == i ? K.ink : K.muted)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
+                  _moodGrid(),
+                  if (_gridR >= 0) ...[
+                    const SizedBox(height: 12),
+                    Text('Le mot le plus juste ? (facultatif)', style: K.body(13, w: FontWeight.w800)),
+                    const SizedBox(height: 6),
+                    Wrap(spacing: 6, runSpacing: 6, children: [
+                      for (final w in _words())
+                        _chip(w, _emotion == w, _quadColor(), () => setState(() => _emotion = _emotion == w ? '' : w)),
+                    ]),
+                    const SizedBox(height: 10),
+                    Text('Plutôt à cause de…', style: K.body(13, w: FontWeight.w800)),
+                    const SizedBox(height: 6),
+                    Wrap(spacing: 6, runSpacing: 6, children: [
+                      for (final c in const ['la tâche', 'mon corps (faim, fatigue)', 'quelqu\'un', 'je ne sais pas'])
+                        _chip(c, _cause == c, K.gold, () => setState(() => _cause = _cause == c ? '' : c)),
+                    ]),
+                  ],
+                  if (_gridC >= 0 && _gridC <= 1 && !_pauseAsked && widget.existing == null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: const Color(0xFF2A1630), borderRadius: BorderRadius.circular(16), border: Border.all(color: K.coral, width: 2)),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('Ça a l\'air lourd. Tu veux une pause ?', style: K.body(14, w: FontWeight.w800)),
+                        const SizedBox(height: 8),
+                        Row(children: [
+                          Expanded(child: _pauseBtn('Pause 10 min', K.coral, K.bg, () async {
+                            await store.startPause('Repos', DateTime.now().add(const Duration(minutes: 10)));
+                            await store.noteSerenity('pause');
+                            setState(() => _pauseAsked = true);
+                            if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pause de 10 min, check-ins coupés. Respire.')));
+                          })),
+                          const SizedBox(width: 6),
+                          Expanded(child: _pauseBtn('Coup de pouce', K.raised, K.ink, () {
+                            setState(() => _pauseAsked = true);
+                            openScreen(context, const BlockScreen());
+                          })),
+                          const SizedBox(width: 6),
+                          Expanded(child: _pauseBtn('Non, ça va', K.raised, K.ink, () => setState(() => _pauseAsked = true))),
+                        ]),
+                      ]),
+                    ),
+                  ],
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Text('Énergie', style: K.body(14)),
-                      Expanded(
-                        child: Slider(
-                          value: _energy,
-                          max: 100,
-                          onChanged: (v) => setState(() {
-                            _energy = v;
-                            _energySet = true;
-                          }),
-                        ),
-                      ),
-                      SizedBox(
-                        width: 44,
-                        child: Text(_energySet ? '${_energy.round()} %' : '—', style: K.body(13, color: K.cyan)),
-                      ),
-                    ],
-                  ),
                   TextField(
                     controller: _note,
                     textCapitalization: TextCapitalization.sentences,
@@ -556,6 +564,107 @@ class _CheckinScreenState extends State<CheckinScreen> {
                 Text(label, textAlign: TextAlign.center, style: K.body(11, w: FontWeight.w800)),
               ],
             ),
+          ),
+        ),
+      );
+
+  static const _cellColors = {
+    'hu': Color(0xFFB5443A), // énergie haute, désagréable
+    'hp': Color(0xFFC9A227), // énergie haute, agréable
+    'lu': Color(0xFF3B5BA8), // énergie basse, désagréable
+    'lp': Color(0xFF3E8E57), // énergie basse, agréable
+  };
+
+  Color _cellColor(int r, int c) {
+    if (r < 2 && c < 2) return _cellColors['hu']!;
+    if (r < 2 && c > 2) return _cellColors['hp']!;
+    if (r > 2 && c < 2) return _cellColors['lu']!;
+    if (r > 2 && c > 2) return _cellColors['lp']!;
+    return K.raised;
+  }
+
+  Color _quadColor() => _gridR < 0 ? K.gold : (_cellColor(_gridR, _gridC) == K.raised ? K.gold : _cellColor(_gridR, _gridC));
+
+  List<String> _words() {
+    final high = _gridR <= 1, low = _gridR >= 3;
+    final bad = _gridC <= 1, good = _gridC >= 3;
+    if (high && bad) return ['débordée', 'agacée', 'anxieuse', 'frustrée', 'pressée', 'en colère'];
+    if (high && good) return ['motivée', 'enthousiaste', 'concentrée', 'joyeuse', 'fière', 'excitée'];
+    if (low && bad) return ['fatiguée', 'triste', 'découragée', 'vide', 'lasse', 'seule'];
+    if (low && good) return ['calme', 'détendue', 'sereine', 'reposée', 'satisfaite', 'reconnaissante'];
+    return ['neutre', 'bof', 'ailleurs', 'tranquille', 'tendue', 'curieuse'];
+  }
+
+  Widget _moodGrid() => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 18,
+            child: RotatedBox(
+              quarterTurns: 3,
+              child: Text('ÉNERGIE →', textAlign: TextAlign.center, style: K.body(10, color: K.muted, w: FontWeight.w900)),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Column(children: [
+              for (var r = 0; r < 5; r++)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(children: [
+                    for (var c = 0; c < 5; c++)
+                      Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.only(right: c < 4 ? 4 : 0),
+                          child: AspectRatio(
+                            aspectRatio: 1.25,
+                            child: GestureDetector(
+                              onTap: () => setState(() {
+                                if (_gridR == r && _gridC == c) {
+                                  _gridR = _gridC = -1;
+                                  _mood = 0;
+                                  _energySet = false;
+                                } else {
+                                  _gridR = r;
+                                  _gridC = c;
+                                  _mood = c + 1;
+                                  _energy = (4 - r) * 25.0;
+                                  _energySet = true;
+                                  if (!_words().contains(_emotion)) _emotion = '';
+                                }
+                              }),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 120),
+                                decoration: BoxDecoration(
+                                  color: _cellColor(r, c).withValues(alpha: _gridR == r && _gridC == c ? 1 : 0.8),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: _gridR == r && _gridC == c ? K.ink : Colors.transparent, width: 3),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ]),
+                ),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                Text('désagréable', style: K.body(10, color: K.muted, w: FontWeight.w800)),
+                Text('agréable', style: K.body(10, color: K.muted, w: FontWeight.w800)),
+              ]),
+            ]),
+          ),
+        ],
+      );
+
+  Widget _pauseBtn(String label, Color bg, Color fg, VoidCallback onTap) => SizedBox(
+        height: 44,
+        child: Material(
+          color: bg,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: onTap,
+            child: Center(child: Text(label, textAlign: TextAlign.center, style: K.body(12, color: fg, w: FontWeight.w800))),
           ),
         ),
       );
