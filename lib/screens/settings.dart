@@ -170,31 +170,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
             ),
-            const SectionLabel('Calendrier Notion'),
+            const SectionLabel('Agenda'),
             Panel(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '1. Crée une intégration sur notion.so/my-integrations et copie son jeton secret.\n'
-                    '2. Dans ta base de données calendrier, menu ··· › Connexions › ajoute l\'intégration.\n'
-                    '3. Colle ici le jeton et le lien de la base.',
-                    style: K.body(13, color: K.muted),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(controller: _token, obscureText: true, decoration: const InputDecoration(labelText: 'Jeton secret')),
-                  const SizedBox(height: 8),
-                  TextField(controller: _db, decoration: const InputDecoration(labelText: 'Lien ou identifiant de la base')),
-                  const SizedBox(height: 8),
-                  Row(children: [
-                    Expanded(child: TextField(controller: _titleProp, decoration: const InputDecoration(labelText: 'Colonne titre'))),
-                    const SizedBox(width: 8),
-                    Expanded(child: TextField(controller: _dateProp, decoration: const InputDecoration(labelText: 'Colonne date'))),
-                  ]),
-                  const SizedBox(height: 6),
-                  Text(store.notionReady ? 'Notion est configuré.' : 'Notion n\'est pas encore configuré.',
-                      style: K.body(12, color: store.notionReady ? K.lime : K.muted)),
-                ],
+              child: Text(
+                'Au feu de camp, le bouton « Agenda » ouvre ton agenda Google avec la tâche déjà remplie : '
+                'choisis le jour, valide, et elle apparaît aussi dans Notion Calendar. Aucun réglage nécessaire.',
+                style: K.body(13, color: K.muted),
               ),
             ),
             const SectionLabel('Synchronisation téléphone ↔ tablette'),

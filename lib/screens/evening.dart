@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../agenda.dart';
 import '../main.dart';
 import '../models.dart';
 import '../notifications.dart';
@@ -135,30 +136,30 @@ class _EveningScreenState extends State<EveningScreen> {
         await store.removeTask(t);
         setState(() => _done[t.id] = 'Effacée');
         break;
-      case 'notion':
-        if (!store.notionReady) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Configure d\'abord Notion dans les Réglages.')),
-          );
-          return;
-        }
+      case 'agenda':
         final date = await showDatePicker(
           context: context,
           initialDate: DateTime.now().add(const Duration(days: 1)),
           firstDate: DateTime.now(),
           lastDate: DateTime.now().add(const Duration(days: 365)),
-          helpText: 'Quel jour dans Notion ?',
+          helpText: 'Quel jour dans ton agenda ?',
         );
         if (date == null || !mounted) return;
-        final title = t.title;
-        final err = await store.sendToNotion(t, date);
+        final time = await showTimePicker(
+          context: context,
+          initialTime: const TimeOfDay(hour: 9, minute: 0),
+          helpText: 'À quelle heure ? (Annuler = toute la journée)',
+        );
+        if (!mounted) return;
+        final at = time == null ? null : DateTime(date.year, date.month, date.day, time.hour, time.minute);
+        final err = await addToPhoneAgenda(t.title, date, at: at, minutes: t.estimateMin > 0 ? t.estimateMin : 60);
         if (!mounted) return;
         if (err == null) {
-          setState(() => _done[t.id] = 'Dans Notion le ${date.day}/${date.month}');
+          await store.removeTask(t);
+          setState(() => _done[t.id] = 'Dans l\'agenda le ${date.day}/${date.month}');
         } else {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
         }
-        debugPrint('Notion : $title');
         break;
     }
   }
@@ -237,7 +238,7 @@ class _EveningScreenState extends State<EveningScreen> {
                     Row(children: [
                       Expanded(child: _triageBtn('Demain', K.lime, () => _triage(t, 'tomorrow'))),
                       const SizedBox(width: 6),
-                      Expanded(child: _triageBtn('Notion', K.cyan, () => _triage(t, 'notion'))),
+                      Expanded(child: _triageBtn('Agenda', K.cyan, () => _triage(t, 'agenda'))),
                       const SizedBox(width: 6),
                       Expanded(child: _triageBtn('Effacer', K.dim, () => _triage(t, 'delete'))),
                     ]),
