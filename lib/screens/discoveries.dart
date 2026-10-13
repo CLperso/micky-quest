@@ -56,6 +56,8 @@ class DiscoveriesScreen extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 14),
+        const TimeStats(),
+        const SizedBox(height: 12),
         Panel(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -177,4 +179,134 @@ class DiscoveriesScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// Temps pro / perso et heures productives.
+class TimeStats extends StatefulWidget {
+  const TimeStats({super.key});
+
+  @override
+  State<TimeStats> createState() => _TimeStatsState();
+}
+
+class _TimeStatsState extends State<TimeStats> {
+  int _days = 7;
+
+  static String _fmt(double m) {
+    final v = m.round();
+    return v >= 60 ? '${v ~/ 60} h ${(v % 60).toString().padLeft(2, '0')}' : '$v min';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final cat = _days == 1 ? store.minutesByCategory(store.todayKey) : store.minutesByCategoryLast(_days);
+    final pro = cat[Act.pro] ?? 0;
+    final perso = cat[Act.perso] ?? 0;
+    final rest = (cat[Act.pause] ?? 0) + (cat[Act.phone] ?? 0) + (cat[Act.nothing] ?? 0);
+    final total = pro + perso + rest;
+    final hours = store.proByHour(_days == 1 ? 1 : _days);
+    final maxH = hours.fold(0.0, (a, b) => a > b ? a : b);
+    final ranked = [for (var h = 0; h < 24; h++) h]..sort((a, b) => hours[b].compareTo(hours[a]));
+    final top = ranked.take(3).where((h) => hours[h] > 0).toList()..sort();
+
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text('Ton temps', style: K.display(16))),
+              for (final d in [1, 7, 30])
+                Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: ChoiceChip(
+                    label: Text(d == 1 ? 'Auj.' : '$d j'),
+                    selected: _days == d,
+                    onSelected: (_) => setState(() => _days = d),
+                    selectedColor: K.cyan,
+                    labelStyle: K.body(12, color: _days == d ? K.bg : K.ink),
+                    backgroundColor: K.raised,
+                    side: BorderSide.none,
+                    showCheckmark: false,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (total == 0)
+            Text('Réponds aux check-ins ou lance des sessions pour remplir ces stats.', style: K.body(13, color: K.muted))
+          else ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: SizedBox(
+                height: 14,
+                child: Row(children: [
+                  if (pro > 0) Expanded(flex: (pro * 10).round(), child: Container(color: K.lime)),
+                  if (perso > 0) Expanded(flex: (perso * 10).round(), child: Container(color: K.pink)),
+                  if (rest > 0) Expanded(flex: (rest * 10).round(), child: Container(color: K.dim)),
+                ]),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(child: _tile('Pro', pro, total, K.lime)),
+              const SizedBox(width: 8),
+              Expanded(child: _tile('Perso', perso, total, K.pink)),
+              const SizedBox(width: 8),
+              Expanded(child: _tile('Autre', rest, total, K.dim)),
+            ]),
+          ],
+          const SizedBox(height: 16),
+          Text('Tes heures productives (pro)', style: K.display(15)),
+          Text(
+            top.isEmpty
+                ? 'Pas encore de données.'
+                : 'Tu travailles surtout ${top.map((h) => '${h}h').join(', ')}.',
+            style: K.body(12, color: K.muted),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 72,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (var h = 6; h < 24; h++)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 1.5),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Container(
+                            height: maxH == 0 ? 2 : 2 + 54 * hours[h] / maxH,
+                            decoration: BoxDecoration(
+                              color: top.contains(h) ? K.lime : K.raised,
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(h % 3 == 0 ? '$h' : '', style: K.body(9, color: K.muted)),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tile(String label, double v, double total, Color c) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+        decoration: BoxDecoration(color: K.bg, borderRadius: BorderRadius.circular(12)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(_fmt(v), style: K.display(16, color: c, w: FontWeight.w700)),
+          Text('$label · ${total == 0 ? 0 : (100 * v / total).round()} %', style: K.body(11, color: K.muted)),
+        ]),
+      );
 }

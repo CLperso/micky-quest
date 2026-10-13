@@ -402,7 +402,7 @@ class AppStore extends ChangeNotifier {
   int get statFocus {
     final c = _recentCheckins(7).where((c) => c.activity.isNotEmpty).toList();
     if (c.isEmpty) return 0;
-    final q = c.where((x) => x.activity == Act.quest).length;
+    final q = c.where((x) => Act.isOnTask(x.activity)).length;
     return (20 * q / c.length).round();
   }
 
@@ -721,12 +721,85 @@ class AppStore extends ChangeNotifier {
 
   double minutesOnTask(Task t, String day) => minutesByTask(day)[t.id] ?? 0;
 
+  /// Catégorie d'un check-in : pro, perso, pause, phone ou none.
+  String categoryOf(CheckIn c) {
+    if (c.activity == Act.quest || c.activity == Act.other) {
+      final t = c.taskId.isEmpty ? null : taskById(c.taskId);
+      return t?.category == 'perso' ? Act.perso : Act.pro;
+    }
+    return c.activity;
+  }
+
+  double _checkinMinutes(List<CheckIn> sorted, int i) {
+    final c = sorted[i];
+    if (c.sinceMin >= 0) return c.sinceMin.toDouble();
+    final prev = i > 0 ? sorted[i - 1].ts : c.ts - settings.intervalMin * 60000;
+    return min(settings.intervalMin.toDouble(), (c.ts - prev) / 60000.0);
+  }
+
+  bool _duringSession(int ts) => sessions.any((s) => ts >= s.start && (s.running || ts <= s.end));
+
+  /// Minutes par catégorie (pro, perso, pause, phone, none) pour un jour.
+  Map<String, double> minutesByCategory(String day) {
+    final m = <String, double>{};
+    void add(String k, double v) => m[k] = (m[k] ?? 0) + v;
+    for (final s in sessionsOn(day)) {
+      final t = taskById(s.taskId);
+      add(t?.category == 'perso' ? Act.perso : Act.pro,
+          s.running ? DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(s.start)).inMinutes.toDouble() : s.actualMin);
+    }
+    final cs = checkinsOn(day)..sort((a, b) => a.ts.compareTo(b.ts));
+    for (var i = 0; i < cs.length; i++) {
+      if (cs[i].activity.isEmpty || _duringSession(cs[i].ts)) continue;
+      add(categoryOf(cs[i]), _checkinMinutes(cs, i));
+    }
+    return m;
+  }
+
+  /// Cumul par catégorie sur les N derniers jours.
+  Map<String, double> minutesByCategoryLast(int days) {
+    final m = <String, double>{};
+    for (var i = 0; i < days; i++) {
+      minutesByCategory(dayKey(DateTime.now().subtract(Duration(days: i)))).forEach((k, v) => m[k] = (m[k] ?? 0) + v);
+    }
+    return m;
+  }
+
+  /// Minutes de travail (pro) par heure de la journée, sur les N derniers jours.
+  List<double> proByHour(int days) {
+    final out = List.filled(24, 0.0);
+    final from = DateTime.now().subtract(Duration(days: days)).millisecondsSinceEpoch;
+    void spread(int start, int end) {
+      var t = start;
+      while (t < end) {
+        final d = DateTime.fromMillisecondsSinceEpoch(t);
+        final nextHour = DateTime(d.year, d.month, d.day, d.hour + 1).millisecondsSinceEpoch;
+        final stop = min(end, nextHour);
+        out[d.hour] += (stop - t) / 60000.0;
+        t = stop;
+      }
+    }
+
+    for (final s in sessions) {
+      if (s.start < from || taskById(s.taskId)?.category == 'perso') continue;
+      spread(s.start, s.running ? DateTime.now().millisecondsSinceEpoch : s.end);
+    }
+    final cs = checkins.where((c) => c.ts >= from).toList()..sort((a, b) => a.ts.compareTo(b.ts));
+    for (var i = 0; i < cs.length; i++) {
+      if (categoryOf(cs[i]) != Act.pro || _duringSession(cs[i].ts)) continue;
+      final mins = _checkinMinutes(cs, i);
+      spread(cs[i].ts - (mins * 60000).round(), cs[i].ts);
+    }
+    return out;
+  }
+
   /// Répartition des activités du jour d'après les check-ins.
   Map<String, int> activityShare(String day) {
     final m = <String, int>{};
     for (final c in checkinsOn(day)) {
       if (c.activity.isEmpty) continue;
-      m[c.activity] = (m[c.activity] ?? 0) + 1;
+      final k = categoryOf(c);
+      m[k] = (m[k] ?? 0) + 1;
     }
     return m;
   }
@@ -754,7 +827,7 @@ class AppStore extends ChangeNotifier {
       final col = (d.hour - 8) ~/ 2;
       if (col < 0 || col > 6) continue;
       tot[d.weekday - 1][col]++;
-      if (c.activity == Act.quest) hits[d.weekday - 1][col]++;
+      if (Act.isWork(c.activity)) hits[d.weekday - 1][col]++;
     }
     return List.generate(
         7, (r) => List.generate(7, (c) => tot[r][c] == 0 ? null : hits[r][c] / tot[r][c]));
@@ -780,7 +853,7 @@ class AppStore extends ChangeNotifier {
         final b = (h ~/ 2) * 2;
         byBlock.putIfAbsent(b, () => [0, 0]);
         byBlock[b]![1]++;
-        if (c.activity == Act.quest) byBlock[b]![0]++;
+        if (Act.isWork(c.activity)) byBlock[b]![0]++;
       }
       final ok = byBlock.entries.where((e) => e.value[1] >= 4).toList();
       if (ok.length >= 3) {
@@ -935,7 +1008,7 @@ class AppStore extends ChangeNotifier {
       for (final c in withAct) {
         final w = DateTime.fromMillisecondsSinceEpoch(c.ts).weekday - 1;
         by[w][1]++;
-        if (c.activity == Act.quest) by[w][0]++;
+        if (Act.isWork(c.activity)) by[w][0]++;
       }
       final ok = [for (var i = 0; i < 7; i++) if (by[i][1] >= 4) i];
       if (ok.length >= 4) {

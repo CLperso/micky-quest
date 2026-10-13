@@ -6,6 +6,7 @@ import '../models.dart';
 import '../notifications.dart';
 import '../store.dart';
 import '../theme.dart';
+import 'plant.dart';
 
 const habitColors = [0xFF4FE3FF, 0xFFB8FF3C, 0xFFFFD24A, 0xFFFF6FD8, 0xFFFF8A5B];
 
@@ -91,10 +92,20 @@ class HabitRow extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () => showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                builder: (_) => AppScope(store: store, child: HabitPlantSheet(habit: h)),
+              ),
+              child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(h.name, style: K.body(15, w: FontWeight.w800)),
+                Row(children: [
+                  Expanded(child: Text(h.name, style: K.body(15, w: FontWeight.w800))),
+                  SizedBox(width: 30, height: 30, child: PlantView(strength: strength, color: c, size: 30)),
+                ]),
                 Text(
                   lv == 1 && h.mini.isNotEmpty
                       ? 'Mini : ${h.mini}'
@@ -106,6 +117,7 @@ class HabitRow extends StatelessWidget {
                 const SizedBox(height: 4),
                 Bar(strength, color: c, height: 5),
               ],
+            ),
             ),
           ),
           const SizedBox(width: 10),
@@ -187,6 +199,15 @@ class HabitsScreen extends StatelessWidget {
         children: [
           Row(
             children: [
+              GestureDetector(
+                onTap: () => showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  builder: (_) => AppScope(store: store, child: HabitPlantSheet(habit: h)),
+                ),
+                child: PlantView(strength: s, color: c, size: 56),
+              ),
+              const SizedBox(width: 10),
               Expanded(child: Text(h.name, style: K.display(17, color: h.archived ? K.muted : K.ink))),
               Pill(AppStore.strengthLabel(s), color: c),
               PopupMenuButton<String>(

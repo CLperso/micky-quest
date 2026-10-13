@@ -6,6 +6,8 @@ import 'package:micky_quest/main.dart';
 import 'package:micky_quest/screens/discoveries.dart';
 import 'package:micky_quest/screens/evening.dart';
 import 'package:micky_quest/screens/home.dart';
+import 'package:micky_quest/screens/checkin.dart';
+import 'package:micky_quest/screens/habits.dart';
 import 'package:micky_quest/screens/matrix.dart';
 import 'package:micky_quest/store.dart';
 import 'package:micky_quest/theme.dart';
@@ -69,6 +71,19 @@ void main() {
   testWidgets('Soir', (t) async {
     phone(t);
     await check(t, const EveningTab(), 'Soir');
+  });
+  testWidgets('Check-in', (t) async {
+    phone(t);
+    captureErrors();
+    await check(t, const CheckinScreen(), 'Check-in');
+    await t.tap(find.text('Perso'));
+    await t.pump();
+    expect(find.text('Depuis combien de temps ?'), findsOneWidget);
+  });
+  testWidgets('Habitudes', (t) async {
+    phone(t);
+    captureErrors();
+    await check(t, const HabitsScreen(), 'Habitudes');
   });
   testWidgets('Application complète', (t) async {
     phone(t);

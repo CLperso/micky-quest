@@ -343,6 +343,8 @@ class ReplayScreen extends StatelessWidget {
     'reflect': K.coral,
   };
   static const _actColors = {
+    Act.pro: K.lime,
+    Act.perso: K.pink,
     Act.quest: K.lime,
     Act.other: K.gold,
     Act.pause: K.pink,

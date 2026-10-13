@@ -177,18 +177,31 @@ class SessionRec {
 
 /// Activités proposées au check-in.
 class Act {
-  static const quest = 'quest';
-  static const other = 'other';
+  static const pro = 'pro';
+  static const perso = 'perso';
+  static const quest = 'quest'; // ancien : quête (pro)
+  static const other = 'other'; // ancien : autre tâche
   static const pause = 'pause';
   static const phone = 'phone';
   static const nothing = 'none';
   static const labels = {
+    pro: 'Pro',
+    perso: 'Perso',
     quest: 'Une quête',
     other: 'Autre tâche',
     pause: 'Pause',
     phone: 'Téléphone, écrans',
     nothing: 'Rien de précis',
   };
+  static const choices = [pro, perso, pause, phone, nothing];
+  static const hints = {
+    pro: 'thèse, cours, mails de boulot…',
+    perso: 'se préparer, ménage, courses, soi…',
+  };
+
+  /// Travail (pro) ou vie perso : du temps sur quelque chose de choisi.
+  static bool isWork(String a) => a == pro || a == quest || a == other;
+  static bool isOnTask(String a) => isWork(a) || a == perso;
   static const reasons = [
     'Ennui',
     'Bloquée',

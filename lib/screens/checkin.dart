@@ -139,9 +139,9 @@ class _CheckinScreenState extends State<CheckinScreen> {
     await store.addCheckIn(CheckIn(
       ts: DateTime.now().millisecondsSinceEpoch,
       activity: _act,
-      taskId: _act == Act.quest || _act == Act.other ? _taskId : '',
+      taskId: Act.isOnTask(_act) ? _taskId : '',
       sinceMin: _since,
-      reason: _act == Act.quest ? '' : [if (_reason.isNotEmpty) _reason, if (why.isNotEmpty) why].join(' · '),
+      reason: Act.isWork(_act) ? '' : [if (_reason.isNotEmpty) _reason, if (why.isNotEmpty) why].join(' · '),
       mood: _mood,
       energy: _energySet ? _energy.round() : -1,
       note: _note.text.trim(),
@@ -163,7 +163,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
       });
     final run = store.runningSession;
     if (run != null && _act.isEmpty && _taskId.isEmpty && widget.focusLog == null) {
-      _act = Act.quest;
+      _act = store.taskById(run.taskId)?.category == 'perso' ? Act.perso : Act.pro;
       _taskId = run.taskId;
     }
     return Scaffold(
@@ -189,16 +189,18 @@ class _CheckinScreenState extends State<CheckinScreen> {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      for (final e in Act.labels.entries)
-                        _chip(e.value, _act == e.key, e.key == Act.quest ? K.lime : K.cyan, () => setState(() {
-                              _act = _act == e.key ? '' : e.key;
-                              if (_act != Act.quest && _act != Act.other) _taskId = '';
+                      for (final a in Act.choices)
+                        _chip(Act.labels[a]!, _act == a, a == Act.pro ? K.lime : (a == Act.perso ? K.pink : K.cyan), () => setState(() {
+                              _act = _act == a ? '' : a;
+                              if (!Act.isOnTask(_act)) _taskId = '';
                             })),
                     ],
                   ),
-                  if (_act == Act.quest || _act == Act.other) ...[
-                    const SizedBox(height: 14),
-                    Text(_act == Act.quest ? 'Laquelle ?' : 'Laquelle ? (facultatif)', style: K.display(15)),
+                  if (_act == Act.pro || _act == Act.perso) ...[
+                    const SizedBox(height: 4),
+                    Text(Act.hints[_act]!, style: K.body(12, color: K.muted)),
+                    const SizedBox(height: 12),
+                    Text('Sur quelle tâche ? (facultatif)', style: K.display(15)),
                     const SizedBox(height: 8),
                     if (tasks.isEmpty)
                       Text('Aucune tâche du jour : ajoute-les dans Quêtes ou au briefing.', style: K.body(13, color: K.muted)),
@@ -206,7 +208,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        for (final t in tasks)
+                        for (final t in tasks.where((t) => t.category.isEmpty || t.category == _act))
                           _chip(
                             t.category.isNotEmpty ? '${t.category == 'pro' ? 'PRO' : 'PERSO'} · ${t.title}' : t.title,
                             _taskId == t.id,
@@ -229,9 +231,10 @@ class _CheckinScreenState extends State<CheckinScreen> {
                       ],
                     ),
                   ],
-                  if (_act.isNotEmpty && _act != Act.quest) ...[
+                  if (_act.isNotEmpty && !Act.isWork(_act)) ...[
                     const SizedBox(height: 14),
-                    Text('Pourquoi pas sur une quête ?', style: K.display(15)),
+                    Text(_act == Act.perso ? 'Un mot sur ce que tu fais ? (facultatif)' : 'Pourquoi pas sur une quête ?',
+                        style: K.display(15)),
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 8,
