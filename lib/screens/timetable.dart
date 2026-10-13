@@ -155,6 +155,12 @@ Future<void> planSheet(BuildContext context, Task t) async {
               onTap: () => Navigator.pop(ctx, 'when'),
             ),
             ListTile(
+              leading: const Icon(Icons.view_day_rounded, color: K.lime),
+              title: Text('Choisir un créneau dans « Ma journée »', style: K.body(15)),
+              subtitle: Text('voir les blocs et les événements de l\'agenda avant de choisir', style: K.body(12, color: K.muted)),
+              onTap: () => Navigator.pop(ctx, 'timetable'),
+            ),
+            ListTile(
               leading: const Icon(Icons.rule_rounded, color: K.cyan),
               title: Text('Seulement quand…', style: K.body(15)),
               subtitle: Text('« …j\'ai reçu la réponse de X », « …il fait jour »', style: K.body(12, color: K.muted)),
@@ -176,6 +182,8 @@ Future<void> planSheet(BuildContext context, Task t) async {
     if (at == null) return;
     await store.planTask(t, at);
     await rescheduleAll(store);
+  } else if (choice == 'timetable') {
+    await openScreen(context, TimetableScreen(place: t));
   } else if (choice == 'cond') {
     final c = await askText(context, 'Seulement quand…', hint: 'j\'ai reçu la réponse de Nathalie');
     if (c == null || c.isEmpty) return;
@@ -212,7 +220,10 @@ Future<String?> askText(BuildContext context, String title, {String hint = '', S
 /// La journée en blocs : ce qui est prévu, ce qui a été fait.
 class TimetableScreen extends StatefulWidget {
   final String? day;
-  const TimetableScreen({super.key, this.day});
+
+  /// Tâche à poser : touche une heure et elle y va.
+  final Task? place;
+  const TimetableScreen({super.key, this.day, this.place});
 
   @override
   State<TimetableScreen> createState() => _TimetableScreenState();
@@ -245,6 +256,13 @@ class _TimetableScreenState extends State<TimetableScreen> {
 
   Future<void> _addAt(DateTime at) async {
     final store = AppScope.read(context);
+    final toPlace = widget.place;
+    if (toPlace != null && toPlace.plannedAt == 0) {
+      await store.planTask(toPlace, at);
+      await rescheduleAll(store);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('« ${toPlace.title} » à ${hm(at)}')));
+      return;
+    }
     final open = store.openTasks.where((t) => !t.done).toList();
     final chosen = await showModalBottomSheet<Task?>(
       context: context,
@@ -329,7 +347,9 @@ class _TimetableScreenState extends State<TimetableScreen> {
           padding: const EdgeInsets.fromLTRB(12, 4, 12, 28),
           children: [
             Text(
-              planned.isEmpty
+              widget.place != null && widget.place!.plannedAt == 0
+                  ? 'Touche l\'heure où tu veux faire « ${widget.place!.title} ».'
+                  : planned.isEmpty
                   ? 'Touche une heure pour y poser une tâche. Micky te dira « c\'est l\'heure ».'
                   : '${planned.length} bloc${planned.length > 1 ? 's' : ''} prévu${planned.length > 1 ? 's' : ''} · en vert, ce que tu as vraiment fait.',
               style: K.body(13, color: K.muted),

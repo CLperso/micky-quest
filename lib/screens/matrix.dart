@@ -39,6 +39,8 @@ class _MatrixScreenState extends State<MatrixScreen> {
     HapticFeedback.selectionClick();
     setState(() => _selected = null);
     await store.moveTask(t, quad);
+    // Planifier, c'est dire quand : une heure dans la journée, ou une condition
+    if (quad == Quad.plan && t.plannedAt == 0 && t.condition.isEmpty && mounted) await planSheet(context, t);
   }
 
   @override
@@ -51,7 +53,15 @@ class _MatrixScreenState extends State<MatrixScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (!widget.standalone) Text('Tri des quêtes', style: K.display(24)),
+          if (!widget.standalone)
+            Row(children: [
+              Expanded(child: Text('Tri des quêtes', style: K.display(24))),
+              TextButton.icon(
+                onPressed: () => openScreen(context, const TimetableScreen()),
+                icon: const Icon(Icons.view_day_rounded, color: K.gold, size: 18),
+                label: const Text('Ma journée'),
+              ),
+            ]),
           Text(
             _selected == null
                 ? 'Touche une tâche pour la ranger en un geste (ou glisse-la).'
@@ -300,11 +310,7 @@ class _MatrixScreenState extends State<MatrixScreen> {
     );
     if (!mounted || action == null) return;
     if (Quad.all.contains(action)) {
-      if (action == Quad.plan && t.plannedAt == 0 && t.condition.isEmpty) {
-        await planSheet(context, t);
-      } else {
-        await _move(t.id, action);
-      }
+      await _move(t.id, action);
       return;
     }
     switch (action) {
