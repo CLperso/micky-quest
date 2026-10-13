@@ -58,6 +58,7 @@ class Task {
   int plannedMin; // durée du bloc prévu
   String condition; // « seulement quand… »
   int postponed; // nombre de reports du rappel
+  String calEventId; // événement écrit dans l'agenda du téléphone
   int mod;
 
   Task({
@@ -79,6 +80,7 @@ class Task {
     this.plannedMin = 0,
     this.condition = '',
     this.postponed = 0,
+    this.calEventId = '',
     this.mod = 0,
   })  : id = id ?? newId(),
         createdDay = createdDay ?? day;
@@ -104,6 +106,7 @@ class Task {
         plannedMin: _i(j['atMin']),
         condition: _s(j['cond']),
         postponed: _i(j['post']),
+        calEventId: _s(j['calEv']),
         mod: _i(j['mod']),
       );
 
@@ -126,6 +129,7 @@ class Task {
         'atMin': plannedMin,
         'cond': condition,
         'post': postponed,
+        'calEv': calEventId,
         'mod': mod,
       };
 }
@@ -527,6 +531,9 @@ class Settings {
   bool stylusOnly;
   double monthlyBudget;
   List<String> projects; // projets perso précisés dans les check-ins (« ces apps »…)
+  String calendarId; // agenda du téléphone où écrire les blocs ('' = pas connecté)
+  String calendarName;
+  bool calendarRead; // afficher les événements de tous les agendas dans « Ma journée »
 
   Settings({
     this.startHour = 9,
@@ -548,6 +555,9 @@ class Settings {
     this.stylusOnly = true,
     this.monthlyBudget = 0,
     List<String>? projects,
+    this.calendarId = '',
+    this.calendarName = '',
+    this.calendarRead = true,
   }) : projects = projects ?? [];
 
   factory Settings.fromJson(Map<String, dynamic> j) => Settings(
@@ -570,6 +580,9 @@ class Settings {
         stylusOnly: j['stylusOnly'] != false,
         monthlyBudget: (j['budget'] as num?)?.toDouble() ?? 0,
         projects: ((j['projects'] as List?) ?? []).map((e) => e.toString()).toList(),
+        calendarId: _s(j['calId']),
+        calendarName: _s(j['calName']),
+        calendarRead: j['calRead'] != false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -592,6 +605,9 @@ class Settings {
         'stylusOnly': stylusOnly,
         'budget': monthlyBudget,
         'projects': projects,
+        'calId': calendarId,
+        'calName': calendarName,
+        'calRead': calendarRead,
       };
 }
 

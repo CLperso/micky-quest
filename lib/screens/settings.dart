@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../calendar.dart';
 import '../main.dart';
 import '../models.dart';
 import '../notifications.dart';
@@ -170,12 +171,86 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
             ),
-            const SectionLabel('Agenda'),
+            const SectionLabel('Agenda du téléphone'),
             Panel(
-              child: Text(
-                'Au feu de camp, le bouton « Agenda » ouvre ton agenda Google avec la tâche déjà remplie : '
-                'choisis le jour, valide, et elle apparaît aussi dans Notion Calendar. Aucun réglage nécessaire.',
-                style: K.body(13, color: K.muted),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    s.calendarId.isEmpty
+                        ? 'Connecte l\'agenda de ton téléphone (ton Google Agenda y est déjà synchronisé) : tes événements apparaissent dans « Ma journée » et tes blocs prévus y sont écrits, puis remontent vers Google tout seuls.'
+                        : 'Les blocs prévus sont écrits dans « ${s.calendarName} » (préfixe [Micky Quest]). Déplace un bloc dans l\'appli, l\'événement suit.',
+                    style: K.body(13, color: K.muted),
+                  ),
+                  const SizedBox(height: 10),
+                  SecondaryButton(
+                    label: s.calendarId.isEmpty ? 'Connecter mon agenda' : 'Changer d\'agenda',
+                    onPressed: () async {
+                      final ok = await PhoneCalendar.requestAccess();
+                      if (!context.mounted) return;
+                      if (!ok) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Permission agenda refusée (Paramètres Android › Applis › Micky Quest › Autorisations).')));
+                        return;
+                      }
+                      final cals = await PhoneCalendar.writableCalendars();
+                      if (!context.mounted) return;
+                      if (cals.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aucun agenda modifiable trouvé sur ce téléphone.')));
+                        return;
+                      }
+                      final chosen = await showModalBottomSheet<({String id, String name})>(
+                        context: context,
+                        builder: (ctx) => SafeArea(
+                          child: ListView(
+                            shrinkWrap: true,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                                child: Text('Écrire mes blocs dans :', style: K.display(18)),
+                              ),
+                              for (final c in cals)
+                                ListTile(
+                                  leading: const Icon(Icons.event_rounded, color: K.gold),
+                                  title: Text(c.name, style: K.body(15)),
+                                  onTap: () => Navigator.pop(ctx, c),
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                      if (chosen == null) return;
+                      s.calendarId = chosen.id;
+                      s.calendarName = chosen.name;
+                      await store.updateSettings();
+                      await PhoneCalendar.syncAll(store);
+                      if (context.mounted) setState(() {});
+                    },
+                  ),
+                  if (s.calendarId.isNotEmpty) ...[
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('Afficher mes événements dans « Ma journée »', style: K.body(14)),
+                      value: s.calendarRead,
+                      onChanged: (v) async {
+                        s.calendarRead = v;
+                        await store.updateSettings();
+                        setState(() {});
+                      },
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        s.calendarId = '';
+                        s.calendarName = '';
+                        await store.updateSettings();
+                        setState(() {});
+                      },
+                      child: const Text('Déconnecter'),
+                    ),
+                  ],
+                  const SizedBox(height: 4),
+                  Text('Le bouton « Agenda » du feu de camp et de « Pas tout de suite » marche sans réglage : il ouvre l\'agenda avec la tâche préremplie.',
+                      style: K.body(12, color: K.muted)),
+                ],
               ),
             ),
             const SectionLabel('Synchronisation téléphone ↔ tablette'),

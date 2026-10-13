@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import '../agenda.dart';
+import '../calendar.dart';
 import '../main.dart';
 import '../models.dart';
 import '../notifications.dart';
@@ -220,12 +221,24 @@ class TimetableScreen extends StatefulWidget {
 class _TimetableScreenState extends State<TimetableScreen> {
   late DateTime _day;
   static const _hourH = 64.0;
+  List<CalEvent> _events = [];
+  String _eventsFor = '';
 
   @override
   void initState() {
     super.initState();
     _day = widget.day == null ? DateTime.now() : parseDay(widget.day!);
     _day = DateTime(_day.year, _day.month, _day.day);
+  }
+
+  Future<void> _loadEvents() async {
+    final store = AppScope.read(context);
+    if (!store.settings.calendarRead) return;
+    final k = _key;
+    if (_eventsFor == k) return;
+    _eventsFor = k;
+    final ev = await PhoneCalendar.eventsOn(_day);
+    if (mounted && _eventsFor == k) setState(() => _events = ev);
   }
 
   String get _key => dayKey(_day);
@@ -285,6 +298,9 @@ class _TimetableScreenState extends State<TimetableScreen> {
     final isToday = _key == store.todayKey;
     final dayMs = _day.millisecondsSinceEpoch;
     double top(int ts) => (ts - dayMs) / 3600000 * _hourH - startH * _hourH;
+    _loadEvents();
+    final allDay = _events.where((e) => e.allDay).toList();
+    final timed = _events.where((e) => !e.allDay).toList();
 
     const names = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
     return Scaffold(
@@ -292,11 +308,17 @@ class _TimetableScreenState extends State<TimetableScreen> {
         title: Text(isToday ? 'Ma journée' : '${names[_day.weekday - 1]} ${_day.day}/${_day.month}'),
         actions: [
           IconButton(
-            onPressed: () => setState(() => _day = _day.subtract(const Duration(days: 1))),
+            onPressed: () => setState(() {
+              _day = _day.subtract(const Duration(days: 1));
+              _events = [];
+            }),
             icon: const Icon(Icons.chevron_left_rounded),
           ),
           IconButton(
-            onPressed: () => setState(() => _day = _day.add(const Duration(days: 1))),
+            onPressed: () => setState(() {
+              _day = _day.add(const Duration(days: 1));
+              _events = [];
+            }),
             icon: const Icon(Icons.chevron_right_rounded),
           ),
         ],
@@ -312,11 +334,37 @@ class _TimetableScreenState extends State<TimetableScreen> {
                   : '${planned.length} bloc${planned.length > 1 ? 's' : ''} prévu${planned.length > 1 ? 's' : ''} · en vert, ce que tu as vraiment fait.',
               style: K.body(13, color: K.muted),
             ),
+            if (allDay.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Wrap(spacing: 6, runSpacing: 6, children: [for (final e in allDay) Pill(e.title, color: K.muted, fill: K.card)]),
+            ],
+            if (s.calendarId.isEmpty && s.calendarRead)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text('Connecte ton agenda dans Réglages pour voir tes événements ici et y écrire tes blocs.', style: K.body(12, color: K.muted)),
+              ),
             const SizedBox(height: 8),
             SizedBox(
               height: (endH - startH + 1) * _hourH,
               child: Stack(
                 children: [
+                  // événements de l'agenda du téléphone (gris, derrière)
+                  for (final e in timed)
+                    Positioned(
+                      top: top(e.start.millisecondsSinceEpoch) + 8,
+                      left: 48,
+                      right: 4,
+                      height: max(18, e.end.difference(e.start).inMinutes / 60 * _hourH),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: K.card.withValues(alpha: 0.9),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: K.line),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        child: Text('${hm(e.start)} · ${e.title}', style: K.body(11, color: K.muted, w: FontWeight.w800), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ),
+                    ),
                   // grille des heures
                   for (var h = startH; h <= endH; h++)
                     Positioned(
@@ -462,6 +510,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
         if (v == null) return;
         t.plannedMin = v;
         await store.commit();
+        await PhoneCalendar.writeBlock(store, t);
         break;
       case 'unplan':
         await store.unplanTask(t);

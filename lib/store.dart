@@ -54,6 +54,14 @@ class AppStore extends ChangeNotifier {
   Settings settings = Settings();
   String lastChest = '';
 
+  /// Appelé quand le planning change (blocs écrits dans l'agenda du téléphone).
+  Future<void> Function(AppStore)? onPlanChanged;
+  Future<void> _planChanged() async {
+    try {
+      await onPlanChanged?.call(this);
+    } catch (_) {}
+  }
+
   /// Après une session ou une tâche faite, on pose la question « et maintenant ? » dans l'appli :
   /// pas de check-in avant ce moment.
   int skipCheckinsUntil = 0;
@@ -670,17 +678,21 @@ class AppStore extends ChangeNotifier {
       _checkMedals();
     }
     await commit();
+    if (t.calEventId.isNotEmpty) await _planChanged();
   }
 
   Future<void> deferTask(Task t) async {
     t.day = tomorrowKey;
     t.deferred = true;
+    t.plannedAt = 0;
     await commit();
+    await _planChanged();
   }
 
   Future<void> removeTask(Task t) async {
     t.removed = true;
     await commit();
+    if (t.calEventId.isNotEmpty) await _planChanged();
   }
 
   Future<void> setBoss(Task t) async {
@@ -749,6 +761,7 @@ class AppStore extends ChangeNotifier {
     t.condition = condition;
     if (t.quad == Quad.inbox) t.quad = Quad.plan;
     await commit();
+    await _planChanged();
   }
 
   /// « Seulement quand… » : pas d'heure, une condition.
@@ -757,11 +770,13 @@ class AppStore extends ChangeNotifier {
     t.plannedAt = 0;
     if (t.quad == Quad.inbox) t.quad = Quad.plan;
     await commit();
+    await _planChanged();
   }
 
   Future<void> unplanTask(Task t) async {
     t.plannedAt = 0;
     await commit();
+    await _planChanged();
   }
 
   Remind? reminderFor(Task t, int ts) {
@@ -790,7 +805,10 @@ class AppStore extends ChangeNotifier {
     final base = max(ts, DateTime.now().millisecondsSinceEpoch);
     t.plannedAt = base + minutes * 60000;
     t.postponed++;
-    if (save) await commit();
+    if (save) {
+      await commit();
+      await _planChanged();
+    }
     return t.postponed >= 3;
   }
 

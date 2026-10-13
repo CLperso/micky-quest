@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'calendar.dart';
 import 'crash.dart';
 import 'notifications.dart';
 import 'screens/briefing.dart';
@@ -45,6 +46,7 @@ void main() {
       systemNavigationBarColor: K.bg,
     ));
     final store = AppStore();
+    store.onPlanChanged = PhoneCalendar.syncAll;
     try {
       await store.load();
     } catch (e, st) {
