@@ -77,7 +77,7 @@ class _RateSheetState extends State<RateSheet> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: PrimaryButton(
-                    label: '+5 XP',
+                    label: '+2 XP',
                     onPressed: (_diff == 0 && _feel == 0 && _helped.text.trim().isEmpty)
                         ? null
                         : () async {
@@ -256,7 +256,7 @@ class _ReflectionScreenState extends State<ReflectionScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: PrimaryButton(
-                    label: '+10 XP',
+                    label: '+3 XP',
                     onPressed: empty
                         ? null
                         : () async {

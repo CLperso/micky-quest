@@ -496,7 +496,7 @@ class Loot {
   static const rewards = [
     'Joker de série',
     'Thème doré pour 24 h',
-    '+50 XP bonus',
+    '+30 XP bonus',
   ];
 }
 

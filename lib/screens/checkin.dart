@@ -192,7 +192,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
       note: _note.text.trim(),
     ));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Check-in envoyé · +5 XP')));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Check-in envoyé · +1 XP')));
     Navigator.pop(context);
   }
 
@@ -409,7 +409,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
             const SizedBox(height: 10),
             if (!logsFirst) ...logs,
             const SizedBox(height: 16),
-            PrimaryButton(label: widget.existing != null ? 'Enregistrer la correction' : 'Envoyer · +5 XP', onPressed: _send),
+            PrimaryButton(label: widget.existing != null ? 'Enregistrer la correction' : 'Envoyer · +1 XP', onPressed: _send),
           ],
         ),
       ),

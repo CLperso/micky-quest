@@ -11,7 +11,7 @@ const kStateKey = 'quest_state_v1';
 const kPendingKey = 'pending_checkins_v1';
 const kPendingHabitsKey = 'pending_habits_v1';
 
-const xpPerLevel = 400;
+const xpPerLevel = 1000;
 
 class Discovery {
   final String id;
@@ -320,7 +320,7 @@ class AppStore extends ChangeNotifier {
           if (c.activity.isNotEmpty) e.activity = c.activity;
         } else {
           checkins.add(c);
-          _gainXp(5, 'Check-in');
+          _gainXp(1, 'Check-in');
         }
       } catch (_) {}
     }
@@ -439,7 +439,7 @@ class AppStore extends ChangeNotifier {
   Future<void> finishBriefing() async {
     if (!today.briefingDone) {
       today.briefingDone = true;
-      _gainXp(30, 'Briefing du matin');
+      _gainXp(10, 'Briefing du matin');
     }
     await commit();
   }
@@ -448,7 +448,7 @@ class AppStore extends ChangeNotifier {
     var chest = '';
     if (!today.eveningDone) {
       today.eveningDone = true;
-      _gainXp(30, 'Feu de camp');
+      _gainXp(10, 'Feu de camp');
       chest = _openChest();
     }
     await commit();
@@ -502,7 +502,10 @@ class AppStore extends ChangeNotifier {
     await commit();
   }
 
-  static const _quadXp = {Quad.doNow: 30, Quad.plan: 25, Quad.light: 10, Quad.drop: 5, Quad.inbox: 10};
+  static const _quadXp = {Quad.doNow: 20, Quad.plan: 20, Quad.light: 5, Quad.drop: 2, Quad.inbox: 5};
+
+  /// XP d'une tâche faite : le pro rapporte, le perso très peu.
+  int taskXp(Task t) => t.category == 'perso' ? 2 : (_quadXp[t.quad] ?? 5);
 
   Future<void> completeTask(Task t) async {
     if (t.done) {
@@ -511,7 +514,7 @@ class AppStore extends ChangeNotifier {
     } else {
       t.done = true;
       t.doneAt = DateTime.now().millisecondsSinceEpoch;
-      _gainXp(_quadXp[t.quad] ?? 10, 'Tâche faite');
+      _gainXp(taskXp(t), 'Tâche faite');
     }
     await commit();
   }
@@ -578,19 +581,20 @@ class AppStore extends ChangeNotifier {
       await commit();
       return '';
     }
-    _gainXp(10 + min(60, minutes).round() ~/ 2, 'Session');
+    // pro : 1 XP par minute de travail (plafonné à 3 h)
+    _gainXp(min(180, minutes).round(), 'Session');
     final t = taskById(s.taskId);
     if (t != null && t.isBoss) {
-      t.bossHp = max(0, t.bossHp - max(10, (minutes / 15).floor() * 20));
+      t.bossHp = max(0, t.bossHp - max(5, (minutes / 3).round())); // 5 h de travail pour l'abattre
       if (t.bossHp == 0) {
         t.done = true;
         t.doneAt = s.end;
-        _gainXp(150, 'Boss vaincu');
+        _gainXp(300, 'Boss vaincu');
       }
     }
     var chest = '';
     if (s.onTarget) {
-      _gainXp(20, 'Pari réussi');
+      _gainXp(15, 'Pari réussi');
       chest = _openChest();
     }
     await commit();
@@ -603,7 +607,7 @@ class AppStore extends ChangeNotifier {
     if (r.nextInt(5) == 0) {
       item = Loot.rewards[r.nextInt(Loot.rewards.length)];
       if (item == 'Joker de série') _gainXp(0, 'Joker');
-      if (item == '+50 XP bonus') _gainXp(50, 'Coffre');
+      if (item == '+30 XP bonus') _gainXp(30, 'Coffre');
     } else {
       final notOwned = Loot.items.where((i) => !inventory.contains(i)).toList();
       item = notOwned.isEmpty ? Loot.items[r.nextInt(Loot.items.length)] : notOwned[r.nextInt(notOwned.length)];
@@ -618,7 +622,7 @@ class AppStore extends ChangeNotifier {
   Future<void> addCheckIn(CheckIn c) async {
     checkins.add(c);
     checkins.sort((a, b) => a.ts.compareTo(b.ts));
-    _gainXp(5, 'Check-in');
+    _gainXp(1, 'Check-in');
     await commit();
   }
 
@@ -1167,9 +1171,10 @@ class AppStore extends ChangeNotifier {
     } else {
       log.level = next;
     }
-    if (cur == 0 && next > 0) _gainXp(next == 2 ? 15 : 8, 'Habitude');
-    if (cur > 0 && next == 0) _gainXp(cur == 2 ? -15 : -8, 'Habitude annulée');
-    if (cur == 2 && next == 1) _gainXp(-7, 'Habitude en mini');
+    if (cur == 0 && next > 0) _gainXp(next == 2 ? 5 : 3, 'Habitude');
+    if (cur > 0 && next == 0) _gainXp(cur == 2 ? -5 : -3, 'Habitude annulée');
+    if (cur == 2 && next == 1) _gainXp(-2, 'Habitude en mini');
+    if (cur == 1 && next == 2) _gainXp(2, 'Habitude complète');
     await commit();
     return next;
   }
@@ -1238,14 +1243,14 @@ class AppStore extends ChangeNotifier {
     if (difficulty != null) s.difficulty = difficulty;
     if (feeling != null) s.feeling = feeling;
     if (helped != null) s.helped = helped;
-    if (first && (s.difficulty > 0 || s.feeling > 0)) _gainXp(5, 'Auto-évaluation');
+    if (first && (s.difficulty > 0 || s.feeling > 0)) _gainXp(2, 'Auto-évaluation');
     await commit();
   }
 
   /// Enregistre une réflexion ; le « si… alors » devient le plan B de demain s'il est libre.
   Future<void> addReflection(Reflection r) async {
     reflections.add(r);
-    _gainXp(10, 'Réflexion');
+    _gainXp(3, 'Réflexion');
     if (r.ifCue.isNotEmpty && r.thenDo.isNotEmpty) {
       final morning = DateTime.now().hour < 12;
       final target = plan(morning ? todayKey : tomorrowKey);

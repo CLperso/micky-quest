@@ -110,7 +110,7 @@ class HomeScreen extends StatelessWidget {
                 const MickySays('Bonjour ! On prépare la journée ? 2 minutes, promis.'),
                 const SizedBox(height: 12),
                 PrimaryButton(
-                  label: 'Briefing du matin · +30 XP',
+                  label: 'Briefing du matin · +10 XP',
                   color: K.gold,
                   onPressed: () => openScreen(context, const BriefingScreen()),
                 ),
@@ -330,7 +330,7 @@ class HomeScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('BOSS DE LA SEMAINE', style: K.body(12, color: const Color(0xFFFFB89A), w: FontWeight.w900)),
+                Text('BOSS DE LA SEMAINE · +300 XP', style: K.body(12, color: const Color(0xFFFFB89A), w: FontWeight.w900)),
                 Text(boss?.title ?? 'Choisis la tâche que tu repousses dans Quêtes (appui long)',
                     style: K.body(boss == null ? 13 : 15, w: FontWeight.w800, color: boss == null ? K.muted : K.ink)),
                 if (boss != null) ...[

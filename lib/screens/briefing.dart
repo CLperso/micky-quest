@@ -192,7 +192,7 @@ class _BriefingScreenState extends State<BriefingScreen> {
             ),
             const SizedBox(height: 20),
             PrimaryButton(
-              label: store.today.briefingDone ? 'Enregistrer' : 'Lancer la journée · +30 XP',
+              label: store.today.briefingDone ? 'Enregistrer' : 'Lancer la journée · +10 XP',
               onPressed: () async {
                 final first = !store.today.briefingDone;
                 await _saveFields();

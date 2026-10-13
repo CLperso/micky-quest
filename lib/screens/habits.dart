@@ -72,7 +72,7 @@ class HabitRow extends StatelessWidget {
                 ScaffoldMessenger.of(context).hideCurrentSnackBar();
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                   duration: const Duration(seconds: 2),
-                  content: Text(next == 2 ? '${h.name} : faite ! +15 XP' : '${h.name} : version mini, ça compte ! +8 XP'),
+                  content: Text(next == 2 ? '${h.name} : faite ! +5 XP' : '${h.name} : version mini, ça compte ! +3 XP'),
                 ));
               },
               child: AnimatedContainer(
