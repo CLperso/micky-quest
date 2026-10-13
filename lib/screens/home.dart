@@ -13,6 +13,7 @@ import 'checkins_log.dart';
 import 'habits.dart';
 import 'settings.dart';
 import 'timetable.dart';
+import 'block.dart';
 
 class HomeScreen extends StatelessWidget {
   final void Function(int) onGoTo;
@@ -214,12 +215,12 @@ class HomeScreen extends StatelessWidget {
                     () => openScreen(context, const CheckinScreen(focusLog: LogKind.meal)))),
             const SizedBox(width: 8),
             Expanded(
-                child: _quick(context, Icons.bolt_rounded, 'Boisson', K.cyan,
+                child: _quick(context, Icons.bolt_rounded, 'Prise', K.cyan,
                     () => openScreen(context, const CheckinScreen(focusLog: LogKind.energy)))),
             const SizedBox(width: 8),
             Expanded(
-                child: _quick(context, Icons.add_rounded, 'Autre', K.pink,
-                    () => openScreen(context, const CheckinScreen(focusLog: LogKind.free)))),
+                child: _quick(context, Icons.support_rounded, 'Je bloque', K.coral,
+                    () => openScreen(context, const BlockScreen()))),
           ],
         ),
       ],

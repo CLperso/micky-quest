@@ -94,6 +94,7 @@ class _EveningScreenState extends State<EveningScreen> {
   final _win = TextEditingController();
   final _brake = TextEditingController();
   final _tomorrow = TextEditingController();
+  final _spawn = TextEditingController();
   bool _init = false;
   final Map<String, String> _done = {}; // tâche → choix
 
@@ -106,6 +107,7 @@ class _EveningScreenState extends State<EveningScreen> {
     _win.text = p.win;
     _brake.text = p.brake;
     _tomorrow.text = p.tomorrow;
+    _spawn.text = AppScope.read(context).plan(AppScope.read(context).tomorrowKey).spawn;
   }
 
   @override
@@ -113,6 +115,7 @@ class _EveningScreenState extends State<EveningScreen> {
     _win.dispose();
     _brake.dispose();
     _tomorrow.dispose();
+    _spawn.dispose();
     super.dispose();
   }
 
@@ -122,6 +125,7 @@ class _EveningScreenState extends State<EveningScreen> {
     p.win = _win.text.trim();
     p.brake = _brake.text.trim();
     p.tomorrow = _tomorrow.text.trim();
+    store.plan(store.tomorrowKey).spawn = _spawn.text.trim();
     await store.commit();
   }
 
@@ -209,6 +213,8 @@ class _EveningScreenState extends State<EveningScreen> {
               ],
             ),
             const SizedBox(height: 12),
+            _GainsRecap(day: day),
+            const SizedBox(height: 12),
             if (store.activeHabits.isNotEmpty) ...[
               const HabitsCard(),
               const SizedBox(height: 12),
@@ -263,6 +269,10 @@ class _EveningScreenState extends State<EveningScreen> {
                   _field(_win, 'Une victoire, même petite', K.lime),
                   _field(_brake, 'Ce qui m\'a freinée', K.coral),
                   _field(_tomorrow, 'Demain, je commence par', K.cyan),
+                  const SizedBox(height: 6),
+                  Text('Point de spawn de demain (Dr K) : un geste ce soir pour que demain démarre sans friction.',
+                      style: K.body(12, color: K.muted)),
+                  _field(_spawn, 'ouvrir le fichier, préparer le sac, téléphone loin du lit…', K.gold),
                 ],
               ),
             ),
@@ -525,4 +535,68 @@ class ReplayScreen extends StatelessWidget {
           Text(l, style: K.body(12, color: K.muted)),
         ]),
       );
+}
+
+/// Gains et trophées du jour : médaille, XP par source, butin, ruban.
+class _GainsRecap extends StatelessWidget {
+  final String day;
+  const _GainsRecap({required this.day});
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final g = store.gainsOn(day);
+    final medal = store.medalOn(day);
+    final p = store.plan(day);
+    const medalColors = [K.muted, Color(0xFFC98A5B), Color(0xFFC9C4E8), K.gold, K.gold];
+    final pro = store.proMinutesOn(day).round();
+    final entries = g.byReason.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    return Panel(
+      border: medal >= 2 ? K.gold : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(medal == 4 ? Icons.workspace_premium_rounded : Icons.military_tech_rounded, color: medalColors[medal], size: 28),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  medal == 0
+                      ? 'Pas de médaille aujourd\'hui'
+                      : medal == 4
+                          ? 'Couronne · journée parfaite !'
+                          : 'Médaille ${AppStore.medalNames[medal].toLowerCase()}',
+                  style: K.display(16, color: medalColors[medal]),
+                ),
+              ),
+              if (p.persoGoalDone) const Pill('RUBAN', color: K.pink),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${pro >= 60 ? '${pro ~/ 60} h ${(pro % 60).toString().padLeft(2, '0')}' : '$pro min'} de pro${p.proGoalMin > 0 ? ' sur ${p.proGoalMin >= 60 ? '${p.proGoalMin ~/ 60} h' : '${p.proGoalMin} min'} visées' : ''}'
+            '${p.persoGoal.isNotEmpty ? ' · perso : ${p.persoGoal}${p.persoGoalDone ? ' ✓' : ''}' : ''}',
+            style: K.body(12, color: K.muted),
+          ),
+          if (entries.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            for (final e in entries.take(6))
+              Row(children: [
+                Expanded(child: Text(e.key, style: K.body(13))),
+                Text('+${e.value}', style: K.display(13, color: K.lime)),
+              ]),
+          ],
+          if (g.loot.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [for (final l in g.loot) Pill(l, color: K.gold)],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }

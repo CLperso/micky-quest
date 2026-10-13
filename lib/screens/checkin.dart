@@ -8,6 +8,7 @@ import '../main.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
+import 'block.dart';
 
 class CheckinScreen extends StatefulWidget {
   final String? focusLog;
@@ -389,6 +390,26 @@ class _CheckinScreenState extends State<CheckinScreen> {
                 ],
               ),
             ),
+            const SizedBox(height: 10),
+            if (widget.existing == null)
+              Material(
+                color: K.card,
+                borderRadius: BorderRadius.circular(16),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () => openScreen(context, BlockScreen(task: _taskId.isEmpty ? null : store.taskById(_taskId))),
+                  child: Container(
+                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: K.coral, width: 2)),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    child: Row(children: [
+                      const Icon(Icons.support_rounded, color: K.coral),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text('Je bloque · coups de pouce', style: K.body(14, w: FontWeight.w800))),
+                      const Icon(Icons.chevron_right_rounded, color: K.muted),
+                    ]),
+                  ),
+                ),
+              ),
             const SizedBox(height: 10),
             Panel(
               child: Column(

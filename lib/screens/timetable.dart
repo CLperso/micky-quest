@@ -8,7 +8,7 @@ import '../models.dart';
 import '../notifications.dart';
 import '../store.dart';
 import '../theme.dart';
-import 'reflect.dart';
+import 'block.dart';
 import 'session.dart';
 
 String fmtMin(int m) => m >= 60 ? '${m ~/ 60} h${m % 60 == 0 ? '' : ' ${m % 60}'}' : '$m min';
@@ -573,7 +573,8 @@ class PostponeBlock extends StatelessWidget {
   final Task task;
   final int ts;
   final VoidCallback onDone;
-  const PostponeBlock({super.key, required this.task, required this.ts, required this.onDone});
+  final bool hideBlock;
+  const PostponeBlock({super.key, required this.task, required this.ts, required this.onDone, this.hideBlock = false});
 
   Future<void> _after(BuildContext context, AppStore store, bool third) async {
     await rescheduleAll(store);
@@ -689,14 +690,15 @@ class PostponeBlock extends StatelessWidget {
           await store.setCondition(t, c);
           if (context.mounted) await _after(context, like, false);
         }, sub: 'une condition plutôt qu\'une heure'),
-        btn('Ça bloque', Icons.help_outline_rounded, K.coral, () async {
-          store.answerReminder(t, ts, 'bloque');
-          await store.commit();
-          if (!context.mounted) return;
-          onDone();
-          final ctx = navKey.currentContext;
-          if (ctx != null) openScreen(ctx, ReflectionScreen(kind: 'pasfaite', taskId: t.id, title: t.title));
-        }, sub: 'on regarde ce qui coince'),
+        if (!hideBlock)
+          btn('Ça bloque', Icons.help_outline_rounded, K.coral, () async {
+            store.answerReminder(t, ts, 'bloque');
+            await store.commit();
+            if (!context.mounted) return;
+            onDone();
+            final ctx = navKey.currentContext;
+            if (ctx != null) openScreen(ctx, BlockScreen(task: t));
+          }, sub: 'coups de pouce pour relancer'),
         btn('Annuler la tâche', Icons.delete_outline_rounded, K.dim, () async {
           store.answerReminder(t, ts, 'annule');
           await store.removeTask(t);

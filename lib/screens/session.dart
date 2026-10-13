@@ -11,7 +11,8 @@ import 'reflect.dart';
 /// Choix de la tâche et du pari de durée.
 class StartSessionSheet extends StatefulWidget {
   final String? preselect;
-  const StartSessionSheet({super.key, this.preselect});
+  final int? minutes;
+  const StartSessionSheet({super.key, this.preselect, this.minutes});
 
   @override
   State<StartSessionSheet> createState() => _StartSessionSheetState();
@@ -30,6 +31,7 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
   void initState() {
     super.initState();
     _taskId = widget.preselect;
+    if (widget.minutes != null) _min = widget.minutes!;
   }
 
   bool _init = false;
@@ -39,7 +41,7 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
     super.didChangeDependencies();
     final store = AppScope.read(context);
     final t = _taskId == null ? null : store.taskById(_taskId!);
-    if (t != null && t.estimateMin > 0) _min = t.estimateMin;
+    if (t != null && t.estimateMin > 0 && widget.minutes == null) _min = t.estimateMin;
     if (!_init) {
       _init = true;
       _silent = !store.settings.checkinsDuringSession;

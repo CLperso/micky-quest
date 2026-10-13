@@ -174,7 +174,11 @@ class ReflectionScreen extends StatefulWidget {
 
 class _ReflectionScreenState extends State<ReflectionScreen> {
   final Set<String> _reasons = {};
+  String _emotion = '';
+  int _reasonable = 0; // 1 oui, 2 trop gros, 3 pas clair
+  int _origin = 0; // 1 moi, 2 « je devrais », 3 quelqu'un d'autre
   final _text = TextEditingController();
+  static const _emotions = ['Ennui', 'Peur de rater', 'Honte', 'Flou', 'Fatigue', 'Colère', 'Tristesse', 'Rien de spécial'];
   final _if = TextEditingController();
   final _then = TextEditingController();
 
@@ -183,7 +187,7 @@ class _ReflectionScreenState extends State<ReflectionScreen> {
     'Trop gros d\'un coup': ('la tâche me paraît énorme', 'je la découpe en étapes de 15 minutes'),
     'Peur de mal faire': ('j\'ai peur de mal faire', 'je fais une version brouillon volontairement imparfaite'),
     'Ennui, pas assez stimulant': ('je m\'ennuie', 'je mets un minuteur de 10 minutes et une musique'),
-    'Pas l\'énergie': ('je n\'ai pas l\'énergie', 'je fais 5 minutes puis je décide si je continue'),
+    'Pas l\'énergie': ('je n\'ai pas l\'énergie', 'je choisis jusqu\'où je PEUX aller, même une seule étape'),
     'Interrompue': ('on m\'interrompt', 'je note où j\'en suis avant de répondre'),
     'Je l\'ai oubliée': ('je risque d\'oublier', 'je la mets dans « Faire maintenant » dès le briefing'),
     'Émotion difficile': ('une émotion me submerge', 'je respire 2 minutes et je nomme ce que je ressens'),
@@ -212,7 +216,7 @@ class _ReflectionScreenState extends State<ReflectionScreen> {
   @override
   Widget build(BuildContext context) {
     final store = AppScope.of(context);
-    final empty = _reasons.isEmpty && _text.text.trim().isEmpty && _if.text.trim().isEmpty;
+    final empty = _reasons.isEmpty && _emotion.isEmpty && _reasonable == 0 && _text.text.trim().isEmpty && _if.text.trim().isEmpty;
     return Scaffold(
       appBar: AppBar(title: Text(widget.kind == 'decroche' ? 'Qu\'est-ce qui s\'est passé ?' : 'Pourquoi pas aujourd\'hui ?')),
       body: SafeArea(
@@ -231,6 +235,26 @@ class _ReflectionScreenState extends State<ReflectionScreen> {
               const SizedBox(height: 12),
               Text(widget.title, style: K.display(18)),
             ],
+            const SectionLabel('Qu\'est-ce que j\'évitais de ressentir ?'),
+            Text('Dr K : procrastiner enlève une émotion désagréable. La nommer lui enlève de la force.', style: K.body(12, color: K.muted)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final e in _emotions)
+                  FilterChip(
+                    label: Text(e),
+                    selected: _emotion == e,
+                    onSelected: (_) => setState(() => _emotion = _emotion == e ? '' : e),
+                    selectedColor: K.pink,
+                    backgroundColor: K.raised,
+                    labelStyle: K.body(13, color: _emotion == e ? K.bg : K.ink),
+                    side: BorderSide.none,
+                    showCheckmark: false,
+                  ),
+              ],
+            ),
             const SectionLabel('Ce qui a joué (plusieurs possibles)'),
             Wrap(
               spacing: 8,
@@ -260,6 +284,17 @@ class _ReflectionScreenState extends State<ReflectionScreen> {
                 hintText: 'Avec tes mots : qu\'est-ce qui se passait, dans ta tête ou autour de toi ?',
               ),
             ),
+            const SectionLabel('Autopsie, sans honte'),
+            Text('L\'objectif était-il raisonnable ?', style: K.body(13, color: K.muted)),
+            const SizedBox(height: 6),
+            _seg(['Oui', 'Trop gros', 'Pas clair'], _reasonable, (v) => setState(() => _reasonable = v)),
+            const SizedBox(height: 10),
+            Text('D\'où venait l\'envie de la faire ?', style: K.body(13, color: K.muted)),
+            const SizedBox(height: 6),
+            _seg(['De moi', '« Je devrais »', 'De quelqu\'un'], _origin, (v) => setState(() => _origin = v)),
+            const SizedBox(height: 4),
+            Text('La pression et la honte « marchent » mais demandent toujours plus. Un objectif d\'action qui vient de toi tient mieux.',
+                style: K.body(12, color: K.muted)),
             const SectionLabel('La prochaine fois'),
             Panel(
               child: Column(
@@ -301,12 +336,19 @@ class _ReflectionScreenState extends State<ReflectionScreen> {
                     onPressed: empty
                         ? null
                         : () async {
+                            const reas = ['', 'objectif raisonnable', 'objectif trop gros', 'objectif pas clair'];
+                            const orig = ['', 'envie venue de moi', 'envie « je devrais »', 'envie venue de quelqu\'un'];
                             await store.addReflection(Reflection(
                               ts: DateTime.now().millisecondsSinceEpoch,
                               taskId: widget.taskId,
                               title: widget.title,
                               kind: widget.kind,
-                              reasons: _reasons.toList(),
+                              reasons: [
+                                if (_emotion.isNotEmpty) 'Émotion : $_emotion',
+                                ..._reasons,
+                                if (_reasonable > 0) reas[_reasonable],
+                                if (_origin > 0) orig[_origin],
+                              ],
                               text: _text.text.trim(),
                               ifCue: _if.text.trim(),
                               thenDo: _then.text.trim(),
@@ -322,4 +364,27 @@ class _ReflectionScreenState extends State<ReflectionScreen> {
       ),
     );
   }
+
+  Widget _seg(List<String> labels, int value, void Function(int) onTap) => Row(
+        children: [
+          for (var i = 0; i < labels.length; i++) ...[
+            Expanded(
+              child: SizedBox(
+                height: 44,
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: value == i + 1 ? K.coral : K.bg,
+                    side: BorderSide(color: value == i + 1 ? K.coral : K.line, width: 2),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: EdgeInsets.zero,
+                  ),
+                  onPressed: () => onTap(value == i + 1 ? 0 : i + 1),
+                  child: Text(labels[i], style: K.body(12, color: value == i + 1 ? K.bg : K.ink, w: FontWeight.w800), textAlign: TextAlign.center),
+                ),
+              ),
+            ),
+            if (i < labels.length - 1) const SizedBox(width: 6),
+          ],
+        ],
+      );
 }
