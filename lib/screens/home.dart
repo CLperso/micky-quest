@@ -103,6 +103,8 @@ class HomeScreen extends StatelessWidget {
         const PauseSwitch(),
         const SizedBox(height: 14),
         const MissedCheckins(),
+        const TimetableCard(),
+        const SizedBox(height: 14),
 
         if (!plan.briefingDone) ...[
           Panel(
@@ -163,23 +165,9 @@ class HomeScreen extends StatelessWidget {
         Row(
           children: [
             Expanded(child: Text('Quêtes du jour', style: K.display(20))),
-            TextButton.icon(
-              onPressed: () => openScreen(context, const TimetableScreen()),
-              icon: const Icon(Icons.view_day_rounded, color: K.gold, size: 18),
-              label: const Text('Ma journée'),
-            ),
             TextButton(onPressed: () => openScreen(context, const BriefingScreen()), child: const Text('Modifier')),
           ],
         ),
-        Builder(builder: (context) {
-          final next = store.plannedOn(store.todayKey).where((t) => !t.done && t.plannedAt > DateTime.now().millisecondsSinceEpoch).toList();
-          if (next.isEmpty) return const SizedBox.shrink();
-          final t = next.first;
-          return Padding(
-            padding: const EdgeInsets.only(top: 4, bottom: 6),
-            child: Text('Prochain bloc : ${hm(DateTime.fromMillisecondsSinceEpoch(t.plannedAt))} · ${t.title}', style: K.body(13, color: K.gold)),
-          );
-        }),
         const SizedBox(height: 6),
         _questCard(context, 'pro', 'PRO', plan.pro, K.lime),
         const SizedBox(height: 10),
@@ -446,6 +434,55 @@ class PauseSwitch extends StatelessWidget {
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Ma journée : les prochains blocs prévus et l'accès au planning.
+class TimetableCard extends StatelessWidget {
+  const TimetableCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final planned = store.plannedOn(store.todayKey).where((t) => !t.done).toList();
+    final next = planned.where((t) => t.plannedAt + t.blockMin * 60000 > now).take(3).toList();
+    return Panel(
+      border: K.gold,
+      child: InkWell(
+        onTap: () => openScreen(context, const TimetableScreen()),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Icon(Icons.view_day_rounded, color: K.gold),
+              const SizedBox(width: 8),
+              Expanded(child: Text('Ma journée', style: K.display(16))),
+              Text(planned.isEmpty ? 'planifier' : '${planned.length} bloc${planned.length > 1 ? 's' : ''}', style: K.body(12, color: K.gold, w: FontWeight.w800)),
+              const Icon(Icons.chevron_right_rounded, color: K.muted),
+            ]),
+            const SizedBox(height: 6),
+            if (next.isEmpty)
+              Text(
+                planned.isEmpty
+                    ? 'Aucun bloc prévu. Touche pour poser tes tâches sur les heures de la journée ; Micky te dira « c\'est l\'heure ».'
+                    : 'Tous les blocs du jour sont passés.',
+                style: K.body(13, color: K.muted),
+              )
+            else
+              for (final t in next)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(children: [
+                    SizedBox(width: 52, child: Text(hm(DateTime.fromMillisecondsSinceEpoch(t.plannedAt)), style: K.body(14, color: t.plannedAt <= now ? K.coral : K.gold, w: FontWeight.w900))),
+                    Expanded(child: Text(t.title, style: K.body(14), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                    Text('${t.blockMin} min', style: K.body(12, color: K.muted)),
+                  ]),
+                ),
+          ],
+        ),
       ),
     );
   }
