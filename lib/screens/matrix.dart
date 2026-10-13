@@ -6,6 +6,7 @@ import '../models.dart';
 import '../theme.dart';
 import 'boss.dart';
 import 'session.dart';
+import 'task_panel.dart';
 import 'timetable.dart';
 import 'today.dart';
 
@@ -55,29 +56,29 @@ class _MatrixScreenState extends State<MatrixScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (!widget.standalone)
-            Row(children: [
-              Expanded(child: Text('Tri des quêtes', style: K.display(24))),
-              TextButton.icon(
-                onPressed: () => openScreen(context, const TimetableScreen()),
-                icon: const Icon(Icons.view_day_rounded, color: K.gold, size: 18),
-                label: const Text('Ma journée'),
-              ),
-            ]),
           Text(
             _selected == null
-                ? 'Touche une tâche pour la ranger (ou glisse-la). ☀ = dans Aujourd\'hui : Faire maintenant, étapes de quête, heure du jour.'
+                ? 'Touche une tâche pour ses actions, ou glisse-la dans une case. ☀ = déjà dans Aujourd\'hui.'
                 : 'Touche le titre d\'une case pour y ranger la tâche choisie.',
             style: K.body(12, color: _selected == null ? K.muted : K.gold),
           ),
           const SizedBox(height: 8),
-          TextField(
-            controller: _ctrl,
-            textCapitalization: TextCapitalization.sentences,
-            onSubmitted: (_) => _add(),
-            decoration: InputDecoration(
-              hintText: 'Nouvelle tâche à trier',
-              suffixIcon: IconButton(onPressed: _add, icon: const Icon(Icons.add_circle_rounded, color: K.lime)),
+          Material(
+            color: K.card,
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: () => newTaskSheet(context),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), border: Border.all(color: K.line, width: 2)),
+                child: Row(children: [
+                  const Icon(Icons.add_circle_rounded, color: K.lime),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text('Nouvelle tâche…', style: K.body(14, color: K.muted, w: FontWeight.w800))),
+                  Text('pro / perso · quête · case', style: K.body(11, color: K.muted)),
+                ]),
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -178,13 +179,27 @@ class _MatrixScreenState extends State<MatrixScreen> {
     );
   }
 
-  Widget _header(String q, String title, Color c) => InkWell(
-        onTap: _selected == null ? null : () => _move(_selected!, q),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Text(title, style: K.display(14, color: c, w: FontWeight.w700)),
+  Widget _header(String q, String title, Color c) => Row(children: [
+        Expanded(
+          child: InkWell(
+            onTap: _selected == null ? null : () => _move(_selected!, q),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text(title, style: K.display(14, color: c, w: FontWeight.w700)),
+            ),
+          ),
         ),
-      );
+        InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: () => newTaskSheet(context, quad: q),
+          child: Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+            child: const Icon(Icons.add_rounded, color: K.bg, size: 18),
+          ),
+        ),
+      ]);
 
   Widget _target(String q, Widget child) {
     final c = K.quadColors[q]!;
@@ -211,7 +226,7 @@ class _MatrixScreenState extends State<MatrixScreen> {
     final sel = _selected == t.id;
     final store = AppScope.of(context);
     final questName = t.category == 'pro' ? store.today.pro : t.category == 'perso' ? store.today.perso : '';
-    final quest = questName.isEmpty ? '' : (questName.length > 16 ? '${questName.substring(0, 16)}…' : questName);
+    final quest = !t.inQuest || questName.isEmpty ? '' : (questName.length > 16 ? '${questName.substring(0, 16)}…' : questName);
     final today = store.inToday(t);
     Widget box({bool dragging = false}) => Material(
           color: Colors.transparent,
@@ -230,7 +245,7 @@ class _MatrixScreenState extends State<MatrixScreen> {
                   const Icon(Icons.pest_control_rounded, size: 14, color: K.coral),
                   const SizedBox(width: 4),
                 ],
-                if (today && t.category.isEmpty) ...[
+                if (today && !t.inQuest) ...[
                   Icon(Icons.wb_sunny_rounded, size: 13, color: sel ? K.bg : K.gold),
                   const SizedBox(width: 3),
                 ],
@@ -274,7 +289,7 @@ class _MatrixScreenState extends State<MatrixScreen> {
       ),
       childWhenDragging: Opacity(opacity: 0.3, child: box()),
       child: GestureDetector(
-        onTap: () => _options(t),
+        onTap: () => showTaskPanel(context, t),
         child: box(),
       ),
     );

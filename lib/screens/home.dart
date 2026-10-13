@@ -15,6 +15,7 @@ import 'settings.dart';
 import 'block.dart';
 import 'boss.dart';
 import 'house.dart';
+import 'task_panel.dart';
 
 class HomeScreen extends StatelessWidget {
   final void Function(int) onGoTo;
@@ -223,26 +224,22 @@ class HomeScreen extends StatelessWidget {
       );
 
 
-  Widget _taskRow(BuildContext context, Task t) {
-    final store = AppScope.read(context);
-    return InkWell(
-      onTap: () async {
-        await store.completeTask(t);
-        if (t.done && context.mounted) await askNext(context, 'Tâche faite !');
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          children: [
-            Icon(t.done ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
-                color: t.done ? K.lime : K.muted),
-            const SizedBox(width: 10),
-            Expanded(child: Text(t.title, style: K.body(14))),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget _taskRow(BuildContext context, Task t) => Row(
+        children: [
+          CheckCircle(task: t, color: K.lime),
+          Expanded(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => showTaskPanel(context, t),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Text(t.title, style: K.body(14, color: t.done ? K.muted : K.ink).copyWith(decoration: t.done ? TextDecoration.lineThrough : null)),
+              ),
+            ),
+          ),
+          if (t.plannedAt > 0) Text(hm(DateTime.fromMillisecondsSinceEpoch(t.plannedAt)), style: K.body(12, color: K.gold, w: FontWeight.w900)),
+        ],
+      );
 
   Widget _bossCard(BuildContext context, Task? boss) {
     final store = AppScope.of(context);

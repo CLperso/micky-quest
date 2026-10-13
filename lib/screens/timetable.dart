@@ -11,6 +11,7 @@ import '../notifications.dart';
 import '../store.dart';
 import '../theme.dart';
 import 'block.dart';
+import 'task_panel.dart';
 import 'session.dart';
 
 String fmtMin(int m) => m >= 60 ? '${m ~/ 60} h${m % 60 == 0 ? '' : ' ${m % 60}'}' : '$m min';
@@ -158,14 +159,14 @@ Future<void> whenSheet(BuildContext context, Task t) async {
               Text('Quand est-ce que tu t\'y mets ?', style: K.body(13, color: K.muted)),
               const SizedBox(height: 12),
               Row(children: [
-                Expanded(child: _tile(ctx, 'Aujourd\'hui', '→ je choisis un créneau', K.lime, K.bg, () => Navigator.pop(ctx, 'today'))),
+                Expanded(child: whenTile(ctx, 'Aujourd\'hui', '→ je choisis un créneau', K.lime, K.bg, () => Navigator.pop(ctx, 'today'))),
                 const SizedBox(width: 8),
-                Expanded(child: _tile(ctx, 'Demain', '→ planning de demain', K.cyan, K.bg, () => Navigator.pop(ctx, 'tomorrow'))),
+                Expanded(child: whenTile(ctx, 'Demain', '→ planning de demain', K.cyan, K.bg, () => Navigator.pop(ctx, 'tomorrow'))),
               ]),
               const SizedBox(height: 8),
               Row(children: [
                 Expanded(
-                  child: _tile(ctx, 'Cette semaine', '', K.raised, K.gold, () => Navigator.pop(ctx, 'week'), border: K.gold, child: Row(children: [
+                  child: whenTile(ctx, 'Cette semaine', '', K.raised, K.gold, () => Navigator.pop(ctx, 'week'), border: K.gold, child: Row(children: [
                     for (var i = 0; i < 7; i++)
                       Builder(builder: (_) {
                         final d = today.add(Duration(days: i));
@@ -188,7 +189,7 @@ Future<void> whenSheet(BuildContext context, Task t) async {
                   ])),
                 ),
                 const SizedBox(width: 8),
-                Expanded(child: _tile(ctx, 'Seulement quand…', t.condition.isNotEmpty ? '« ${t.condition} »' : '« j\'ai reçu la réponse »', K.raised, K.pink, () => Navigator.pop(ctx, 'cond'), border: K.pink)),
+                Expanded(child: whenTile(ctx, 'Seulement quand…', t.condition.isNotEmpty ? '« ${t.condition} »' : '« j\'ai reçu la réponse »', K.raised, K.pink, () => Navigator.pop(ctx, 'cond'), border: K.pink)),
               ]),
               const SizedBox(height: 10),
               Center(
@@ -204,6 +205,14 @@ Future<void> whenSheet(BuildContext context, Task t) async {
     ),
   );
   if (choice == null || !context.mounted) return;
+  await applyWhen(context, t, choice, day: weekDay);
+}
+
+/// Applique une réponse à « Quand ? » : today, tomorrow, week (avec [day]), cond, none.
+Future<void> applyWhen(BuildContext context, Task t, String choice, {DateTime? day}) async {
+  final store = AppScope.read(context);
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
   switch (choice) {
     case 'today':
       await openScreen(context, PlanningScreen(day: dayKey(today), place: t));
@@ -212,7 +221,7 @@ Future<void> whenSheet(BuildContext context, Task t) async {
       await openScreen(context, PlanningScreen(day: dayKey(today.add(const Duration(days: 1))), place: t));
       break;
     case 'week':
-      await openScreen(context, PlanningScreen(day: dayKey(weekDay), place: t));
+      await openScreen(context, PlanningScreen(day: dayKey(day ?? today.add(const Duration(days: 2))), place: t));
       break;
     case 'cond':
       final c = await askText(context, 'Seulement quand…', hint: 'j\'ai reçu la réponse de Nathalie', initial: t.condition);
@@ -224,7 +233,7 @@ Future<void> whenSheet(BuildContext context, Task t) async {
   }
 }
 
-Widget _tile(BuildContext ctx, String title, String sub, Color bg, Color fg, VoidCallback onTap, {Color? border, Widget? child}) => Material(
+Widget whenTile(BuildContext ctx, String title, String sub, Color bg, Color fg, VoidCallback onTap, {Color? border, Widget? child}) => Material(
       color: bg,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
@@ -632,7 +641,7 @@ class _PlanningViewState extends State<PlanningView> {
           if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('« ${t.title} » retirée du planning (toujours dans tes tâches)')));
           return false;
         },
-        child: InkWell(borderRadius: BorderRadius.circular(12), onTap: () => _blockMenu(store, t), child: card),
+        child: InkWell(borderRadius: BorderRadius.circular(12), onTap: () => showTaskPanel(context, t), child: card),
       );
     }
     return Padding(

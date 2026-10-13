@@ -60,6 +60,8 @@ class Task {
   int postponed; // nombre de reports du rappel
   String calEventId; // événement écrit dans l'agenda du téléphone
   int bossProgress; // boss : avancement déclaré, 0 à 100
+  bool inQuest; // étape de la quête du jour (sinon simple tâche pro ou perso)
+  String hiddenDay; // « pas aujourd'hui » : masquée de « À caser » ce jour-là
   int mod;
 
   Task({
@@ -83,6 +85,8 @@ class Task {
     this.postponed = 0,
     this.calEventId = '',
     this.bossProgress = 0,
+    this.inQuest = false,
+    this.hiddenDay = '',
     this.mod = 0,
   })  : id = id ?? newId(),
         createdDay = createdDay ?? day;
@@ -110,6 +114,9 @@ class Task {
         postponed: _i(j['post']),
         calEventId: _s(j['calEv']),
         bossProgress: _i(j['bossP']),
+        // avant ce champ, toute tâche pro ou perso était une étape de quête
+        inQuest: j.containsKey('inQ') ? _b(j['inQ']) : _s(j['category']).isNotEmpty,
+        hiddenDay: _s(j['hid']),
         mod: _i(j['mod']),
       );
 
@@ -134,6 +141,8 @@ class Task {
         'post': postponed,
         'calEv': calEventId,
         'bossP': bossProgress,
+        'inQ': inQuest,
+        'hid': hiddenDay,
         'mod': mod,
       };
 }

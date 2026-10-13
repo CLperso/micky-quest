@@ -6,6 +6,7 @@ import '../store.dart';
 import '../theme.dart';
 import 'boss.dart';
 import 'briefing.dart';
+import 'task_panel.dart';
 import 'timetable.dart';
 
 String fmtH(int m) => m >= 60 ? '${m ~/ 60} h${m % 60 == 0 ? '' : ' ${(m % 60).toString().padLeft(2, '0')}'}' : '$m min';
@@ -59,6 +60,66 @@ class TodayScreen extends StatelessWidget {
             ],
           ),
         ),
+        if (store.toPlaceToday.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Panel(
+            border: K.gold,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Expanded(child: Text('À caser aujourd\'hui ?', style: K.display(16, color: K.gold))),
+                  Text('depuis Planifier', style: K.body(11, color: K.muted)),
+                ]),
+                Text('Tes tâches « Planifier » sans heure. « Pas auj. » les cache jusqu\'à demain.', style: K.body(11, color: K.muted)),
+                const SizedBox(height: 4),
+                for (final t in store.toPlaceToday.take(8))
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(children: [
+                      Container(width: 4, height: 34, decoration: BoxDecoration(color: t.category == 'pro' ? K.lime : t.category == 'perso' ? K.pink : K.gold, borderRadius: BorderRadius.circular(2))),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => showTaskPanel(context, t),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(t.title, style: K.body(13, w: FontWeight.w800)),
+                            Text(
+                              [
+                                if (t.category.isNotEmpty) t.category,
+                                if (t.estimateMin > 0) '${t.estimateMin} min',
+                                if (t.condition.isNotEmpty) 'seulement quand : ${t.condition}',
+                              ].join(' · '),
+                              style: K.body(11, color: K.muted),
+                            ),
+                          ]),
+                        ),
+                      ),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(999),
+                        onTap: () => openScreen(context, PlanningScreen(day: store.todayKey, place: t)),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(color: K.lime, borderRadius: BorderRadius.circular(999)),
+                          child: Text('Caser', style: K.body(11, color: K.bg, w: FontWeight.w900)),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(999),
+                        onTap: () => store.hideToday(t),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(border: Border.all(color: K.line, width: 2), borderRadius: BorderRadius.circular(999)),
+                          child: Text('Pas auj.', style: K.body(11, color: K.muted, w: FontWeight.w800)),
+                        ),
+                      ),
+                    ]),
+                  ),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 18),
         const PlanningView(),
       ],
@@ -336,7 +397,10 @@ Future<void> editTaskSheet(BuildContext context, Task t) async {
   if (result == 'delete') {
     await store.removeTask(t);
   } else if (result == 'save') {
+    final wasQuest = t.inQuest;
     await store.editTask(t, title: c.text, estimate: min, category: cat == t.category ? null : cat);
+    // changer pro ↔ perso garde l'étape dans la quête du nouveau type
+    if (wasQuest && cat.isNotEmpty && cat != t.category) await store.editTask(t, inQuest: true);
   }
   c.dispose();
 }
@@ -357,22 +421,12 @@ class TaskRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         children: [
-          InkWell(
-            borderRadius: BorderRadius.circular(999),
-            onTap: () async {
-              await store.completeTask(t);
-              if (t.done && context.mounted) await askNext(context, 'Étape faite !');
-            },
-            child: Padding(
-              padding: const EdgeInsets.all(4),
-              child: Icon(t.done ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded, color: t.done ? color : K.muted, size: 26),
-            ),
-          ),
-          const SizedBox(width: 6),
+          CheckCircle(task: t, color: color),
+          const SizedBox(width: 2),
           Expanded(
             child: InkWell(
               borderRadius: BorderRadius.circular(8),
-              onTap: () => t.isBoss ? openScreen(context, const BossScreen()) : editTaskSheet(context, t),
+              onTap: () => t.isBoss ? openScreen(context, const BossScreen()) : showTaskPanel(context, t),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -386,7 +440,6 @@ class TaskRow extends StatelessWidget {
                       if (t.condition.isNotEmpty) 'si ${t.condition}',
                       if (t.deferred) 'reportée',
                       if (quest.isEmpty && t.category.isNotEmpty) t.category,
-                      'modifier',
                     ].join(' · '),
                     style: K.body(11, color: K.muted),
                   ),
@@ -430,18 +483,19 @@ class QuestsTab extends StatefulWidget {
 }
 
 class _QuestsTabState extends State<QuestsTab> {
-  int _mode = 0;
+  int? _mode; // 0 = Trier, 1 = Aujourd'hui
 
   @override
   Widget build(BuildContext context) {
     final store = AppScope.of(context);
     final toSort = store.tasksIn(Quad.inbox).length;
+    final mode = _mode ?? (toSort > 0 ? 0 : 1);
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
           child: Row(children: [
-            for (final (i, label) in ['Aujourd\'hui', toSort > 0 ? 'Trier ($toSort)' : 'Trier'].indexed)
+            for (final (i, label) in [toSort > 0 ? '1 · Trier ($toSort)' : '1 · Trier', '2 · Aujourd\'hui'].indexed)
               Expanded(
                 child: Padding(
                   padding: EdgeInsets.only(right: i == 0 ? 6 : 0),
@@ -451,15 +505,15 @@ class _QuestsTabState extends State<QuestsTab> {
                     child: Container(
                       height: 40,
                       alignment: Alignment.center,
-                      decoration: BoxDecoration(color: _mode == i ? K.gold : K.card, borderRadius: BorderRadius.circular(12)),
-                      child: Text(label, style: K.body(13, color: _mode == i ? K.bg : K.ink, w: FontWeight.w800)),
+                      decoration: BoxDecoration(color: mode == i ? K.gold : K.card, borderRadius: BorderRadius.circular(12)),
+                      child: Text(label, style: K.body(13, color: mode == i ? K.bg : K.ink, w: FontWeight.w800)),
                     ),
                   ),
                 ),
               ),
           ]),
         ),
-        Expanded(child: _mode == 0 ? const TodayScreen() : widget.matrix),
+        Expanded(child: mode == 1 ? const TodayScreen() : widget.matrix),
       ],
     );
   }

@@ -7,6 +7,32 @@ import '../theme.dart';
 String euros(double v) => '${v.toStringAsFixed(v == v.roundToDouble() ? 0 : 2).replaceAll('.', ',')} €';
 
 /// Carte du QG : reste du mois et ajout rapide.
+/// Modifier le budget du mois.
+Future<void> editBudget(BuildContext context) async {
+  final store = AppScope.read(context);
+  final budget = store.settings.monthlyBudget;
+  final c = TextEditingController(text: budget > 0 ? budget.toStringAsFixed(0) : '');
+  final v = await showDialog<double>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: K.card,
+      title: const Text('Budget du mois'),
+      content: TextField(
+        controller: c,
+        autofocus: true,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: const InputDecoration(suffixText: '€'),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+        TextButton(onPressed: () => Navigator.pop(ctx, double.tryParse(c.text.replaceAll(',', '.'))), child: const Text('OK')),
+      ],
+    ),
+  );
+  c.dispose();
+  if (v != null) await store.setMonthlyBudget(v);
+}
+
 class BudgetCard extends StatelessWidget {
   const BudgetCard({super.key});
 
@@ -27,11 +53,19 @@ class BudgetCard extends StatelessWidget {
               const Icon(Icons.savings_rounded, color: K.gold, size: 20),
               const SizedBox(width: 8),
               Expanded(child: Text('Budget du mois', style: K.display(16))),
+              IconButton(
+                tooltip: 'Modifier le budget',
+                onPressed: () => editBudget(context),
+                icon: const Icon(Icons.edit_rounded, color: K.muted, size: 18),
+              ),
               TextButton(onPressed: () => openScreen(context, const BudgetScreen()), child: const Text('Détail')),
             ],
           ),
           if (budget <= 0)
-            Text('Fixe ton budget mensuel dans Détail pour voir ce qu\'il reste.', style: K.body(13, color: K.muted))
+            InkWell(
+              onTap: () => editBudget(context),
+              child: Text('Touche pour fixer ton budget mensuel.', style: K.body(13, color: K.gold)),
+            )
           else ...[
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -46,6 +80,30 @@ class BudgetCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Bar(frac, color: color),
+            const SizedBox(height: 10),
+            Builder(builder: (context) {
+              final allow = store.dailyAllowance(store.todayKey);
+              final today = store.spentOn(store.todayKey);
+              final ok = today <= allow;
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(color: K.bg, borderRadius: BorderRadius.circular(14), border: Border.all(color: ok ? K.lime : K.coral, width: 2)),
+                child: Row(children: [
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Aujourd\'hui : max ${euros(allow)}', style: K.body(14, w: FontWeight.w800)),
+                      Text(
+                        ok
+                            ? 'Dépensé ${euros(today)} · reste ${euros(allow - today)} · sous la limite = +10 XP demain'
+                            : 'Dépensé ${euros(today)} · ${euros(today - allow)} au-dessus · la limite des jours suivants baisse',
+                        style: K.body(11, color: ok ? K.muted : K.coral),
+                      ),
+                    ]),
+                  ),
+                  Icon(ok ? Icons.check_circle_rounded : Icons.warning_amber_rounded, color: ok ? K.lime : K.coral),
+                ]),
+              );
+            }),
           ],
           const SizedBox(height: 10),
           SizedBox(
@@ -225,34 +283,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                   children: [
                     Expanded(child: Text('Budget mensuel', style: K.body(14))),
                     TextButton(
-                      onPressed: () async {
-                        final c = TextEditingController(text: budget > 0 ? budget.toStringAsFixed(0) : '');
-                        final v = await showDialog<double>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            backgroundColor: K.card,
-                            title: const Text('Budget du mois'),
-                            content: TextField(
-                              controller: c,
-                              autofocus: true,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              decoration: const InputDecoration(suffixText: '€'),
-                            ),
-                            actions: [
-                              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, double.tryParse(c.text.replaceAll(',', '.'))),
-                                child: const Text('OK'),
-                              ),
-                            ],
-                          ),
-                        );
-                        c.dispose();
-                        if (v != null) {
-                          store.settings.monthlyBudget = v;
-                          await store.updateSettings();
-                        }
-                      },
+                      onPressed: () => editBudget(context),
                       child: Text(budget > 0 ? euros(budget) : 'Fixer'),
                     ),
                   ],

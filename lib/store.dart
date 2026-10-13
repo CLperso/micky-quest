@@ -126,6 +126,7 @@ class AppStore extends ChangeNotifier {
     }
     _stamp(init: true);
     _rollOver();
+    _checkBudgetDays();
     await mergePending(notify: false);
     notifyListeners();
   }
@@ -629,7 +630,7 @@ class AppStore extends ChangeNotifier {
   List<Task> tasksIn(String quad) => openTasks.where((t) => t.quad == quad).toList();
 
   List<Task> questSteps(String category) =>
-      tasks.where((t) => t.category == category && t.day == todayKey && !t.removed).toList()
+      tasks.where((t) => t.inQuest && t.category == category && t.day == todayKey && !t.removed).toList()
         ..sort((a, b) => a.order.compareTo(b.order));
 
   Task? get boss {
@@ -646,14 +647,16 @@ class AppStore extends ChangeNotifier {
     return null;
   }
 
-  Future<Task> addTask(String title, {String category = '', int estimate = 0, String quad = Quad.inbox}) async {
+  Future<Task> addTask(String title, {String category = '', int estimate = 0, String quad = Quad.inbox, bool? inQuest}) async {
+    final q = inQuest ?? category.isNotEmpty;
     final t = Task(
       title: title.trim(),
       category: category,
       estimateMin: estimate,
-      quad: quad,
+      quad: q && quad == Quad.inbox ? Quad.doNow : quad,
       day: todayKey,
-      order: tasks.length,
+      order: q ? questSteps(category).length : tasks.length,
+      inQuest: q && category.isNotEmpty,
     );
     tasks.add(t);
     await commit();
@@ -673,19 +676,35 @@ class AppStore extends ChangeNotifier {
   }
 
   /// Change le titre, le pari ou la quête d'une tâche.
-  Future<void> editTask(Task t, {String? title, int? estimate, String? category}) async {
+  Future<void> editTask(Task t, {String? title, int? estimate, String? category, bool? inQuest}) async {
     if (title != null && title.trim().isNotEmpty) t.title = title.trim();
     if (estimate != null) t.estimateMin = estimate;
     if (category != null) {
       t.category = category;
-      if (category.isNotEmpty) {
+      if (category.isEmpty) t.inQuest = false;
+    }
+    if (inQuest != null && t.category.isNotEmpty) {
+      t.inQuest = inQuest;
+      if (inQuest) {
         t.day = todayKey;
         if (t.quad == Quad.inbox) t.quad = Quad.doNow;
-        t.order = questSteps(category).length;
+        t.order = questSteps(t.category).length;
       }
     }
     await commit();
   }
+
+  /// « Pas aujourd'hui » : la tâche ne sera plus proposée dans « À caser » avant demain.
+  Future<void> hideToday(Task t) async {
+    t.hiddenDay = todayKey;
+    await commit();
+  }
+
+  /// Tâches de Planifier sans heure (ou conditionnelles), à proposer dans Aujourd'hui.
+  List<Task> get toPlaceToday => tasks
+      .where((t) => !t.done && !t.removed && t.quad == Quad.plan && t.plannedAt == 0 && t.hiddenDay != todayKey && !t.inQuest)
+      .toList()
+    ..sort((a, b) => a.createdDay.compareTo(b.createdDay));
 
   /// Toutes les étapes faites : on clôt la quête (+15 XP, une fois par jour et par quête).
   Future<bool> closeQuest(String category) async {
@@ -708,7 +727,7 @@ class AppStore extends ChangeNotifier {
   /// Vrai si la tâche fait partie d'Aujourd'hui (quête, Faire maintenant, heure aujourd'hui, reportée, boss).
   bool inToday(Task t) =>
       !t.done && !t.removed && t.day.compareTo(todayKey) <= 0 &&
-      (t.category.isNotEmpty || t.quad == Quad.doNow || t.deferred || t.isBoss ||
+      (t.inQuest || t.quad == Quad.doNow || t.deferred || t.isBoss ||
           (t.plannedAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(t.plannedAt)) == todayKey));
 
   Future<void> moveTask(Task t, String quad) async {
@@ -723,6 +742,8 @@ class AppStore extends ChangeNotifier {
 
   Future<void> completeTask(Task t) async {
     if (t.done) {
+      // décocher (ou « Annuler ») reprend l'XP gagnée aujourd'hui
+      if (t.doneAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(t.doneAt)) == todayKey) _gainXp(-taskXp(t), 'Tâche décochée');
       t.done = false;
       t.doneAt = 0;
     } else {
@@ -1102,7 +1123,13 @@ class AppStore extends ChangeNotifier {
       }
       if (e.amount == 0) continue;
       total += e.amount;
-      final k = e.reason.startsWith('Habitude') ? 'Habitudes' : e.reason;
+      final k = e.reason.startsWith('Habitude')
+          ? 'Habitudes'
+          : e.reason == 'Tâche décochée'
+              ? 'Tâche faite'
+              : e.reason.startsWith('Budget tenu')
+                  ? 'Budget tenu'
+                  : e.reason;
       by[k] = (by[k] ?? 0) + e.amount;
     }
     return (xp: total, byReason: by, loot: loot);
@@ -1862,6 +1889,48 @@ class AppStore extends ChangeNotifier {
       m[e.category] = (m[e.category] ?? 0) + e.amount;
     }
     return m;
+  }
+
+  double spentOn(String day) => expenses
+      .where((e) => !e.removed && dayKey(DateTime.fromMillisecondsSinceEpoch(e.ts)) == day)
+      .fold(0.0, (a, e) => a + e.amount);
+
+  /// Ce que tu peux dépenser au maximum ce jour-là pour tenir le budget du mois :
+  /// (budget − dépensé avant ce jour) ÷ jours restants, ce jour compris.
+  double dailyAllowance(String day) {
+    final b = settings.monthlyBudget;
+    if (b <= 0) return 0;
+    final d = parseDay(day);
+    final before = expenses
+        .where((e) => !e.removed)
+        .where((e) {
+          final t = DateTime.fromMillisecondsSinceEpoch(e.ts);
+          return t.year == d.year && t.month == d.month && t.day < d.day;
+        })
+        .fold(0.0, (a, e) => a + e.amount);
+    final daysInMonth = DateTime(d.year, d.month + 1, 0).day;
+    final left = daysInMonth - d.day + 1;
+    return max(0, (b - before) / left);
+  }
+
+  /// +10 XP pour chaque jour passé (3 derniers) sous la limite du jour. Une fois par jour.
+  void _checkBudgetDays() {
+    if (settings.monthlyBudget <= 0 || expenses.isEmpty) return;
+    final first = expenses.map((e) => e.ts).reduce(min);
+    for (var i = 1; i <= 3; i++) {
+      final d = DateTime.now().subtract(Duration(days: i));
+      final k = dayKey(d);
+      if (DateTime(d.year, d.month, d.day).millisecondsSinceEpoch + 86400000 < first) continue;
+      final reason = 'Budget tenu · ${d.day}/${d.month}';
+      if (xpEvents.any((e) => e.reason == reason)) continue;
+      final allow = dailyAllowance(k);
+      if (allow > 0 && spentOn(k) <= allow) _gainXp(10, reason);
+    }
+  }
+
+  Future<void> setMonthlyBudget(double v) async {
+    settings.monthlyBudget = v;
+    await commit();
   }
 
   Future<void> addExpense(Expense e) async {
