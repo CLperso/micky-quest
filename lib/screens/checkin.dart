@@ -102,7 +102,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  for (final e in LogKind.qtyLabels.entries) ...[
+                  for (final q in LogKind.qtyChoices) ...[
                     Expanded(
                       child: SizedBox(
                         height: 56,
@@ -112,12 +112,12 @@ class _CheckinScreenState extends State<CheckinScreen> {
                             side: const BorderSide(color: K.line, width: 2),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                           ),
-                          onPressed: () => Navigator.pop(ctx, e.key),
-                          child: Text(e.value, style: K.display(20)),
+                          onPressed: () => Navigator.pop(ctx, q),
+                          child: Text(LogKind.qtyLabel(q), style: K.display(20)),
                         ),
                       ),
                     ),
-                    if (e.key != 1.0) const SizedBox(width: 8),
+                    if (q != 1.0) const SizedBox(width: 8),
                   ],
                 ],
               ),

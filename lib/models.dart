@@ -323,8 +323,13 @@ class LogKind {
     free: 'Note libre',
     calm: 'Coup de pouce',
   };
-  static const qtyLabels = {0.25: '¼', 0.5: '½', 0.75: '¾', 1.0: '1'};
-  static String qtyLabel(double q) => qtyLabels[q] ?? (q == q.roundToDouble() ? '${q.round()}' : '$q');
+  static const qtyChoices = [0.25, 0.5, 0.75, 1.0];
+  static String qtyLabel(double q) {
+    if (q == 0.25) return '¼';
+    if (q == 0.5) return '½';
+    if (q == 0.75) return '¾';
+    return q == q.roundToDouble() ? '${q.round()}' : '$q';
+  }
 }
 
 class LogEntry {
