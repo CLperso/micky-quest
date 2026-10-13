@@ -1226,6 +1226,26 @@ class AppStore extends ChangeNotifier {
     return out;
   }
 
+  /// Heures de check-in d'aujourd'hui déjà passées et sans réponse.
+  List<DateTime> missedCheckins() {
+    final now = DateTime.now();
+    final day = DateTime(now.year, now.month, now.day);
+    final interval = max(15, settings.intervalMin);
+    final answered = checkinsOn(todayKey).map((c) => c.ts).toList();
+    final out = <DateTime>[];
+    for (var m = settings.startHour * 60 + interval; m <= settings.endHour * 60; m += interval) {
+      final t = day.add(Duration(minutes: m));
+      if (!t.isBefore(now)) break;
+      if (pausedAt(t)) continue;
+      final ts = t.millisecondsSinceEpoch;
+      if (!settings.checkinsDuringSession && sessions.any((s) => ts >= s.start && (s.running || ts <= s.end))) continue;
+      final half = interval * 60000 ~/ 2;
+      if (answered.any((a) => (a - ts).abs() <= half)) continue;
+      out.add(t);
+    }
+    return out;
+  }
+
   // ---------- Mode occupée ----------
 
   Pause? get activePause {

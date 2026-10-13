@@ -79,7 +79,7 @@ const _checkinTitles = [
   'Coucou ! Tu es sur quoi en ce moment ?',
 ];
 
-AndroidNotificationDetails _checkDetails({bool session = false}) => AndroidNotificationDetails(
+AndroidNotificationDetails _checkDetails({bool session = false, int timeoutMin = 30}) => AndroidNotificationDetails(
       _checkChannel,
       'Check-ins',
       channelDescription: 'Micky te demande ce que tu fais',
@@ -87,7 +87,8 @@ AndroidNotificationDetails _checkDetails({bool session = false}) => AndroidNotif
       priority: Priority.high,
       color: const Color(0xFFB8FF3C),
       actions: session ? _sessionActions : _freeActions,
-      timeoutAfter: 25 * 60 * 1000,
+      // la notification reste jusqu'au check-in suivant ; après, on répond depuis le QG
+      timeoutAfter: timeoutMin * 60 * 1000,
     );
 
 AndroidNotificationDetails _dayDetails() => const AndroidNotificationDetails(
@@ -146,7 +147,7 @@ Future<void> rescheduleAll(AppStore store) async {
         body: inSession
             ? 'Un tap pour confirmer, ou dis ce qui s\'est passé.'
             : 'Touche pour dire sur quoi tu es, depuis quand et comment tu te sens.',
-        details: _checkDetails(session: inSession),
+        details: _checkDetails(session: inSession, timeoutMin: interval),
         payload: jsonEncode({'type': 'checkin', 'ts': t.millisecondsSinceEpoch, 'task': inSession ? run.taskId : ''}),
       );
       scheduledCheckins.add(t);

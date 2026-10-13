@@ -11,7 +11,10 @@ import '../theme.dart';
 
 class CheckinScreen extends StatefulWidget {
   final String? focusLog;
-  const CheckinScreen({super.key, this.focusLog});
+
+  /// Heure du check-in auquel on répond (en retard), sinon maintenant.
+  final DateTime? at;
+  const CheckinScreen({super.key, this.focusLog, this.at});
 
   @override
   State<CheckinScreen> createState() => _CheckinScreenState();
@@ -137,7 +140,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
     }
     final why = _why.text.trim();
     await store.addCheckIn(CheckIn(
-      ts: DateTime.now().millisecondsSinceEpoch,
+      ts: (widget.at ?? DateTime.now()).millisecondsSinceEpoch,
       activity: _act,
       taskId: Act.isOnTask(_act) ? _taskId : '',
       sinceMin: _since,
@@ -167,7 +170,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
       _taskId = run.taskId;
     }
     return Scaffold(
-      appBar: AppBar(title: Text(logsFirst ? 'Noter' : 'Check-in')),
+      appBar: AppBar(title: Text(logsFirst ? 'Noter' : (widget.at == null ? 'Check-in' : 'Check-in de ${hm(widget.at!)}'))),
       body: SafeArea(
         top: false,
         child: ListView(
@@ -175,8 +178,14 @@ class _CheckinScreenState extends State<CheckinScreen> {
           children: [
             if (logsFirst) ...logs,
             if (!logsFirst) ...[
-              MickySays(run != null ? 'Toujours sur « ${run.title} » ?' : 'Tu fais quoi, là tout de suite ?',
-                  pose: 'window', ring: K.lime),
+              MickySays(
+                  widget.at != null
+                      ? 'Tu faisais quoi vers ${hm(widget.at!)} ?'
+                      : run != null
+                          ? 'Toujours sur « ${run.title} » ?'
+                          : 'Tu fais quoi, là tout de suite ?',
+                  pose: 'window',
+                  ring: K.lime),
               const SizedBox(height: 12),
             ],
             Panel(

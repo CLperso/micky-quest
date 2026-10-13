@@ -97,6 +97,7 @@ class HomeScreen extends StatelessWidget {
         const SizedBox(height: 14),
         const PauseSwitch(),
         const SizedBox(height: 14),
+        const MissedCheckins(),
 
         if (!plan.briefingDone) ...[
           Panel(
@@ -502,6 +503,62 @@ class _PauseSheetState extends State<_PauseSheet> {
                 await store.startPause(_label, options[keys[_choice]]);
                 if (context.mounted) Navigator.pop(context, true);
               },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+/// Check-ins du jour restés sans réponse : on peut y répondre après coup.
+class MissedCheckins extends StatelessWidget {
+  const MissedCheckins({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final missed = store.missedCheckins();
+    if (missed.isEmpty) return const SizedBox.shrink();
+    final shown = missed.length > 4 ? missed.sublist(missed.length - 4) : missed;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Panel(
+        border: K.cyan.withValues(alpha: 0.6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Icon(Icons.schedule_rounded, color: K.cyan, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  missed.length == 1 ? 'Un check-in sans réponse' : '${missed.length} check-ins sans réponse',
+                  style: K.body(14, w: FontWeight.w800),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 4),
+            Text('Touche une heure pour dire ce que tu faisais à ce moment-là.', style: K.body(12, color: K.muted)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final t in shown)
+                  ActionChip(
+                    label: Text(hm(t), style: K.body(13, w: FontWeight.w800)),
+                    backgroundColor: K.raised,
+                    side: BorderSide.none,
+                    onPressed: () => openScreen(context, CheckinScreen(at: t)),
+                  ),
+                if (missed.length > shown.length)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text('+ ${missed.length - shown.length} plus tôt', style: K.body(12, color: K.muted)),
+                  ),
+              ],
             ),
           ],
         ),
