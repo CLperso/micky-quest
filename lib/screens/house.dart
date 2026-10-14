@@ -451,14 +451,25 @@ class _HouseScreenState extends State<HouseScreen> {
                           for (final p in placed)
                             if (p.id != _dragging)
                               _objectAt(Objects.byId(p.id)!, _cell(p.gx, p.gy, size)),
-                          // Micky : dans le panier s'il est posé, sinon au centre
+                          // Micky : à côté de son lit/panier (jamais par-dessus un objet), sinon près du centre
                           Builder(builder: (_) {
+                            bool free(int x, int y) => x >= 0 && y >= 0 && x < 5 && y < 5 && !placed.any((p) => p.gx == x && p.gy == y);
                             final bed = placed.where((p) => p.id == 'panier' || p.id == 'lit').toList();
-                            final at = bed.isEmpty ? _cell(2, 2, size) : _cell(bed.first.gx, bed.first.gy, size);
+                            final (bx, by) = bed.isEmpty ? (2, 2) : (bed.first.gx, bed.first.gy);
+                            (int, int)? spot;
+                            for (var d = bed.isEmpty ? 0 : 1; d <= 4 && spot == null; d++) {
+                              for (final (dx, dy) in [(d, 0), (0, d), (-d, 0), (0, -d), (d, d), (-d, d), (d, -d), (-d, -d)]) {
+                                if (free(bx + dx, by + dy)) {
+                                  spot = (bx + dx, by + dy);
+                                  break;
+                                }
+                              }
+                            }
+                            final at = _cell((spot ?? (bx, by)).$1, (spot ?? (bx, by)).$2, size);
                             return Positioned(
-                              left: at.dx - 24,
-                              top: at.dy - (bed.isEmpty ? 52 : 44),
-                              child: _mickyMedallion(worn, 48),
+                              left: at.dx - 21,
+                              top: at.dy - 46,
+                              child: IgnorePointer(child: _mickyMedallion(worn, 42)),
                             );
                           }),
                           if (_dragging != null && _dragPos != null)
