@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:google_mlkit_digital_ink_recognition/google_mlkit_digital_ink_recognition.dart' as mk;
 
 import '../main.dart';
 import '../models.dart';
@@ -29,6 +30,8 @@ class _DumpScreenState extends State<DumpScreen> {
   List<_Line>? _lines;
   Timer? _timer;
   int _left = 0;
+  bool _pen = false;
+  final _pad = GlobalKey<_InkPadState>();
 
   bool get _cut => widget.cut != null;
 
@@ -164,10 +167,69 @@ class _DumpScreenState extends State<DumpScreen> {
                     : 'Tout ce qui te passe par la tête, une idée par ligne. Pas de tri, pas de jugement : on range après.',
                 style: K.body(13, color: K.muted),
               ),
+              if (isTablet(context)) ...[
+                const SizedBox(height: 8),
+                Row(children: [
+                  ChoiceChip(
+                    label: const Text('Clavier'),
+                    selected: !_pen,
+                    onSelected: (_) => setState(() => _pen = false),
+                    selectedColor: K.cyan,
+                    labelStyle: K.body(13, color: !_pen ? K.bg : K.ink),
+                    backgroundColor: K.raised,
+                    side: BorderSide.none,
+                    showCheckmark: false,
+                  ),
+                  const SizedBox(width: 6),
+                  ChoiceChip(
+                    label: const Text('Stylet'),
+                    selected: _pen,
+                    onSelected: (_) => setState(() => _pen = true),
+                    selectedColor: K.cyan,
+                    labelStyle: K.body(13, color: _pen ? K.bg : K.ink),
+                    backgroundColor: K.raised,
+                    side: BorderSide.none,
+                    showCheckmark: false,
+                  ),
+                ]),
+              ],
+              if (_pen) ...[
+                const SizedBox(height: 10),
+                _InkPad(key: _pad),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(child: SecondaryButton(label: 'Effacer', onPressed: () => _pad.currentState?.clear())),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: PrimaryButton(
+                      label: 'Lire mon écriture',
+                      color: K.cyan,
+                      onPressed: () async {
+                        final st = _pad.currentState;
+                        if (st == null) return;
+                        final messenger = ScaffoldMessenger.of(context);
+                        messenger.showSnackBar(const SnackBar(content: Text('Lecture de ton écriture…'), duration: Duration(seconds: 2)));
+                        final lines = await st.recognize();
+                        if (!mounted) return;
+                        if (lines == null) {
+                          messenger.showSnackBar(const SnackBar(content: Text('Lecture impossible pour l\'instant (il faut une connexion la première fois, pour télécharger le français).')));
+                          return;
+                        }
+                        appendText(lines.join('\n'));
+                        st.clear();
+                        setState(() => _pen = false);
+                      },
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: 6),
+                Text('Une idée par ligne. « Lire mon écriture » la transforme en texte, que tu peux corriger avant de trier.', style: K.body(11, color: K.muted)),
+              ],
               const SizedBox(height: 10),
+              if (!_pen)
               TextField(
                 controller: _text,
-                autofocus: true,
+                autofocus: !isTablet(context),
                 maxLines: null,
                 minLines: 10,
                 textCapitalization: TextCapitalization.sentences,
@@ -237,4 +299,122 @@ class _DumpScreenState extends State<DumpScreen> {
   void _refresh() {
     if (mounted) setState(() {});
   }
+}
+
+/// Zone d'écriture au stylet, reconnue par ML Kit (français, sur l'appareil).
+class _InkPad extends StatefulWidget {
+  const _InkPad({super.key});
+
+  @override
+  State<_InkPad> createState() => _InkPadState();
+}
+
+class _InkPadState extends State<_InkPad> {
+  final List<List<(Offset, int)>> _strokes = [];
+  List<(Offset, int)>? _cur;
+
+  void clear() => setState(() => _strokes.clear());
+
+  /// Regroupe les traits en lignes (par hauteur), reconnaît chaque ligne. null si impossible.
+  Future<List<String>?> recognize() async {
+    if (_strokes.isEmpty) return [];
+    try {
+      const lang = 'fr';
+      final manager = mk.DigitalInkRecognizerModelManager();
+      if (!await manager.isModelDownloaded(lang)) {
+        final ok = await manager.downloadModel(lang, isWifiRequired: false);
+        if (!ok) return null;
+      }
+      final recognizer = mk.DigitalInkRecognizer(languageCode: lang);
+      // lignes : traits dont le centre vertical est proche
+      final groups = <List<List<(Offset, int)>>>[];
+      final centers = <double>[];
+      final sorted = [..._strokes]..sort((a, b) => _cy(a).compareTo(_cy(b)));
+      for (final s in sorted) {
+        final cy = _cy(s);
+        if (centers.isNotEmpty && (cy - centers.last).abs() < 38) {
+          groups.last.add(s);
+          centers[centers.length - 1] = (centers.last * (groups.last.length - 1) + cy) / groups.last.length;
+        } else {
+          groups.add([s]);
+          centers.add(cy);
+        }
+      }
+      final out = <String>[];
+      for (final g in groups) {
+        g.sort((a, b) => a.first.$2.compareTo(b.first.$2));
+        final ink = mk.Ink();
+        ink.strokes = [
+          for (final s in g)
+            mk.Stroke()..points = [for (final p in s) mk.StrokePoint(x: p.$1.dx, y: p.$1.dy, t: p.$2)]
+        ];
+        final c = await recognizer.recognize(ink);
+        if (c.isNotEmpty && c.first.text.trim().isNotEmpty) out.add(c.first.text.trim());
+      }
+      await recognizer.close();
+      return out;
+    } catch (e) {
+      debugPrint('Encre : $e');
+      return null;
+    }
+  }
+
+  double _cy(List<(Offset, int)> s) {
+    var minY = double.infinity, maxY = -double.infinity;
+    for (final p in s) {
+      minY = p.$1.dy < minY ? p.$1.dy : minY;
+      maxY = p.$1.dy > maxY ? p.$1.dy : maxY;
+    }
+    return (minY + maxY) / 2;
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(
+        height: 420,
+        decoration: BoxDecoration(color: const Color(0xFFF7F4EC), borderRadius: BorderRadius.circular(16)),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Listener(
+            onPointerDown: (e) => setState(() {
+              _cur = [(e.localPosition, DateTime.now().millisecondsSinceEpoch)];
+              _strokes.add(_cur!);
+            }),
+            onPointerMove: (e) => setState(() => _cur?.add((e.localPosition, DateTime.now().millisecondsSinceEpoch))),
+            onPointerUp: (_) => _cur = null,
+            child: CustomPaint(painter: _InkPainter(_strokes), size: Size.infinite),
+          ),
+        ),
+      );
+}
+
+class _InkPainter extends CustomPainter {
+  final List<List<(Offset, int)>> strokes;
+  _InkPainter(this.strokes);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final lines = Paint()..color = const Color(0xFFE0DACB)..strokeWidth = 1;
+    for (var y = 60.0; y < size.height; y += 60) {
+      canvas.drawLine(Offset(12, y), Offset(size.width - 12, y), lines);
+    }
+    final p = Paint()
+      ..color = const Color(0xFF2A2450)
+      ..strokeWidth = 2.6
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    for (final s in strokes) {
+      if (s.length < 2) {
+        canvas.drawCircle(s.first.$1, 1.4, p);
+        continue;
+      }
+      final path = Path()..moveTo(s.first.$1.dx, s.first.$1.dy);
+      for (final pt in s.skip(1)) {
+        path.lineTo(pt.$1.dx, pt.$1.dy);
+      }
+      canvas.drawPath(path, p);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _InkPainter old) => true;
 }
