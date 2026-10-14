@@ -6,6 +6,7 @@ import 'package:google_mlkit_digital_ink_recognition/google_mlkit_digital_ink_re
 import '../main.dart';
 import '../models.dart';
 import '../theme.dart';
+import 'notebook.dart' show isTablet;
 
 /// Vider la tête (toutes les idées → trier) ou Découper une tâche (→ étapes avec pari).
 /// En mode découpe, renvoie la première étape créée (pour la lancer tout de suite).
