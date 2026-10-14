@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../main.dart';
 import '../models.dart';
 import '../theme.dart';
+import 'dump.dart';
 import 'house.dart';
 import 'reflect.dart';
 
@@ -219,7 +220,29 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
                 value: _silent,
                 onChanged: (v) => setState(() => _silent = v),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
+              if (_taskId != null || _free.text.trim().isNotEmpty)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () async {
+                      var t = _taskId == null ? null : store.taskById(_taskId!);
+                      t ??= await store.addTask(_free.text.trim(), category: _cat, quad: Quad.doNow, inQuest: false);
+                      if (!context.mounted) return;
+                      final first = await Navigator.of(context).push<Task?>(MaterialPageRoute(builder: (_) => DumpScreen(cut: t)));
+                      if (first != null && mounted) {
+                        setState(() {
+                          _taskId = first.id;
+                          _free.clear();
+                          if (first.estimateMin > 0) _min = first.estimateMin;
+                        });
+                      }
+                    },
+                    icon: const Icon(Icons.content_cut_rounded, color: K.cyan, size: 18),
+                    label: Text('Trop gros ? Découper d\'abord', style: K.body(13, color: K.cyan, w: FontWeight.w800)),
+                  ),
+                ),
+              const SizedBox(height: 4),
               PrimaryButton(
                 label: 'Je parie $_min min',
                 onPressed: (_taskId == null && _free.text.trim().isEmpty)

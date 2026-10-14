@@ -8,6 +8,7 @@ import '../main.dart';
 import '../models.dart';
 import '../theme.dart';
 import 'cabin.dart';
+import 'dump.dart';
 import 'reflect.dart';
 import 'session.dart';
 import 'timetable.dart';
@@ -74,6 +75,37 @@ class _BlockScreenState extends State<BlockScreen> {
               ),
             ),
 
+            if (t != null)
+              Panel(
+                border: K.cyan,
+                child: InkWell(
+                  onTap: () async {
+                    final first = await Navigator.of(context).push<Task?>(MaterialPageRoute(builder: (_) => DumpScreen(cut: t)));
+                    if (first != null && context.mounted) {
+                      Navigator.pop(context);
+                      final ctx = navKey.currentContext;
+                      if (ctx != null) launchTask(ctx, first);
+                    }
+                  },
+                  child: Row(children: [
+                    const Icon(Icons.content_cut_rounded, color: K.cyan),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text('Découper « ${t.title} » en petits morceaux', style: K.body(14, w: FontWeight.w800))),
+                  ]),
+                ),
+              )
+            else
+              Panel(
+                border: K.cyan,
+                child: InkWell(
+                  onTap: () => openScreen(context, const DumpScreen()),
+                  child: Row(children: [
+                    const Icon(Icons.psychology_alt_rounded, color: K.cyan),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text('Vider la tête : tout écrire, trier après', style: K.body(14, w: FontWeight.w800))),
+                  ]),
+                ),
+              ),
             const SectionLabel('Jusqu\'où je PEUX aller ?'),
             Text(
               'Pas « ce que je devrais », mais le maximum honnête avant de décrocher. Plus efficace que « juste commence 5 minutes ».',

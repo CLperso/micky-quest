@@ -14,6 +14,7 @@ import 'habits.dart';
 import 'settings.dart';
 import 'block.dart';
 import 'cabin.dart';
+import 'dump.dart';
 import 'boss.dart';
 import 'house.dart';
 import 'task_panel.dart';
@@ -205,6 +206,30 @@ class HomeScreen extends StatelessWidget {
                 child: _quick(context, Icons.support_rounded, 'Je bloque', K.coral,
                     () => openScreen(context, const BlockScreen()))),
           ],
+        ),
+        const SizedBox(height: 10),
+        Material(
+          color: K.card,
+          borderRadius: BorderRadius.circular(18),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: () => openScreen(context, const DumpScreen()),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: K.cyan, width: 2)),
+              child: Row(children: [
+                const Icon(Icons.psychology_alt_rounded, color: K.cyan),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Vider la tête', style: K.display(15)),
+                    Text('tout écrire, puis ranger en tâches ou en étapes', style: K.body(11, color: K.muted)),
+                  ]),
+                ),
+                const Icon(Icons.chevron_right_rounded, color: K.cyan),
+              ]),
+            ),
+          ),
         ),
         const SizedBox(height: 10),
         Material(

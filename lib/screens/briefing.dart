@@ -4,6 +4,8 @@ import '../main.dart';
 import '../models.dart';
 import '../notifications.dart';
 import '../theme.dart';
+import 'block.dart';
+import 'dump.dart';
 import 'notebook.dart';
 import 'matrix.dart';
 
@@ -149,6 +151,51 @@ class _BriefingScreenState extends State<BriefingScreen> {
                 child: Text('Ton point de spawn, préparé hier soir : ${store.today.spawn}', style: K.body(14)),
               ),
             ],
+            const SizedBox(height: 10),
+            if (!store.today.briefingDone) ...[
+              Panel(
+                border: K.cyan,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      const Icon(Icons.wb_sunny_rounded, color: K.cyan),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text('Démarrage guidé', style: K.display(16))),
+                      Text('facultatif', style: K.body(11, color: K.muted)),
+                    ]),
+                    const SizedBox(height: 4),
+                    Text('Vider la tête, réveiller le corps, puis ce briefing. La version mini compte autant.', style: K.body(12, color: K.muted)),
+                    const SizedBox(height: 10),
+                    Row(children: [
+                      Expanded(
+                        child: SecondaryButton(
+                          label: '15 min',
+                          onPressed: () async {
+                            await openScreen(context, const DumpScreen(minutes: 5));
+                            if (!context.mounted) return;
+                            await openScreen(context, const ExerciseTimer());
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: SecondaryButton(
+                          label: 'Mini · 3 min',
+                          onPressed: () async {
+                            await openScreen(context, const DumpScreen(minutes: 1));
+                            if (!context.mounted) return;
+                            await openScreen(context, const SimpleTimer(title: 'Bouger 1 minute', minutes: 1, hint: 'Étire-toi, saute sur place, ouvre la fenêtre. Une minute.', what: 'démarrage'));
+                          },
+                        ),
+                      ),
+                    ]),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+            const SkinRow(),
             const SectionLabel('1 · Tes objectifs du jour'),
             Panel(
               border: K.gold,
@@ -268,8 +315,19 @@ class _BriefingScreenState extends State<BriefingScreen> {
                 await store.finishBriefing();
                 await rescheduleAll(store);
                 if (!context.mounted) return;
+                final messenger = ScaffoldMessenger.of(context);
                 Navigator.pop(context);
                 if (first) openScreen(context, const MatrixScreen(standalone: true));
+                // le kannada se glisse pendant qu'on se prépare
+                for (final h in store.activeHabits) {
+                  if (store.habitLevel(h, store.todayKey) == 0 && h.name.toLowerCase().contains('kannada')) {
+                    messenger.showSnackBar(SnackBar(
+                      duration: const Duration(seconds: 6),
+                      content: Text('${h.name} en te préparant ? ${h.mini.isNotEmpty ? h.mini : ''}'),
+                    ));
+                    break;
+                  }
+                }
               },
             ),
           ],
@@ -387,6 +445,76 @@ class _StepsEditorState extends State<StepsEditor> {
                 ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Peau du jour : un tap de 0 (nette) à 4 (poussée), zones en option.
+class SkinRow extends StatelessWidget {
+  const SkinRow({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final p = store.today;
+    const colors = [K.lime, Color(0xFFC9E86A), K.gold, K.coral, Color(0xFFE0605A)];
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Text('Peau aujourd\'hui', style: K.body(14)),
+            const Spacer(),
+            Text(p.skin < 0 ? '—' : DayPlan.skinLabels[p.skin], style: K.body(13, color: p.skin < 0 ? K.muted : colors[p.skin], w: FontWeight.w800)),
+          ]),
+          const SizedBox(height: 8),
+          Row(children: [
+            for (var i = 0; i < 5; i++)
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: i < 4 ? 6 : 0),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () async {
+                      p.skin = p.skin == i ? -1 : i;
+                      await store.commit();
+                    },
+                    child: Container(
+                      height: 36,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: p.skin == i ? colors[i] : K.raised,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text('$i', style: K.body(14, color: p.skin == i ? K.bg : K.muted, w: FontWeight.w900)),
+                    ),
+                  ),
+                ),
+              ),
+          ]),
+          if (p.skin >= 1) ...[
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final z in ['menton', 'mâchoire', 'joues', 'front', 'nez', 'dos'])
+                FilterChip(
+                  label: Text(z),
+                  selected: p.skinZones.split(',').contains(z),
+                  onSelected: (_) async {
+                    final set = p.skinZones.split(',').where((x) => x.isNotEmpty).toSet();
+                    if (!set.remove(z)) set.add(z);
+                    p.skinZones = set.join(',');
+                    await store.commit();
+                  },
+                  selectedColor: colors[p.skin],
+                  backgroundColor: K.raised,
+                  labelStyle: K.body(12, color: p.skinZones.split(',').contains(z) ? K.bg : K.ink),
+                  side: BorderSide.none,
+                  showCheckmark: false,
+                ),
+            ]),
+          ],
         ],
       ),
     );

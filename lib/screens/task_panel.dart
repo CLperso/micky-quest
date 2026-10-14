@@ -6,6 +6,7 @@ import '../models.dart';
 import '../notifications.dart';
 import '../theme.dart';
 import 'boss.dart';
+import 'dump.dart';
 import 'timetable.dart';
 import 'today.dart';
 
@@ -168,6 +169,7 @@ Future<void> showTaskPanel(BuildContext context, Task t) async {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       small('Ranger', Icons.grid_view_rounded, K.ink, 'sort'),
+                      small('Découper', Icons.content_cut_rounded, K.cyan, 'cut'),
                       small('Modifier', Icons.edit_rounded, K.ink, 'edit'),
                       small(t.isBoss ? 'Boss' : 'Boss', Icons.pest_control_rounded, K.coral, 'boss'),
                       small('Supprimer', Icons.delete_outline_rounded, K.muted, 'delete'),
@@ -248,6 +250,10 @@ Future<void> showTaskPanel(BuildContext context, Task t) async {
       break;
     case 'edit':
       await editTaskSheet(context, t);
+      break;
+    case 'cut':
+      final first = await Navigator.of(context).push<Task?>(MaterialPageRoute(builder: (_) => DumpScreen(cut: t)));
+      if (first != null && context.mounted) await launchTask(context, first);
       break;
     case 'boss':
       if (!t.isBoss) await store.setBoss(t);

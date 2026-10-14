@@ -34,6 +34,7 @@ class _DiscoveriesScreenState extends State<DiscoveriesScreen> {
     'start': Icons.wb_sunny_rounded,
     'idle': Icons.hourglass_empty_rounded,
     'cabin': Icons.cabin_rounded,
+    'skin': Icons.face_retouching_natural_rounded,
   };
   static const _colors = [K.gold, K.cyan, K.coral, K.lime, K.pink];
 

@@ -11,6 +11,7 @@ import '../notifications.dart';
 import '../store.dart';
 import '../theme.dart';
 import 'block.dart';
+import 'dump.dart';
 import 'slot.dart';
 import 'task_panel.dart';
 import 'session.dart';
@@ -1481,46 +1482,23 @@ class PostponeBlock extends StatelessWidget {
 
 /// Au 3e report : Micky propose de découper.
 Future<void> showSplitSuggestion(BuildContext context, Task t) async {
-  final store = AppScope.read(context);
-  final first = await showModalBottomSheet<String>(
+  final go = await showModalBottomSheet<bool>(
     context: context,
-    isScrollControlled: true,
-    builder: (ctx) {
-      final c = TextEditingController();
-      return Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                MickySays('Trois reports : « ${t.title} » est sans doute trop gros d\'un coup. On découpe ? Quelle est la toute première action, en une phrase ?'),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: c,
-                  autofocus: true,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(hintText: 'ouvrir le fichier et lire le premier paragraphe'),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(child: SecondaryButton(label: 'Pas maintenant', onPressed: () => Navigator.pop(ctx))),
-                    const SizedBox(width: 10),
-                    Expanded(child: PrimaryButton(label: 'Créer l\'étape', onPressed: () => Navigator.pop(ctx, c.text.trim()))),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    },
+    builder: (ctx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          MickySays('Trois reports : « ${t.title} » est sans doute trop gros d\'un coup. On le découpe ?'),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: SecondaryButton(label: 'Pas maintenant', onPressed: () => Navigator.pop(ctx, false))),
+            const SizedBox(width: 10),
+            Expanded(child: PrimaryButton(label: 'Découper', onPressed: () => Navigator.pop(ctx, true))),
+          ]),
+        ]),
+      ),
+    ),
   );
-  if (first == null || first.isEmpty) return;
-  final step = await store.addTask(first, category: t.category, estimate: 10, quad: Quad.doNow);
-  step.order = t.order;
-  await store.commit();
+  if (go != true || !context.mounted) return;
+  await Navigator.of(context).push<Task?>(MaterialPageRoute(builder: (_) => DumpScreen(cut: t)));
 }

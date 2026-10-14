@@ -596,6 +596,8 @@ class DayPlan {
   String persoGoal; // objectif perso du jour (aller courir…)
   bool persoGoalDone;
   String spawn; // point de spawn de demain : le geste préparé ce soir
+  int skin; // peau : -1 = non noté, 0 nette → 4 poussée
+  String skinZones;
   int mod;
 
   DayPlan({
@@ -614,8 +616,12 @@ class DayPlan {
     this.persoGoal = '',
     this.persoGoalDone = false,
     this.spawn = '',
+    this.skin = -1,
+    this.skinZones = '',
     this.mod = 0,
   });
+
+  static const skinLabels = ['nette', 'quelques boutons', 'moyen', 'beaucoup', 'poussée'];
 
   factory DayPlan.fromJson(Map<String, dynamic> j) => DayPlan(
         day: _s(j['day']),
@@ -633,6 +639,8 @@ class DayPlan {
         persoGoal: _s(j['persoGoal']),
         persoGoalDone: _b(j['persoDone']),
         spawn: _s(j['spawn']),
+        skin: _i(j['skin'], -1),
+        skinZones: _s(j['skinZ']),
         mod: _i(j['mod']),
       );
 
@@ -652,6 +660,8 @@ class DayPlan {
         'persoGoal': persoGoal,
         'persoDone': persoGoalDone,
         'spawn': spawn,
+        'skin': skin,
+        'skinZ': skinZones,
         'mod': mod,
       };
 }
@@ -815,12 +825,12 @@ class Objects {
     GameObject('aquarium', 'Aquarium', 'salon', 'assets/objects/aquarium.png', 2, flavor: 'Le poisson s\'appelle Nathalie.'),
     GameObject('neon', 'Néon MICKY', 'salon', 'assets/objects/neon.png', 2, wall: true, flavor: 'Il clignote quand tu gagnes un pari.'),
     GameObject('disco', 'Boule disco', 'salon', 'assets/objects/disco.png', 2, wall: true, flavor: 'Soirée dansante après une journée parfaite.'),
-    GameObject('canape', 'Canapé bleu', 'salon', '', 1, flavor: 'Deux coussins, zéro poil. Pour l\'instant.'),
-    GameObject('lampe', 'Lampe champignon', 'salon', '', 1, flavor: 'Lumière douce pour les soirs de feu de camp.'),
+    GameObject('canape', 'Canapé bleu', 'salon', 'assets/objects/canape.png', 1, flavor: 'Deux coussins, zéro poil. Pour l\'instant.'),
+    GameObject('lampe', 'Lampe champignon', 'salon', 'assets/objects/lampe.png', 1, flavor: 'Lumière douce pour les soirs de feu de camp.'),
     GameObject('arbre', 'Arbre à chat', 'salon', 'assets/objects/arbre.png', 3, flavor: 'Le trône d\'observation.'),
     GameObject('chateau', 'Château en carton', 'salon', 'assets/objects/chateau.png', 3, flavor: 'Avec un drapeau. Évidemment.'),
     GameObject('lampe_etoile', 'Veilleuse étoile', 'chambre', 'assets/objects/lampe_etoile.png', 1, flavor: 'Pour les nuits de 7 h et plus.'),
-    GameObject('lit', 'Lit à baldaquin', 'chambre', '', 2, flavor: 'Un lit de princesse. Elle le mérite.'),
+    GameObject('lit', 'Lit à baldaquin', 'chambre', 'assets/objects/lit.png', 2, flavor: 'Un lit de princesse. Elle le mérite.'),
     GameObject('biblio', 'Bibliothèque', 'chambre', '', 2, wall: true, flavor: 'Tes articles préférés, en couleur.'),
     GameObject('noeud', 'Nœud papillon', 'micky', 'assets/objects/noeud.png', 1, flavor: 'Rose à pois. Chic.'),
     GameObject('lunettes', 'Lunettes de soleil', 'micky', '', 1, flavor: 'Pour les jours de zone d\'or.'),

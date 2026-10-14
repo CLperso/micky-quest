@@ -1176,7 +1176,8 @@ class AppStore extends ChangeNotifier {
     final r = Random();
     final pool = <GameObject>[];
     for (final o in Objects.all) {
-      if (inventory.contains(o.id) || o.rarity > maxRarity) continue;
+      // pas d'objet sans illustration dans les coffres
+      if (inventory.contains(o.id) || o.rarity > maxRarity || o.asset.isEmpty) continue;
       for (var i = 0; i < (o.rarity == 1 ? 4 : o.rarity == 2 ? 2 : 1); i++) {
         pool.add(o);
       }
@@ -1870,6 +1871,45 @@ class AppStore extends ChangeNotifier {
             1, ''));
       } else {
         out.add(Discovery('cabin', 'Tes coups de mou', '', visits.length / 3, '3 passages dans la cabane'));
+      }
+    }
+
+    // 7 quinquies. Peau : cycle et humeur des jours d'avant.
+    {
+      final noted = plans.values.where((p) => p.skin >= 0).toList();
+      if (noted.length >= 14) {
+        final parts = <String>[];
+        if (settings.cycleStart.isNotEmpty) {
+          final by = <String, List<int>>{};
+          for (final p in noted) {
+            final ph = phaseOn(parseDay(p.day));
+            if (ph != null) by.putIfAbsent(ph, () => []).add(p.skin);
+          }
+          final ok = by.entries.where((e) => e.value.length >= 3).toList();
+          if (ok.length >= 2) {
+            double mean(List<int> l) => l.reduce((a, b) => a + b) / l.length;
+            ok.sort((a, b) => mean(b.value).compareTo(mean(a.value)));
+            parts.add('Ta peau est la plus agitée en phase ${ok.first.key} (${mean(ok.first.value).toStringAsFixed(1).replaceAll('.', ',')}/4) et la plus calme en phase ${ok.last.key}.');
+          }
+        }
+        // humeur moyenne 2 jours avant
+        final bad = <double>[], good = <double>[];
+        for (final p in noted) {
+          final d = parseDay(p.day).subtract(const Duration(days: 2));
+          final moods = checkinsOn(dayKey(d)).where((c) => c.mood > 0).map((c) => c.mood).toList();
+          if (moods.isEmpty) continue;
+          final m = moods.reduce((a, b) => a + b) / moods.length;
+          (p.skin >= 3 ? bad : p.skin <= 1 ? good : <double>[]).add(m);
+        }
+        if (bad.length >= 3 && good.length >= 3) {
+          final mb = bad.reduce((a, b) => a + b) / bad.length, mg = good.reduce((a, b) => a + b) / good.length;
+          parts.add(mb < mg - 0.3
+              ? 'Les poussées suivent souvent des jours d\'humeur plus basse (deux jours avant).'
+              : 'Ton humeur des jours d\'avant ne semble pas jouer sur ta peau.');
+        }
+        out.add(Discovery('skin', 'Ta peau', parts.isEmpty ? 'Pas encore de lien net avec ton cycle ou ton humeur.' : parts.join(' '), 1, ''));
+      } else {
+        out.add(Discovery('skin', 'Ta peau', '', noted.length / 14, '14 matins avec ta peau notée'));
       }
     }
 
