@@ -468,7 +468,7 @@ class _HouseScreenState extends State<HouseScreen> {
                             final at = _cell((spot ?? (bx, by)).$1, (spot ?? (bx, by)).$2, size);
                             return Positioned(
                               left: at.dx - 21,
-                              top: at.dy - 46,
+                              top: at.dy + ch - 46,
                               child: IgnorePointer(child: _mickyMedallion(worn, 42)),
                             );
                           }),
@@ -611,12 +611,37 @@ class _HouseScreenState extends State<HouseScreen> {
         ),
       );
 
+  /// [at] = sommet arrière de la case. Les objets au sol posent leur bas sur la pointe avant de la case.
   Widget _objectAt(GameObject o, Offset at) {
-    final size = o.wall ? 76.0 : 72.0;
+    if (o.wall) {
+      const size = 76.0;
+      return Positioned(
+        left: at.dx - size / 2,
+        top: at.dy - size - 20,
+        child: IgnorePointer(child: ObjectImage(o, size: size)),
+      );
+    }
+    if (o.id == 'tapis') {
+      // à plat : épouse le losange de la case
+      return Positioned(
+        left: at.dx - cw * 0.55,
+        top: at.dy + ch / 2 - ch * 0.62,
+        width: cw * 1.1,
+        height: ch * 1.24,
+        child: IgnorePointer(child: Image.asset(o.asset, fit: BoxFit.fill)),
+      );
+    }
+    const w = cw + 6, h = 86.0;
     return Positioned(
-      left: at.dx - size / 2,
-      top: at.dy - (o.wall ? size + 20 : size - 12),
-      child: IgnorePointer(child: ObjectImage(o, size: size)),
+      left: at.dx - w / 2,
+      top: at.dy + ch - 3 - h,
+      width: w,
+      height: h,
+      child: IgnorePointer(
+        child: o.asset.isEmpty
+            ? Align(alignment: Alignment.bottomCenter, child: ObjectImage(o, size: 56))
+            : Image.asset(o.asset, fit: BoxFit.contain, alignment: Alignment.bottomCenter),
+      ),
     );
   }
 
