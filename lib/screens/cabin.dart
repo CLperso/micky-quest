@@ -10,7 +10,7 @@ import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
 import 'block.dart';
-import 'slot.dart' show MiniMoodGrid, moodColor, moodWords;
+import 'slot.dart' show EmotionWords, MiniMoodGrid, moodColor;
 import 'timetable.dart' show askText;
 
 const _lav = Color(0xFFB9A7FF);
@@ -321,14 +321,12 @@ class _CabinScreenState extends State<CabinScreen> {
                 onChanged: (m, e) => setState(() {
                   _mood = m;
                   _energy = e;
-                  if (!moodWords(m, e).contains(_emotion)) _emotion = '';
+                  if (!EmotionWords.keeps(_emotion, m, e)) _emotion = '';
                 }),
               ),
               if (_mood > 0) ...[
                 const SizedBox(height: 8),
-                Wrap(children: [
-                  for (final w in moodWords(_mood, _energy)) _chip(w, _emotion == w, moodColor(_mood, _energy), () => setState(() => _emotion = _emotion == w ? '' : w)),
-                ]),
+                EmotionWords(mood: _mood, energy: _energy, value: _emotion, color: moodColor(_mood, _energy), onChanged: (w) => setState(() => _emotion = w)),
               ],
             ]),
           ),

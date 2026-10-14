@@ -24,15 +24,134 @@ Color moodColor(int mood, int energy) {
   return const Color(0xFF6E6799);
 }
 
-List<String> moodWords(int mood, int energy) {
-  final c = mood - 1;
+/// Mots par case de la grille : ligne 0 = énergie très haute, colonne 0 = très désagréable.
+/// Plus on s'éloigne du centre, plus le mot est intense.
+const List<List<List<String>>> _lexicon = [
+  [
+    ['furieuse', 'paniquée', 'enragée', 'terrifiée', 'hors de moi', 'à bout de nerfs'],
+    ['en colère', 'stressée', 'nerveuse', 'irritée', 'sous pression', 'choquée'],
+    ['surprise', 'agitée', 'fébrile', 'à cran', 'sur le qui-vive', 'survoltée'],
+    ['enthousiaste', 'excitée', 'inspirée', 'pleine d\'idées', 'motivée', 'stimulée'],
+    ['euphorique', 'exaltée', 'émerveillée', 'triomphante', 'en feu', 'extatique'],
+  ],
+  [
+    ['anxieuse', 'débordée', 'frustrée', 'inquiète', 'exaspérée', 'coupable'],
+    ['agacée', 'tendue', 'préoccupée', 'impatiente', 'contrariée', 'pressée'],
+    ['alerte', 'curieuse', 'éveillée', 'attentive', 'partagée', 'dans l\'attente'],
+    ['concentrée', 'joyeuse', 'déterminée', 'optimiste', 'enjouée', 'dynamique'],
+    ['fière', 'ravie', 'rayonnante', 'confiante', 'enchantée', 'galvanisée'],
+  ],
+  [
+    ['honteuse', 'coupable', 'blessée', 'humiliée', 'amère', 'dégoûtée'],
+    ['mal à l\'aise', 'gênée', 'perdue', 'insatisfaite', 'vexée', 'en doute'],
+    ['neutre', 'bof', 'ailleurs', 'distraite', 'mitigée', 'indifférente'],
+    ['contente', 'à l\'aise', 'bien', 'posée', 'de bonne humeur', 'légère'],
+    ['heureuse', 'reconnaissante', 'comblée', 'touchée', 'aimée', 'épanouie'],
+  ],
+  [
+    ['triste', 'déçue', 'découragée', 'seule', 'rejetée', 'impuissante'],
+    ['lasse', 'démotivée', 'morose', 'mélancolique', 'ennuyée', 'nostalgique'],
+    ['fatiguée', 'au ralenti', 'molle', 'endormie', 'apathique', 'flemme'],
+    ['calme', 'détendue', 'reposée', 'paisible', 'apaisée', 'douce'],
+    ['sereine', 'bienveillante', 'émue', 'rassurée', 'tendre', 'en harmonie'],
+  ],
+  [
+    ['désespérée', 'vide', 'accablée', 'abattue', 'au fond du trou', 'lassitude existentielle'],
+    ['vidée', 'déprimée', 'éteinte', 'lasse de tout', 'sans élan', 'résignée'],
+    ['épuisée', 'à plat', 'somnolente', 'engourdie', 'léthargique', 'absente'],
+    ['relâchée', 'au repos', 'cosy', 'nonchalante', 'ensommeillée', 'tranquille'],
+    ['en paix', 'contemplative', 'méditative', 'zen', 'pleine', 'détachée'],
+  ],
+];
+
+(int, int) _cell(int mood, int energy) {
+  final c = (mood - 1).clamp(0, 4);
   final r = energy < 0 ? 2 : (4 - (energy / 25).round()).clamp(0, 4);
-  final high = r <= 1, low = r >= 3, bad = c <= 1, good = c >= 3;
-  if (high && bad) return ['débordée', 'agacée', 'anxieuse', 'frustrée', 'pressée'];
-  if (high && good) return ['motivée', 'enthousiaste', 'concentrée', 'joyeuse', 'fière'];
-  if (low && bad) return ['fatiguée', 'triste', 'découragée', 'vide', 'lasse'];
-  if (low && good) return ['calme', 'détendue', 'sereine', 'reposée', 'satisfaite'];
-  return ['neutre', 'bof', 'ailleurs', 'tranquille', 'tendue'];
+  return (r, c);
+}
+
+/// Les mots de la case touchée (valence × énergie, intensité selon l'éloignement du centre).
+List<String> moodWords(int mood, int energy) {
+  if (mood <= 0) return const [];
+  final (r, c) = _cell(mood, energy);
+  return _lexicon[r][c];
+}
+
+/// Les mots des cases voisines, pour nuancer si aucun ne colle.
+List<String> moodWordsNear(int mood, int energy) {
+  if (mood <= 0) return const [];
+  final (r, c) = _cell(mood, energy);
+  final own = _lexicon[r][c].toSet();
+  final out = <String>[];
+  for (final (dr, dc) in const [(0, -1), (0, 1), (-1, 0), (1, 0)]) {
+    final rr = r + dr, cc = c + dc;
+    if (rr < 0 || rr > 4 || cc < 0 || cc > 4) continue;
+    for (final w in _lexicon[rr][cc].take(3)) {
+      if (!own.contains(w) && !out.contains(w)) out.add(w);
+    }
+  }
+  return out;
+}
+
+/// Puces « le mot le plus juste » qui suivent la case touchée, avec « nuancer » et « autre… ».
+class EmotionWords extends StatefulWidget {
+  final int mood, energy;
+  final String value;
+  final Color color;
+  final ValueChanged<String> onChanged;
+  const EmotionWords({super.key, required this.mood, required this.energy, required this.value, required this.color, required this.onChanged});
+
+  /// Le mot reste-t-il pertinent après un changement de case ?
+  static bool keeps(String w, int mood, int energy) =>
+      w.isEmpty || moodWords(mood, energy).contains(w) || moodWordsNear(mood, energy).contains(w);
+
+  @override
+  State<EmotionWords> createState() => _EmotionWordsState();
+}
+
+class _EmotionWordsState extends State<EmotionWords> {
+  bool _more = false;
+
+  Widget _chip(String w, {bool dim = false}) {
+    final sel = widget.value == w;
+    return GestureDetector(
+      onTap: () => widget.onChanged(sel ? '' : w),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+        decoration: BoxDecoration(
+          color: sel ? widget.color : (dim ? K.card : K.raised),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: sel ? widget.color : (dim ? K.line : Colors.transparent)),
+        ),
+        child: Text(w, style: K.body(12, w: FontWeight.w800, color: sel ? K.bg : (dim ? K.muted : K.ink))),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final own = moodWords(widget.mood, widget.energy);
+    final near = moodWordsNear(widget.mood, widget.energy);
+    final custom = widget.value.isNotEmpty && !own.contains(widget.value) && !near.contains(widget.value);
+    final showNear = _more || near.contains(widget.value);
+    return Wrap(spacing: 6, runSpacing: 6, children: [
+      for (final w in own) _chip(w),
+      if (showNear) for (final w in near) _chip(w, dim: true),
+      if (custom) _chip(widget.value),
+      if (!showNear && near.isNotEmpty)
+        GestureDetector(
+          onTap: () => setState(() => _more = true),
+          child: Padding(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7), child: Text('nuancer…', style: K.body(12, w: FontWeight.w800, color: K.cyan))),
+        ),
+      GestureDetector(
+        onTap: () async {
+          final t = await askText(context, 'Le mot le plus juste', hint: 'ex. : nostalgique, piquée…', initial: custom ? widget.value : '');
+          if (t != null && t.trim().isNotEmpty) widget.onChanged(t.trim().toLowerCase());
+        },
+        child: Padding(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7), child: Text('autre…', style: K.body(12, w: FontWeight.w800, color: K.cyan))),
+      ),
+    ]);
+  }
 }
 
 /// Noter un créneau après coup. [existing] pour corriger, [start]/[end] pour préremplir.
@@ -133,14 +252,12 @@ Future<void> addPastSlotSheet(BuildContext context, {Slot? existing, DateTime? s
                   onChanged: (m, e) => setState(() {
                     mood = m;
                     energy = e;
-                    if (!moodWords(mood, energy).contains(emotion)) emotion = '';
+                    if (!EmotionWords.keeps(emotion, mood, energy)) emotion = '';
                   }),
                 ),
                 if (mood > 0) ...[
                   const SizedBox(height: 8),
-                  Wrap(children: [
-                    for (final w in moodWords(mood, energy)) chip(w, emotion == w, moodColor(mood, energy), () => setState(() => emotion = emotion == w ? '' : w)),
-                  ]),
+                  EmotionWords(mood: mood, energy: energy, value: emotion, color: moodColor(mood, energy), onChanged: (w) => setState(() => emotion = w)),
                 ],
                 if (kind == 'idle' || kind == 'phone') ...[
                   const SizedBox(height: 6),

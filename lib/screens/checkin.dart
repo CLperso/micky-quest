@@ -12,6 +12,7 @@ import 'block.dart';
 import 'cabin.dart';
 import 'session.dart';
 import 'timetable.dart' show askText;
+import 'slot.dart' show EmotionWords;
 
 class CheckinScreen extends StatefulWidget {
   final String? focusLog;
@@ -506,10 +507,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
                     const SizedBox(height: 12),
                     Text('Le mot le plus juste ? (facultatif)', style: K.body(13, w: FontWeight.w800)),
                     const SizedBox(height: 6),
-                    Wrap(spacing: 6, runSpacing: 6, children: [
-                      for (final w in _words())
-                        _chip(w, _emotion == w, _quadColor(), () => setState(() => _emotion = _emotion == w ? '' : w)),
-                    ]),
+                    EmotionWords(mood: _mood, energy: _energy.round(), value: _emotion, color: _quadColor(), onChanged: (w) => setState(() => _emotion = w)),
                     const SizedBox(height: 10),
                     Text('Plutôt à cause de…', style: K.body(13, w: FontWeight.w800)),
                     const SizedBox(height: 6),
@@ -623,16 +621,6 @@ class _CheckinScreenState extends State<CheckinScreen> {
 
   Color _quadColor() => _gridR < 0 ? K.gold : (_cellColor(_gridR, _gridC) == K.raised ? K.gold : _cellColor(_gridR, _gridC));
 
-  List<String> _words() {
-    final high = _gridR <= 1, low = _gridR >= 3;
-    final bad = _gridC <= 1, good = _gridC >= 3;
-    if (high && bad) return ['débordée', 'agacée', 'anxieuse', 'frustrée', 'pressée', 'en colère'];
-    if (high && good) return ['motivée', 'enthousiaste', 'concentrée', 'joyeuse', 'fière', 'excitée'];
-    if (low && bad) return ['fatiguée', 'triste', 'découragée', 'vide', 'lasse', 'seule'];
-    if (low && good) return ['calme', 'détendue', 'sereine', 'reposée', 'satisfaite', 'reconnaissante'];
-    return ['neutre', 'bof', 'ailleurs', 'tranquille', 'tendue', 'curieuse'];
-  }
-
   Widget _moodGrid() => Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -668,7 +656,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
                                   _mood = c + 1;
                                   _energy = (4 - r) * 25.0;
                                   _energySet = true;
-                                  if (!_words().contains(_emotion)) _emotion = '';
+                                  if (!EmotionWords.keeps(_emotion, c + 1, (4 - r) * 25)) _emotion = '';
                                 }
                               }),
                               child: AnimatedContainer(
