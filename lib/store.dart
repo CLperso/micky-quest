@@ -954,6 +954,9 @@ class AppStore extends ChangeNotifier {
         'Plaidoyer pour l\'altruisme, Matthieu Ricard|900',
         'Flow, Mihaly Csikszentmihalyi|300',
         'Stolen Focus, Johann Hari|350',
+        'Chemins spirituels, Matthieu Ricard|400',
+        'L\'Art de la méditation, Matthieu Ricard|180',
+        'Le Cœur des enseignements du Bouddha, Thich Nhat Hanh|300',
       ]);
     }
     _prefs.setBool('books_seeded', true);
