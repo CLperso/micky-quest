@@ -661,7 +661,8 @@ class XpEvent {
   int amount;
   String reason;
   XpEvent({required this.ts, required this.amount, required this.reason});
-  String get id => '$ts|$reason|$amount';
+  // le feu de camp a changé de libellé (« · jour ») : même identifiant pour ne pas le compter deux fois
+  String get id => '$ts|${reason.startsWith('Feu de camp') ? 'Feu de camp' : reason}|$amount';
 
   factory XpEvent.fromJson(Map<String, dynamic> j) =>
       XpEvent(ts: _i(j['ts']), amount: _i(j['xp']), reason: _s(j['why']));

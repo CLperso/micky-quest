@@ -38,7 +38,7 @@ class EveningTab extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Feu de camp', style: K.display(26)),
-                  Text(store.today.eveningDone ? 'Journée close. Repose-toi !' : 'On fait le point avant de dormir',
+                  Text(store.evening.eveningDone ? 'Journée close. Repose-toi !' : 'On fait le point avant de dormir',
                       style: K.body(14, color: K.muted)),
                 ],
               ),
@@ -47,10 +47,17 @@ class EveningTab extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         PrimaryButton(
-          label: store.today.eveningDone ? 'Revoir mon feu de camp' : 'Allumer le feu de camp',
+          label: store.evening.eveningDone ? 'Revoir mon feu de camp' : 'Allumer le feu de camp',
           color: K.coral,
           onPressed: () => openScreen(context, const EveningScreen()),
         ),
+        if (store.evening.eveningDone)
+          Center(
+            child: TextButton(
+              onPressed: () => store.reopenEvening(store.eveningKey),
+              child: Text('Clos par erreur ? Rouvrir le feu de camp', style: K.body(12, color: K.muted)),
+            ),
+          ),
         const SizedBox(height: 10),
         SecondaryButton(
           label: 'Replay d\'aujourd\'hui',
@@ -122,7 +129,7 @@ class _EveningScreenState extends State<EveningScreen> {
 
   Future<void> _saveJournal() async {
     final store = AppScope.read(context);
-    final p = store.today;
+    final p = store.evening;
     p.win = _win.text.trim();
     p.brake = _brake.text.trim();
     p.tomorrow = _tomorrow.text.trim();
@@ -172,7 +179,7 @@ class _EveningScreenState extends State<EveningScreen> {
   @override
   Widget build(BuildContext context) {
     final store = AppScope.of(context);
-    final day = store.todayKey;
+    final day = store.eveningKey;
     final sess = store.sessionsOn(day).where((s) => !s.running).toList();
     final bets = sess.where((s) => s.finished && s.predictedMin > 0).toList();
     final won = bets.where((s) => s.onTarget).length;
@@ -197,7 +204,7 @@ class _EveningScreenState extends State<EveningScreen> {
                     side: const BorderSide(color: K.cyan, width: 2),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
-                  onPressed: () => openScreen(context, HandwritingPage(note: store.noteFor(store.todayKey, 'soir'))),
+                  onPressed: () => openScreen(context, HandwritingPage(note: store.noteFor(store.eveningKey, 'soir'))),
                   icon: const Icon(Icons.draw_rounded, color: K.cyan),
                   label: Text('Écrire mon journal à la main', style: K.body(15, w: FontWeight.w800)),
                 ),
@@ -292,7 +299,7 @@ class _EveningScreenState extends State<EveningScreen> {
             ),
             const SizedBox(height: 18),
             PrimaryButton(
-              label: store.today.eveningDone ? 'Voir le replay de ma journée' : 'Clore la journée · ouvrir le coffre',
+              label: store.evening.eveningDone ? 'Voir le replay de ma journée' : 'Clore la journée · ouvrir le coffre',
               color: K.coral,
               onPressed: () async {
                 await _saveJournal();

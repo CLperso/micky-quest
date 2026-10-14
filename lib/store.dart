@@ -128,6 +128,8 @@ class AppStore extends ChangeNotifier {
       ));
       await _prefs.setBool('habits_seeded', true);
     }
+    _fixLateEvenings();
+    _seedBooks();
     _stamp(init: true);
     _rollOver();
     _checkBudgetDays();
@@ -222,6 +224,13 @@ class AppStore extends ChangeNotifier {
       'xpEvents': xpEvents.map((e) => e.toJson()).toList(),
       'inventory': inventory,
       'cycle': {'start': settings.cycleStart, 'len': settings.cycleLength},
+      'cabinPrefs': {
+        'books': settings.books,
+        'library': settings.library,
+        'contacts': settings.contacts,
+        'favAngles': settings.favAngles,
+        'letter': settings.goodDaysLetter,
+      },
     };
   }
 
@@ -277,6 +286,21 @@ class AppStore extends ChangeNotifier {
     xpEvents.sort((a, b) => a.ts.compareTo(b.ts));
     for (final it in ((remote['inventory'] as List?) ?? []).map((e) => e.toString())) {
       if (!inventory.contains(it)) inventory.add(it);
+    }
+    final cp = remote['cabinPrefs'] as Map?;
+    if (cp != null) {
+      void union(List<String> mine, Object? theirs) {
+        for (final x in ((theirs as List?) ?? []).map((e) => e.toString())) {
+          if (!mine.contains(x)) mine.add(x);
+        }
+      }
+
+      union(settings.books, cp['books']);
+      union(settings.library, cp['library']);
+      union(settings.contacts, cp['contacts']);
+      union(settings.favAngles, cp['favAngles']);
+      final l = (cp['letter'] as String?) ?? '';
+      if (settings.goodDaysLetter.isEmpty && l.isNotEmpty) settings.goodDaysLetter = l;
     }
     final cyc = remote['cycle'] as Map?;
     if (cyc != null && settings.cycleStart.isEmpty && (cyc['start'] as String? ?? '').isNotEmpty) {
@@ -624,15 +648,52 @@ class AppStore extends ChangeNotifier {
     await commit();
   }
 
+  /// Le feu de camp d'après minuit (avant 5 h) compte pour la veille.
+  String get eveningKey {
+    final now = DateTime.now();
+    return now.hour < 5 ? dayKey(now.subtract(const Duration(days: 1))) : todayKey;
+  }
+
+  DayPlan get evening => plan(eveningKey);
+
   Future<String> finishEvening() async {
     var chest = '';
-    if (!today.eveningDone) {
-      today.eveningDone = true;
-      _gainXp(10, 'Feu de camp');
-      chest = _openChest();
+    final p = evening;
+    if (!p.eveningDone) {
+      p.eveningDone = true;
+      final reason = 'Feu de camp · ${p.day}';
+      if (!xpEvents.any((e) => e.reason == reason)) {
+        _gainXp(10, reason);
+        chest = _openChest();
+      }
     }
     await commit();
     return chest;
+  }
+
+  /// Rouvrir un feu de camp clos par erreur (pas de double XP).
+  Future<void> reopenEvening(String day) async {
+    plan(day).eveningDone = false;
+    await commit();
+  }
+
+  /// Feux de camp validés après minuit avant ce correctif : on les rend à la veille.
+  void _fixLateEvenings() {
+    for (final e in xpEvents) {
+      if (e.reason != 'Feu de camp') continue;
+      final d = DateTime.fromMillisecondsSinceEpoch(e.ts);
+      if (d.hour >= 5) {
+        e.reason = 'Feu de camp · ${dayKey(d)}';
+        continue;
+      }
+      final wrong = dayKey(d), right = dayKey(d.subtract(const Duration(days: 1)));
+      e.reason = 'Feu de camp · $right';
+      final pw = plans[wrong];
+      if (pw != null && pw.eveningDone) {
+        pw.eveningDone = false;
+        plan(right).eveningDone = true;
+      }
+    }
   }
 
   // ---------- Tâches ----------
@@ -871,6 +932,32 @@ class AppStore extends ChangeNotifier {
   }
 
   // ---------- La cabane ----------
+
+  /// La pile de livres inspirants, prête au premier lancement (pages approximatives, modifiables).
+  void _seedBooks() {
+    if (_prefs.getBool('books_seeded') ?? false) return;
+    if (settings.books.isEmpty) {
+      settings.books.addAll(const [
+        'L\'Éthique, Spinoza|380',
+        'Ainsi parlait Zarathoustra, Nietzsche|470',
+        'Crépuscule des idoles, Ecce Homo… (Œuvres VIII), Nietzsche|450',
+        'Nietzsche, la passion des sommets, Annick Stevens|200',
+        'Le Miracle Spinoza, Frédéric Lenoir|230',
+        'Le Problème Spinoza, Irvin Yalom|500',
+        'Thérapie existentielle, Irvin Yalom|700',
+        'Le Jardin d\'Épicure, Irvin Yalom|300',
+        'Le Bourreau de l\'amour, Irvin Yalom|400',
+        'La Malédiction du chat hongrois, Irvin Yalom|500',
+        'La Mort d\'Ivan Ilitch, Tolstoï|120',
+        'Fables, La Fontaine|600',
+        'Cerveau & méditation, Matthieu Ricard et Wolf Singer|400',
+        'Plaidoyer pour l\'altruisme, Matthieu Ricard|900',
+        'Flow, Mihaly Csikszentmihalyi|300',
+        'Stolen Focus, Johann Hari|350',
+      ]);
+    }
+    _prefs.setBool('books_seeded', true);
+  }
 
   Future<void> saveCabinVisit(CabinVisit v) async {
     if (!cabin.contains(v)) {
@@ -1209,7 +1296,9 @@ class AppStore extends ChangeNotifier {
               ? 'Tâche faite'
               : e.reason.startsWith('Budget tenu')
                   ? 'Budget tenu'
-                  : e.reason;
+                  : e.reason.startsWith('Feu de camp')
+                      ? 'Feu de camp'
+                      : e.reason;
       by[k] = (by[k] ?? 0) + e.amount;
     }
     return (xp: total, byReason: by, loot: loot);
