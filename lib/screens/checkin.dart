@@ -50,6 +50,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
   bool _pauseAsked = false;
   bool? _onIt; // pendant une session : toujours dessus ?
   int _att = -1; // et l'attention : 0 à fond … 3 ailleurs
+  String _imp = ''; // décroché pour un impératif pro
   double _energy = 50;
   bool _energySet = false;
   final _note = TextEditingController();
@@ -227,6 +228,19 @@ class _CheckinScreenState extends State<CheckinScreen> {
     final store = AppScope.read(context);
     final runS = store.runningSession;
     if (_onIt == true && _att >= 0 && runS != null) await store.recordAttention(runS, _att);
+    if (_imp.isNotEmpty && runS != null) {
+      final left = (runS.predictedMin - (DateTime.now().millisecondsSinceEpoch - runS.start) ~/ 60000).clamp(5, 240);
+      await store.stopForImperative(runS, _imp);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        duration: const Duration(seconds: 8),
+        content: Text('Session arrêtée pour « ${_imp.toLowerCase()} ». Le temps compte, ce n\'est pas un décrochage.'),
+        action: SnackBarAction(
+          label: 'REPRENDRE',
+          onPressed: () => store.startSession(runS.taskId, runS.title, left, category: runS.category, silent: runS.silent, stim: runS.stim),
+        ),
+      ));
+    }
     if (!mounted) return;
     if (_act.isEmpty && _mood == 0 && !_energySet && _note.text.trim().isEmpty) {
       Navigator.pop(context);
@@ -341,6 +355,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
                 Expanded(
                   child: _pauseBtn('J\'ai décroché', _onIt == false ? K.coral : K.raised, _onIt == false ? K.bg : K.ink, () => setState(() {
                         _onIt = false;
+                        _imp = '';
                         _act = '';
                         _taskId = '';
                       })),
@@ -382,7 +397,43 @@ class _CheckinScreenState extends State<CheckinScreen> {
                   ]),
                 ),
               ],
-              if (_onIt == false)
+              if (_onIt == false) ...[
+                const SizedBox(height: 10),
+                Panel(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Pour un impératif pro ?', style: K.body(14, w: FontWeight.w800)),
+                    const SizedBox(height: 2),
+                    Text('Ce n\'est pas un décrochage : la session s\'arrête, le temps compte, tu pourras reprendre.', style: K.body(11, color: K.muted)),
+                    const SizedBox(height: 8),
+                    Wrap(spacing: 6, runSpacing: 6, children: [
+                      for (final w in AppStore.imperatives)
+                        ChoiceChip(
+                          label: Text(w),
+                          selected: _imp == w,
+                          onSelected: (_) => setState(() {
+                            if (_imp == w) {
+                              _imp = '';
+                              _act = '';
+                              _label = '';
+                            } else {
+                              _imp = w;
+                              _act = Act.pro;
+                              _taskId = '';
+                              _label = 'Impératif : ${w.toLowerCase()}';
+                              _reason = '';
+                            }
+                          }),
+                          selectedColor: K.lime,
+                          labelStyle: K.body(12, w: FontWeight.w800, color: _imp == w ? K.bg : K.ink),
+                          backgroundColor: K.raised,
+                          side: BorderSide.none,
+                          showCheckmark: false,
+                        ),
+                    ]),
+                  ]),
+                ),
+              ],
+              if (_onIt == false && _imp.isEmpty)
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
@@ -392,7 +443,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
                 ),
               const SizedBox(height: 10),
             ],
-            if (!widget.moodOnly && (!inSession || _onIt == false))
+            if (!widget.moodOnly && (!inSession || _onIt == false) && _imp.isEmpty)
             Panel(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

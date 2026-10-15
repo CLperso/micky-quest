@@ -1366,7 +1366,7 @@ class AppStore extends ChangeNotifier {
     for (final s in sessionsOn(day)) {
       final detail = s.running
           ? 'en cours · pari ${s.predictedMin} min'
-          : 'pari ${s.predictedMin} min · réel ${s.actualMin.round()} min${s.onTarget ? ' · coffre gagné' : ''}${s.finished ? '' : ' · décrochée'}${s.interrupted == 0 ? ' · sans interruption' : s.interrupted == 1 ? ' · 1 interruption' : s.interrupted >= 2 ? ' · plusieurs interruptions' : ''}';
+          : 'pari ${s.predictedMin} min · réel ${s.actualMin.round()} min${s.onTarget ? ' · coffre gagné' : ''}${s.stopWhy.isNotEmpty ? ' · arrêtée : ${s.stopWhy.toLowerCase()}' : s.finished ? '' : ' · décrochée'}${s.interrupted == 0 ? ' · sans interruption' : s.interrupted == 1 ? ' · 1 interruption' : s.interrupted >= 2 ? ' · plusieurs interruptions' : ''}';
       ev.add(ReplayEvent(s.start, 'quest', 'Session · ${s.title}', detail));
     }
     for (final c in checkinsOn(day)) {
@@ -2131,6 +2131,15 @@ class AppStore extends ChangeNotifier {
     logs.add(LogEntry(ts: DateTime.now().millisecondsSinceEpoch, kind: LogKind.free, note: 'Relance : ${boostLabels[cause] ?? cause}'));
     await commit();
   }
+
+  /// Session arrêtée pour un impératif pro (réunion, appel…) : le temps compte, ce n'est pas un décrochage.
+  Future<void> stopForImperative(SessionRec s, String what) async {
+    s.stopWhy = what;
+    if (s.interrupted < 0) s.interrupted = 0;
+    await endSession(s, finished: false);
+  }
+
+  static const imperatives = ['Réunion', 'Appel', 'Mail urgent', 'Quelqu\'un a besoin de moi', 'Autre impératif'];
 
   static const boostLabels = {
     'flou': 'pas clair',
