@@ -666,6 +666,7 @@ class AppStore extends ChangeNotifier {
         _gainXp(10, reason);
         chest = _openChest();
       }
+      _selfBonuses(p.day);
     }
     await commit();
     return chest;
@@ -1127,8 +1128,11 @@ class AppStore extends ChangeNotifier {
   }
 
   Future<SessionRec> startSession(String taskId, String title, int predicted,
-      {String category = '', bool silent = true, String stim = ''}) async {
+      {String category = '', bool silent = true, String stim = '', String target = ''}) async {
+    final tk = taskById(taskId);
     final s = SessionRec(
+      target: target,
+      progFrom: tk == null ? -1 : (tk.isBoss ? tk.bossProgress : tk.progress),
       taskId: taskId,
       title: title,
       start: DateTime.now().millisecondsSinceEpoch,
@@ -1302,7 +1306,11 @@ class AppStore extends ChangeNotifier {
                   ? 'Budget tenu'
                   : e.reason.startsWith('Feu de camp')
                       ? 'Feu de camp'
-                      : e.reason;
+                      : e.reason.startsWith('Mieux que ta médiane')
+                          ? 'Mieux que ta médiane'
+                          : e.reason.startsWith('Remontée')
+                              ? 'Remontée'
+                              : e.reason;
       by[k] = (by[k] ?? 0) + e.amount;
     }
     return (xp: total, byReason: by, loot: loot);
@@ -1661,6 +1669,28 @@ class AppStore extends ChangeNotifier {
             '« ${top.first.key} » revient dans ${(100 * top.first.value / reasons.length).round()} % de tes décrochages.', 1, ''));
       } else {
         out.add(Discovery('why', 'Ton piège principal', '', reasons.length / 6, '6 décrochages expliqués'));
+      }
+    }
+
+    // 3 ter. Ce qui te fait flotter (relances choisies).
+    {
+      final rel = logs.where((l) => l.note.startsWith('Relance : ')).toList();
+      if (rel.length >= 6) {
+        final count = <String, int>{};
+        final when = <String, int>{};
+        for (final l in rel) {
+          final c = l.note.substring(10);
+          count[c] = (count[c] ?? 0) + 1;
+          final h = DateTime.fromMillisecondsSinceEpoch(l.ts).hour;
+          final w = h < 12 ? 'le matin' : (h < 17 ? 'l\'après-midi' : 'le soir');
+          when[w] = (when[w] ?? 0) + 1;
+        }
+        final top = count.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+        final tw = when.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+        out.add(Discovery('float', 'Ce qui te fait flotter',
+            'Quand ça flotte, c\'est surtout « ${top.first.key} » (${(100 * top.first.value / rel.length).round()} %), plutôt ${tw.first.key}.', 1, ''));
+      } else {
+        out.add(Discovery('float', 'Ce qui te fait flotter', '', rel.length / 6, '6 relances « ça flotte »'));
       }
     }
 
@@ -2088,6 +2118,134 @@ class AppStore extends ChangeNotifier {
   }
 
   // ---------- Évaluations et réflexions ----------
+
+  /// Réponse « où est ton attention » pendant une session (0 à fond … 3 ailleurs).
+  Future<void> recordAttention(SessionRec s, int level) async {
+    s.atts += '${level.clamp(0, 3)}';
+    await commit();
+  }
+
+  /// Relance choisie quand ça flotte (pas clair, pression, rond, difficile, corps).
+  Future<void> addBoost(SessionRec? s, String cause) async {
+    if (s != null) s.boosts = s.boosts.isEmpty ? cause : '${s.boosts},$cause';
+    logs.add(LogEntry(ts: DateTime.now().millisecondsSinceEpoch, kind: LogKind.free, note: 'Relance : ${boostLabels[cause] ?? cause}'));
+    await commit();
+  }
+
+  static const boostLabels = {
+    'flou': 'pas clair',
+    'pression': 'manque de pression',
+    'rond': 'je tourne en rond',
+    'dur': 'j\'évite le difficile',
+    'corps': 'mon corps',
+  };
+
+  /// Débrief : concentration, avancement, résultat visé. Ne jamais faire perdre d'XP pour une réponse honnête.
+  Future<void> rateProgress(SessionRec s, {int? focus, int? progTo, int? targetMet}) async {
+    if (focus != null && focus > 0) {
+      if (s.focus == 0) _gainXp(2, 'Réponse honnête');
+      s.focus = focus;
+    }
+    if (targetMet != null) s.targetMet = targetMet;
+    if (progTo != null) {
+      final before = s.progTo;
+      s.progTo = progTo.clamp(0, 100);
+      if (s.progFrom < 0) s.progFrom = 0;
+      final t = taskById(s.taskId);
+      if (t != null && !t.isBoss) t.progress = max(t.progress, s.progTo);
+      final gain = s.progGain - (before < 0 ? 0 : (before - s.progFrom).clamp(0, 100));
+      if (gain > 0 && sessionCategory(s) == Act.pro) _gainXp(min(20, (gain * 0.4).round()), 'Avancement');
+    }
+    await commit();
+  }
+
+  // ---------- Toi contre toi ----------
+
+  /// Mesures d'une journée. null = rien à mesurer ce jour-là.
+  Map<String, double?> dayMetrics(String day) {
+    final ss = sessionsOn(day).where((x) => !x.running && sessionCategory(x) == Act.pro).toList();
+    final foc = ss.where((x) => x.focus > 0).map((x) => x.focus.toDouble()).toList();
+    final prog = ss.where((x) => x.progTo >= 0).map((x) => x.progGain.toDouble()).toList();
+    final est = ss.where((x) => x.predictedMin > 0 && x.actualMin >= 5).map((x) => (x.actualMin / x.predictedMin - 1).abs()).toList();
+    final done = tasks.where((t) => t.done && t.doneAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(t.doneAt)) == day).length;
+    final pro = proMinutesOn(day);
+    final active = pro > 0 || done > 0 || ss.isNotEmpty;
+    return {
+      'pro': active ? pro : null,
+      'focus': foc.isEmpty ? null : foc.reduce((a, b) => a + b) / foc.length,
+      'prog': prog.isEmpty ? null : prog.reduce((a, b) => a + b),
+      'tasks': active ? done.toDouble() : null,
+      'est': est.isEmpty ? null : _median(est),
+    };
+  }
+
+  static double _median(List<double> v) {
+    final l = [...v]..sort();
+    final n = l.length;
+    return n.isOdd ? l[n ~/ 2] : (l[n ~/ 2 - 1] + l[n ~/ 2]) / 2;
+  }
+
+  static const selfLabels = {
+    'pro': 'Temps pro',
+    'focus': 'Concentration',
+    'prog': 'Avancement',
+    'tasks': 'Tâches faites',
+    'est': 'Justesse d\'estimation',
+  };
+
+  /// Médiane des 21 jours précédents pour une mesure ; null s'il y a moins de 5 jours de données.
+  (double, int)? selfMedian(String key, String day) {
+    final d = DateTime.parse(day);
+    final vals = <double>[];
+    for (var i = 1; i <= 21; i++) {
+      final v = dayMetrics(dayKey(d.subtract(Duration(days: i))))[key];
+      if (v != null) vals.add(v);
+    }
+    if (vals.length < 5) return null;
+    return (_median(vals), vals.length);
+  }
+
+  /// Statut d'une mesure par rapport à la médiane : 1 au-dessus, 0 dans la zone, -1 journée légère, null inconnu.
+  /// Pour l'estimation, plus petit = mieux.
+  int? selfStatus(String key, double? value, double? median) {
+    if (value == null || median == null) return null;
+    if (key == 'est') {
+      if (median <= 0.05) return value <= 0.1 ? 0 : -1;
+      final r = value / median;
+      return r < 0.8 ? 1 : (r > 1.2 ? -1 : 0);
+    }
+    if (median <= 0) return value > 0 ? 1 : 0;
+    final r = value / median;
+    return r > 1.2 ? 1 : (r < 0.8 ? -1 : 0);
+  }
+
+  /// Nombre de jours avec des données (pour « on apprend ta médiane »).
+  int selfDataDays(String day) {
+    final d = DateTime.parse(day);
+    var n = 0;
+    for (var i = 1; i <= 21; i++) {
+      if (dayMetrics(dayKey(d.subtract(Duration(days: i))))['pro'] != null) n++;
+    }
+    return n;
+  }
+
+  void _selfBonuses(String day) {
+    final m = dayMetrics(day);
+    for (final k in selfLabels.keys) {
+      final med = selfMedian(k, day);
+      if (selfStatus(k, m[k], med?.$1) == 1) {
+        final reason = 'Mieux que ta médiane · ${selfLabels[k]} · $day';
+        if (!xpEvents.any((e) => e.reason == reason)) _gainXp(k == 'est' ? 10 : 15, reason);
+      }
+    }
+    // remontée : hier en dessous de ta zone de temps pro, aujourd'hui revenue dedans
+    final y = dayKey(DateTime.parse(day).subtract(const Duration(days: 1)));
+    final my = selfMedian('pro', y), mt = selfMedian('pro', day);
+    if (selfStatus('pro', dayMetrics(y)['pro'] ?? 0, my?.$1) == -1 && (selfStatus('pro', m['pro'], mt?.$1) ?? -1) >= 0) {
+      final reason = 'Remontée · $day';
+      if (!xpEvents.any((e) => e.reason == reason)) _gainXp(20, reason);
+    }
+  }
 
   Future<void> rateSession(SessionRec s,
       {int? difficulty, int? feeling, String? helped, int? interrupted, String? hardWhat, String? worthWhy}) async {

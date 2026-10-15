@@ -236,6 +236,8 @@ class _EveningScreenState extends State<EveningScreen> {
             const SizedBox(height: 12),
             _GainsRecap(day: day),
             const SizedBox(height: 12),
+            SelfCompareCard(day: day),
+            const SizedBox(height: 12),
             if (store.activeHabits.isNotEmpty) ...[
               const HabitsCard(),
               const SizedBox(height: 12),
@@ -573,6 +575,101 @@ class ReplayScreen extends StatelessWidget {
 }
 
 /// Gains et trophées du jour : médaille, XP par source, butin, ruban.
+/// « Par rapport à toi » : chaque mesure séparée, comparée à ta médiane des 21 derniers jours.
+class SelfCompareCard extends StatelessWidget {
+  final String day;
+  const SelfCompareCard({super.key, required this.day});
+
+  static String fmt(String k, double v) {
+    switch (k) {
+      case 'pro':
+        final m = v.round();
+        return m >= 60 ? '${m ~/ 60} h ${(m % 60).toString().padLeft(2, '0')}' : '$m min';
+      case 'focus':
+        return '${v.toStringAsFixed(1).replaceAll('.', ',')} / 5';
+      case 'prog':
+        return '${v.round()} pts';
+      case 'tasks':
+        return '${v.round()}';
+      case 'est':
+        return '±${(v * 100).round()} %';
+    }
+    return '$v';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final m = store.dayMetrics(day);
+    final known = store.selfDataDays(day);
+    final rows = <Widget>[];
+    for (final k in AppStore.selfLabels.keys) {
+      final v = m[k];
+      if (v == null) continue;
+      final med = store.selfMedian(k, day);
+      final st = store.selfStatus(k, v, med?.$1);
+      rows.add(_row(k, v, med?.$1, st));
+    }
+    return Panel(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('PAR RAPPORT À TOI', style: K.body(11, color: K.cyan, w: FontWeight.w900)),
+        const SizedBox(height: 2),
+        Text(known < 5 ? 'Je découvre ta médiane : $known/5 jours notés. Les comparaisons arrivent bientôt.' : 'Médiane des 21 derniers jours. Bande claire = ta zone.',
+            style: K.body(12, color: K.muted)),
+        const SizedBox(height: 10),
+        if (rows.isEmpty) Text('Rien à mesurer aujourd\'hui.', style: K.body(13, color: K.muted)) else ...rows,
+        const SizedBox(height: 4),
+        Text('En dessous de ta zone : journée légère, jamais de pénalité. Chaque mesure est séparée : on peut mal estimer et très bien travailler.',
+            style: K.body(11, color: K.dim)),
+      ]),
+    );
+  }
+
+  Widget _row(String k, double v, double? med, int? st) {
+    const colors = {1: Color(0xFF3E8E57), 0: Color(0xFF7FD6C2), -1: K.dim};
+    final better = k == 'est' ? 'plus juste que d\'habitude ↑' : 'au-dessus ↑';
+    final label = st == null ? '' : (st == 1 ? better : st == 0 ? 'dans ta zone' : 'journée légère');
+    final col = colors[st] ?? K.muted;
+    // position sur la barre : médiane au milieu, zone 80–120 % = 30 % à 70 %
+    double pos = 0.5;
+    if (med != null && med > 0) {
+      final r = v / med;
+      pos = (0.5 + (r - 1) * 1.0).clamp(0.03, 0.97);
+      if (k == 'est') pos = 1 - pos;
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Expanded(child: Text(AppStore.selfLabels[k]!, style: K.body(13, w: FontWeight.w800))),
+          Text(fmt(k, v), style: K.body(13, w: FontWeight.w900)),
+          if (med != null) ...[
+            const SizedBox(width: 6),
+            Text('méd. ${fmt(k, med)}', style: K.body(11, color: K.dim)),
+          ],
+        ]),
+        if (med != null) ...[
+          const SizedBox(height: 5),
+          LayoutBuilder(builder: (context, c) {
+            final w = c.maxWidth;
+            return SizedBox(
+              height: 14,
+              child: Stack(clipBehavior: Clip.none, children: [
+                Positioned(left: 0, right: 0, top: 3, height: 8, child: Container(decoration: BoxDecoration(color: K.raised, borderRadius: BorderRadius.circular(4)))),
+                Positioned(left: w * 0.3, width: w * 0.4, top: 3, height: 8, child: Container(decoration: BoxDecoration(color: K.ink.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)))),
+                Positioned(left: w * 0.5 - 1, top: 0, width: 2, height: 14, child: Container(color: K.dim)),
+                Positioned(left: w * pos - 7, top: 0, width: 14, height: 14, child: Container(decoration: BoxDecoration(color: col, shape: BoxShape.circle))),
+              ]),
+            );
+          }),
+          const SizedBox(height: 3),
+          Text(label, style: K.body(11, color: col, w: FontWeight.w800)),
+        ],
+      ]),
+    );
+  }
+}
+
 class _GainsRecap extends StatelessWidget {
   final String day;
   const _GainsRecap({required this.day});

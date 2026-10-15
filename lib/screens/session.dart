@@ -23,6 +23,7 @@ class StartSessionSheet extends StatefulWidget {
 class _StartSessionSheetState extends State<StartSessionSheet> {
   String? _taskId;
   final _free = TextEditingController();
+  final _target = TextEditingController();
   int _min = 25;
   String _cat = '';
   bool _silent = true;
@@ -54,6 +55,7 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
   @override
   void dispose() {
     _free.dispose();
+    _target.dispose();
     super.dispose();
   }
 
@@ -189,6 +191,28 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
               const SizedBox(height: 8),
               Text('Finis entre ${(_min * 0.8).round()} et ${(_min * 1.2).round()} min pour gagner un coffre.',
                   style: K.body(13, color: K.muted)),
+              const SizedBox(height: 12),
+              Text('À la fin de cette session, j\'aurai… (facultatif)', style: K.body(13, w: FontWeight.w800, color: K.lime)),
+              const SizedBox(height: 4),
+              TextField(
+                controller: _target,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(hintText: 'un résultat, pas une durée'),
+              ),
+              const SizedBox(height: 6),
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                for (final p in const ['un brouillon moche de ', 'relu jusqu\'à ', 'envoyé ', 'décidé '])
+                  ActionChip(
+                    label: Text('${p.trim()}…'),
+                    onPressed: () => setState(() {
+                      _target.text = p;
+                      _target.selection = TextSelection.collapsed(offset: p.length);
+                    }),
+                    labelStyle: K.body(12, color: K.muted),
+                    backgroundColor: K.raised,
+                    side: BorderSide.none,
+                  ),
+              ]),
               if (_cat != Act.perso) ...[
                 const SizedBox(height: 10),
                 Text('Dans quelles conditions ?', style: K.body(13, color: K.muted)),
@@ -250,7 +274,7 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
                     : () async {
                         final id = _taskId ?? '';
                         final title = id.isEmpty ? _free.text.trim() : (store.taskById(id)?.title ?? '');
-                        await store.startSession(id, title, _min, category: _cat, silent: _silent, stim: _stim);
+                        await store.startSession(id, title, _min, category: _cat, silent: _silent, stim: _stim, target: _target.text.trim());
                         if (context.mounted) Navigator.pop(context, true);
                       },
               ),

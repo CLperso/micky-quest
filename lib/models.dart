@@ -60,6 +60,7 @@ class Task {
   int postponed; // nombre de reports du rappel
   String calEventId; // événement écrit dans l'agenda du téléphone
   int bossProgress; // boss : avancement déclaré, 0 à 100
+  int progress; // avancement déclaré d'une tâche ou étape, 0 à 100
   bool inQuest; // étape de la quête du jour (sinon simple tâche pro ou perso)
   String hiddenDay; // « pas aujourd'hui » : masquée de « À caser » ce jour-là
   int mod;
@@ -85,6 +86,7 @@ class Task {
     this.postponed = 0,
     this.calEventId = '',
     this.bossProgress = 0,
+    this.progress = 0,
     this.inQuest = false,
     this.hiddenDay = '',
     this.mod = 0,
@@ -114,6 +116,7 @@ class Task {
         postponed: _i(j['post']),
         calEventId: _s(j['calEv']),
         bossProgress: _i(j['bossP']),
+        progress: _i(j['prog']),
         // avant ce champ, toute tâche pro ou perso était une étape de quête
         inQuest: j.containsKey('inQ') ? _b(j['inQ']) : _s(j['category']).isNotEmpty,
         hiddenDay: _s(j['hid']),
@@ -141,6 +144,7 @@ class Task {
         'post': postponed,
         'calEv': calEventId,
         'bossP': bossProgress,
+        'prog': progress,
         'inQ': inQuest,
         'hid': hiddenDay,
         'mod': mod,
@@ -206,7 +210,24 @@ class SessionRec {
   String hardWhat; // débrief : c'était dur en quoi
   String worthWhy; // débrief : pourquoi ça valait le coup
   String stim; // condition : '', seule, body, bruit, musique
+  String atts; // réponses « où est ton attention » pendant la session : '0'..'3' (à fond → ailleurs)
+  int focus; // concentration ressentie 1..5, 0 = pas dite
+  int progFrom, progTo; // avancement de l'étape avant/après (0..100), -1 = non dit
+  String target; // « à la fin de cette session, j'aurai… »
+  int targetMet; // -1 = non dit, 0 non, 1 en partie, 2 oui
+  String boosts; // relances « ça flotte » choisies, séparées par des virgules
   int mod;
+
+  static const attLabels = ['à fond', 'ça va', 'ça flotte', 'ailleurs'];
+
+  /// Concentration suggérée d'après les réponses pendant la session (1..5), 0 si aucune.
+  int get suggestedFocus {
+    if (atts.isEmpty) return 0;
+    final avg = atts.split('').map((c) => int.tryParse(c) ?? 1).reduce((a, b) => a + b) / atts.length;
+    return (5 - avg * 4 / 3).round().clamp(1, 5);
+  }
+
+  int get progGain => progFrom < 0 || progTo < 0 ? 0 : (progTo - progFrom).clamp(0, 100);
 
   SessionRec({
     String? id,
@@ -225,6 +246,13 @@ class SessionRec {
     this.hardWhat = '',
     this.worthWhy = '',
     this.stim = '',
+    this.atts = '',
+    this.focus = 0,
+    this.progFrom = -1,
+    this.progTo = -1,
+    this.target = '',
+    this.targetMet = -1,
+    this.boosts = '',
     this.mod = 0,
   }) : id = id ?? newId();
 
@@ -263,6 +291,13 @@ class SessionRec {
         hardWhat: _s(j['hard']),
         worthWhy: _s(j['worth']),
         stim: _s(j['stim']),
+        atts: _s(j['atts']),
+        focus: _i(j['focus']),
+        progFrom: _i(j['pFrom'], -1),
+        progTo: _i(j['pTo'], -1),
+        target: _s(j['target']),
+        targetMet: _i(j['tMet'], -1),
+        boosts: _s(j['boosts']),
         mod: _i(j['mod']),
       );
 
@@ -283,6 +318,13 @@ class SessionRec {
         'hard': hardWhat,
         'worth': worthWhy,
         'stim': stim,
+        'atts': atts,
+        'focus': focus,
+        'pFrom': progFrom,
+        'pTo': progTo,
+        'target': target,
+        'tMet': targetMet,
+        'boosts': boosts,
         'mod': mod,
       };
 }

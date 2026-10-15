@@ -13,6 +13,7 @@ import 'cabin.dart';
 import 'session.dart';
 import 'timetable.dart' show askText;
 import 'slot.dart' show EmotionWords;
+import 'boost.dart';
 
 class CheckinScreen extends StatefulWidget {
   final String? focusLog;
@@ -48,6 +49,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
   String _cause = '';
   bool _pauseAsked = false;
   bool? _onIt; // pendant une session : toujours dessus ?
+  int _att = -1; // et l'attention : 0 à fond … 3 ailleurs
   double _energy = 50;
   bool _energySet = false;
   final _note = TextEditingController();
@@ -223,6 +225,9 @@ class _CheckinScreenState extends State<CheckinScreen> {
 
   Future<void> _send() async {
     final store = AppScope.read(context);
+    final runS = store.runningSession;
+    if (_onIt == true && _att >= 0 && runS != null) await store.recordAttention(runS, _att);
+    if (!mounted) return;
     if (_act.isEmpty && _mood == 0 && !_energySet && _note.text.trim().isEmpty) {
       Navigator.pop(context);
       return;
@@ -341,6 +346,42 @@ class _CheckinScreenState extends State<CheckinScreen> {
                       })),
                 ),
               ]),
+              if (_onIt == true) ...[
+                const SizedBox(height: 10),
+                Panel(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Et ton attention, là ?', style: K.body(14, w: FontWeight.w800)),
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      for (var i = 0; i < 4; i++)
+                        Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.only(right: i < 3 ? 6 : 0),
+                            child: _pauseBtn(SessionRec.attLabels[i], _att == i ? _attColors[i] : K.raised, _att == i ? K.bg : K.ink,
+                                () => setState(() => _att = _att == i ? -1 : i)),
+                          ),
+                        ),
+                    ]),
+                    const SizedBox(height: 6),
+                    Text('Pas de bonne ou mauvaise réponse : ça ne change pas tes XP.', style: K.body(11, color: K.muted)),
+                    if (_att >= 2) ...[
+                      const SizedBox(height: 8),
+                      PrimaryButton(
+                        label: 'Me relancer',
+                        color: K.gold,
+                        onPressed: () async {
+                          final store = AppScope.read(context);
+                          final r = store.runningSession;
+                          if (r != null && _att >= 0) await store.recordAttention(r, _att);
+                          _att = -1;
+                          if (!context.mounted) return;
+                          Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => BoostScreen(session: r)));
+                        },
+                      ),
+                    ],
+                  ]),
+                ),
+              ],
               if (_onIt == false)
                 Align(
                   alignment: Alignment.centerRight,
@@ -618,6 +659,8 @@ class _CheckinScreenState extends State<CheckinScreen> {
     if (r > 2 && c > 2) return _cellColors['lp']!;
     return K.raised;
   }
+
+  static const _attColors = [Color(0xFF3E8E57), Color(0xFF7FD6C2), Color(0xFFC9A227), Color(0xFFB5443A)];
 
   Color _quadColor() => _gridR < 0 ? K.gold : (_cellColor(_gridR, _gridC) == K.raised ? K.gold : _cellColor(_gridR, _gridC));
 

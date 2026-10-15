@@ -18,6 +18,9 @@ class _RateSheetState extends State<RateSheet> {
   int _feel = 0;
   int _intr = -1;
   int _bossP = -1;
+  int _focus = -1; // -1 = pas encore initialisé
+  int _prog = -1;
+  int _tMet = -1;
   final _helped = TextEditingController();
   final _hard = TextEditingController();
   final _worth = TextEditingController();
@@ -37,6 +40,12 @@ class _RateSheetState extends State<RateSheet> {
     final boss = s.taskId.isEmpty ? null : store.taskById(s.taskId);
     final isBoss = boss != null && boss.isBoss;
     if (isBoss && _bossP < 0) _bossP = boss.bossProgress;
+    final task = isBoss ? null : boss;
+    if (_focus < 0) _focus = s.focus > 0 ? s.focus : s.suggestedFocus;
+    final from = s.progFrom >= 0 ? s.progFrom : (task?.progress ?? 0);
+    if (_prog < 0) _prog = s.progTo >= 0 ? s.progTo : (s.finished && task != null ? 100 : from);
+    if (_tMet < 0 && s.targetMet >= 0) _tMet = s.targetMet;
+    final pro = store.sessionCategory(s) == Act.pro;
     final ratio = s.ratio;
     String verdict;
     if (!s.finished) {
@@ -61,6 +70,81 @@ class _RateSheetState extends State<RateSheet> {
             if (verdict.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text(verdict, style: K.body(14, color: K.muted)),
+            ],
+            const SizedBox(height: 14),
+            Panel(
+              child: Row(children: [
+                Text('${s.actualMin.round()} min', style: K.display(28, color: K.lime)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('1 · EFFORT', style: K.body(10, color: K.lime, w: FontWeight.w900)),
+                    Text('Tu es restée dessus. Rester, c\'est un muscle.', style: K.body(12, color: K.muted)),
+                  ]),
+                ),
+                if (pro) Text('+${s.actualMin.clamp(0, 180).round()} XP', style: K.body(13, color: K.lime, w: FontWeight.w900)),
+              ]),
+            ),
+            const SizedBox(height: 8),
+            Panel(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('2 · CONCENTRATION', style: K.body(10, color: K.cyan, w: FontWeight.w900)),
+                if (s.atts.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Row(children: [
+                    for (final c in s.atts.split(''))
+                      Container(
+                        width: 24,
+                        height: 8,
+                        margin: const EdgeInsets.only(right: 4),
+                        decoration: BoxDecoration(color: _attColors[(int.tryParse(c) ?? 1).clamp(0, 3)], borderRadius: BorderRadius.circular(4)),
+                      ),
+                    const SizedBox(width: 4),
+                    Text('pendant la session', style: K.body(11, color: K.dim)),
+                  ]),
+                ],
+                const SizedBox(height: 8),
+                _row(['1', '2', '3', '4', '5'], _focus, K.cyan, (i) => setState(() => _focus = i)),
+                const SizedBox(height: 4),
+                Text(s.suggestedFocus > 0 ? 'Prérempli d\'après tes réponses. Tu peux corriger : ça ne change pas tes XP.' : 'Ta note ne change pas tes XP : réponds franchement.',
+                    style: K.body(11, color: K.muted)),
+              ]),
+            ),
+            if (task != null) ...[
+              const SizedBox(height: 8),
+              Panel(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(child: Text('3 · AVANCEMENT DE L\'ÉTAPE', style: K.body(10, color: K.gold, w: FontWeight.w900))),
+                    Text('$_prog %', style: K.display(18, color: K.gold)),
+                  ]),
+                  Slider(
+                    value: _prog.toDouble(),
+                    max: 100,
+                    divisions: 20,
+                    activeColor: K.gold,
+                    onChanged: (v) => setState(() => _prog = v.round()),
+                  ),
+                  Row(children: [
+                    Expanded(
+                      child: Text(_prog > from ? 'avant : $from % · +${_prog - from} points' : 'avant : $from %', style: K.body(12, color: K.muted)),
+                    ),
+                    TextButton(onPressed: () => setState(() => _prog = 100), child: const Text('Étape finie')),
+                  ]),
+                ]),
+              ),
+            ],
+            if (s.target.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Panel(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('TU VOULAIS AVOIR', style: K.body(10, color: K.lime, w: FontWeight.w900)),
+                  const SizedBox(height: 2),
+                  Text('« ${s.target} »', style: K.body(14)),
+                  const SizedBox(height: 8),
+                  _row(['Non', 'En partie', 'Oui'], _tMet + 1, K.lime, (i) => setState(() => _tMet = i - 1)),
+                ]),
+              ),
             ],
             if (isBoss) ...[
               const SizedBox(height: 14),
@@ -146,11 +230,15 @@ class _RateSheetState extends State<RateSheet> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: PrimaryButton(
-                    label: '+2 XP',
-                    onPressed: (_diff == 0 && _feel == 0 && _intr < 0 && _helped.text.trim().isEmpty && !isBoss)
+                    label: 'Valider',
+                    onPressed: (_diff == 0 && _feel == 0 && _intr < 0 && _helped.text.trim().isEmpty && !isBoss && _focus <= 0 && task == null && _tMet < 0)
                         ? null
                         : () async {
                             if (isBoss && _bossP != boss.bossProgress) await store.setBossProgress(boss, _bossP);
+                            await store.rateProgress(s,
+                                focus: _focus > 0 ? _focus : null,
+                                progTo: isBoss ? _bossP : (task != null ? _prog : null),
+                                targetMet: _tMet >= 0 ? _tMet : null);
                             await AppScope.read(context).rateSession(s,
                                 difficulty: _diff,
                                 feeling: _feel,
@@ -169,6 +257,8 @@ class _RateSheetState extends State<RateSheet> {
       ),
     );
   }
+
+  static const _attColors = [Color(0xFF3E8E57), Color(0xFF7FD6C2), Color(0xFFC9A227), Color(0xFFB5443A)];
 
   Widget _row(List<String> labels, int value, Color c, void Function(int) onTap) => Row(
         children: [
