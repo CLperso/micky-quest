@@ -182,6 +182,63 @@ class _CabinScreenState extends State<CabinScreen> {
     setState(() => _step = i);
   }
 
+  List<String> get _weightList => [
+        for (final e in _weightsSel.entries)
+          if (e.value.isEmpty) e.key else for (final s in e.value) '${e.key}:$s'
+      ];
+
+  List<String> _currentNotes() => [
+        if (_fauteOrHonte.isNotEmpty) _fauteOrHonte,
+        if (_angle != null)
+          for (var i = 0; i < _fields.length && i < _angle!.prompts.length; i++)
+            if (_fields[i].text.trim().isNotEmpty) '${_angle!.prompts[i]} : ${_fields[i].text.trim()}',
+      ];
+
+  /// Range le problème en cours et revient au choix d'un regard pour le suivant.
+  void _archive() {
+    if (_angle == null) return;
+    _problems.add((label: _probLabel, angle: _angle!, notes: _currentNotes()));
+    for (final c in _fields) {
+      c.dispose();
+    }
+    _fields.clear();
+    _angle = null;
+    _fauteOrHonte = '';
+    _probLabel = '';
+  }
+
+  List<({String label, _Angle angle, List<String> notes})> get _allProblems => [
+        ..._problems,
+        if (_angle != null) (label: _probLabel, angle: _angle!, notes: _currentNotes()),
+      ];
+
+  Future<void> _save() async {
+    if (_saved) return;
+    _saved = true;
+    final store = AppScope.read(context);
+    final all = _allProblems;
+    final notes = <String>[
+      for (var k = 0; k < all.length; k++) ...[
+        if (all.length > 1) '— ${k + 1}. ${all[k].label.isEmpty ? all[k].angle.name : '${all[k].label.replaceAll(':', ' · ')} (${all[k].angle.name})'}',
+        ...all[k].notes,
+      ],
+    ];
+    await store.saveCabinVisit(CabinVisit(
+      ts: DateTime.now().millisecondsSinceEpoch,
+      mood: _mood,
+      energy: _energy,
+      emotion: _emotion,
+      before: _before,
+      after: _after,
+      weights: _weightList,
+      body: _body,
+      origin: _origin,
+      angle: {for (final p in all) p.angle.name}.join(' + '),
+      gesture: _gesture,
+      notes: notes.join('\n'),
+    ));
+  }
+
   /// Regards classés : favoris, ce qui colle à ce qui pèse, ce qui t'a aidée.
   List<_Angle> _ranked(AppStore store) {
     final eff = store.angleEfficacy();
