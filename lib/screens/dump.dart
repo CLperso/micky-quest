@@ -111,7 +111,7 @@ class _DumpScreenState extends State<DumpScreen> {
           n++;
           break;
         case 'keep':
-          await store.addLog(LogEntry(ts: DateTime.now().millisecondsSinceEpoch, kind: LogKind.free, note: 'Vide-tête : ${l.text}'));
+          await store.addLog(LogEntry(ts: DateTime.now().millisecondsSinceEpoch, kind: LogKind.free, note: 'Rangement : ${l.text}'));
           break;
       }
     }
@@ -141,7 +141,7 @@ class _DumpScreenState extends State<DumpScreen> {
   @override
   Widget build(BuildContext context) {
     final store = AppScope.of(context);
-    final title = _cut ? 'Découper' : 'Vider la tête';
+    final title = _cut ? 'Découper' : 'Se ranger la tête';
     final lines = _lines;
     return Scaffold(
       appBar: AppBar(

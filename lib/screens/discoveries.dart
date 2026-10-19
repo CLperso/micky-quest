@@ -136,7 +136,7 @@ class _DiscoveriesScreenState extends State<DiscoveriesScreen> {
             const SizedBox(height: 10),
           ],
         ],
-        if (_tab == 3) const BudgetStats(),
+        if (_tab == 3) ...[const BudgetCard(), const SizedBox(height: 14), const BudgetStats()],
       ],
     );
   }

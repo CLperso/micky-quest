@@ -167,7 +167,7 @@ class _BriefingScreenState extends State<BriefingScreen> {
                       Text('facultatif', style: K.body(11, color: K.muted)),
                     ]),
                     const SizedBox(height: 4),
-                    Text('Vider la tête, réveiller le corps, puis ce briefing. La version mini compte autant.', style: K.body(12, color: K.muted)),
+                    Text('Se ranger la tête, réveiller le corps, puis ce briefing. La version mini compte autant.', style: K.body(12, color: K.muted)),
                     const SizedBox(height: 10),
                     Row(children: [
                       Expanded(

@@ -315,7 +315,72 @@ class EnvelopeTile extends StatelessWidget {
   }
 }
 
-/// Carte du QG : jauge, limite du jour, 6 enveloppes.
+/// Version courte pour le QG : reste, limite du jour. Un tap ouvre la version complète.
+class BudgetMiniCard extends StatelessWidget {
+  const BudgetMiniCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final left = store.periodLeft();
+    final total = store.periodAmount;
+    final allow = store.dailyAllowance(store.todayKey);
+    final today = store.spentOn(store.todayKey);
+    final ok = today <= allow;
+    return Material(
+      color: K.card,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => openScreen(context, const BudgetHubScreen()),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
+          child: Row(children: [
+            const Icon(Icons.savings_rounded, color: K.gold, size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Text('Budget', style: K.display(15)),
+                  const SizedBox(width: 8),
+                  Text('reste ${euros(left.roundToDouble())}', style: K.body(13, color: K.gold, w: FontWeight.w800)),
+                ]),
+                const SizedBox(height: 4),
+                Bar(total <= 0 ? 0 : (left / total).clamp(0.0, 1.0), color: K.gold, height: 5),
+                const SizedBox(height: 4),
+                Text(
+                  ok ? 'Aujourd\'hui : max ${euros(allow.roundToDouble())} · dépensé ${euros(today)}' : 'Aujourd\'hui : ${euros(today - allow)} au-dessus',
+                  style: K.body(11, color: ok ? K.muted : K.coral),
+                ),
+              ]),
+            ),
+            IconButton(
+              tooltip: 'Dépense',
+              onPressed: () => addExpenseSheet(context),
+              icon: const Icon(Icons.add_circle_rounded, color: K.gold),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// Budget complet (depuis le QG).
+class BudgetHubScreen extends StatelessWidget {
+  const BudgetHubScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: const Text('Budget')),
+        body: SafeArea(
+          top: false,
+          child: ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 28), children: const [BudgetCard()]),
+        ),
+      );
+}
+
+/// Carte complète : jauge, limite du jour, 6 enveloppes.
 class BudgetCard extends StatelessWidget {
   const BudgetCard({super.key});
 

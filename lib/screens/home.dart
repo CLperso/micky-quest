@@ -43,7 +43,6 @@ class HomeScreen extends StatelessWidget {
           await clearCrash();
           store.refresh();
         }),
-        const OpenCheckinCard(),
         Row(
           children: [
             SizedBox(
@@ -129,6 +128,7 @@ class HomeScreen extends StatelessWidget {
           ),
           const SizedBox(height: 14),
         ],
+        const OpenCheckinCard(),
 
         Panel(
           child: Column(
@@ -162,11 +162,6 @@ class HomeScreen extends StatelessWidget {
         ],
         const HabitsCard(),
         const SizedBox(height: 14),
-        const HouseCard(),
-        const SizedBox(height: 14),
-        const BudgetCard(),
-        const SizedBox(height: 14),
-
         if (doNow.isNotEmpty)
           Panel(
             child: Column(
@@ -186,6 +181,10 @@ class HomeScreen extends StatelessWidget {
         if (doNow.isNotEmpty) const SizedBox(height: 10),
 
         _bossCard(context, boss),
+        const SizedBox(height: 14),
+        const HouseCard(),
+        const SizedBox(height: 14),
+        const BudgetMiniCard(),
         const SizedBox(height: 18),
 
         Text('Noter vite', style: K.display(18)),
@@ -226,7 +225,7 @@ class HomeScreen extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Vider la tête', style: K.display(15)),
+                    Text('Se ranger la tête', style: K.display(15)),
                     Text('tout écrire, puis ranger en tâches ou en étapes', style: K.body(11, color: K.muted)),
                   ]),
                 ),
@@ -713,8 +712,8 @@ class _OpenCheckinCardState extends State<OpenCheckinCard> {
     final since = now.difference(DateTime.fromMillisecondsSinceEpoch(last)).inMinutes;
     if (since < 90) return const SizedBox.shrink();
     final lastLabel = cs.isEmpty
-        ? 'Pas encore de check-in aujourd\'hui.'
-        : 'Dernier check-in à ${DateTime.fromMillisecondsSinceEpoch(cs.last.ts).hour} h ${DateTime.fromMillisecondsSinceEpoch(cs.last.ts).minute.toString().padLeft(2, '0')}.';
+        ? ''
+        : 'dernier à ${DateTime.fromMillisecondsSinceEpoch(cs.last.ts).hour} h ${DateTime.fromMillisecondsSinceEpoch(cs.last.ts).minute.toString().padLeft(2, '0')}';
     Widget quick(String label, String act) => Expanded(
           child: Padding(
             padding: const EdgeInsets.all(3),
@@ -740,7 +739,10 @@ class _OpenCheckinCardState extends State<OpenCheckinCard> {
       child: Panel(
         border: K.cyan,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Petit point ? $lastLabel', style: K.body(14, w: FontWeight.w800)),
+          Row(children: [
+            Expanded(child: Text('Tu fais quoi, là ?', style: K.body(14, w: FontWeight.w800))),
+            if (lastLabel.isNotEmpty) Text(lastLabel, style: K.body(11, color: K.muted)),
+          ]),
           const SizedBox(height: 6),
           Row(children: [quick('Pro', Act.pro), quick('Perso', Act.perso)]),
           Row(children: [quick('Pause', Act.pause), quick('Rien de spécial', Act.nothing)]),

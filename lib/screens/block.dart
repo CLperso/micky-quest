@@ -102,7 +102,7 @@ class _BlockScreenState extends State<BlockScreen> {
                   child: Row(children: [
                     const Icon(Icons.psychology_alt_rounded, color: K.cyan),
                     const SizedBox(width: 10),
-                    Expanded(child: Text('Vider la tête : tout écrire, trier après', style: K.body(14, w: FontWeight.w800))),
+                    Expanded(child: Text('Se ranger la tête : tout écrire, trier après', style: K.body(14, w: FontWeight.w800))),
                   ]),
                 ),
               ),
