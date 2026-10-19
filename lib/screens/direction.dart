@@ -162,6 +162,14 @@ class DirectionScreen extends StatelessWidget {
             const SizedBox(height: 14),
             Text('DEVENIR CONSTANTE · CETTE SEMAINE', style: K.body(11, color: _vio, w: FontWeight.w900)),
             const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => editHourGoals(context),
+                icon: const Icon(Icons.tune_rounded, size: 16, color: K.cyan),
+                label: Text('Changer mes heures', style: K.body(12, color: K.cyan, w: FontWeight.w800)),
+              ),
+            ),
             _PillarRow(
               icon: '⏰',
               title: 'Démarrer avant ${_hm(s.startTarget)}',
@@ -554,4 +562,60 @@ class _DigWhyScreenState extends State<DigWhyScreen> {
       ),
     );
   }
+}
+
+/// Heure de démarrage visée et temps pro habituel : un seul endroit pour les changer.
+Future<void> editHourGoals(BuildContext context) async {
+  final store = AppScope.read(context);
+  final s = store.settings;
+  await showModalBottomSheet(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Mes heures', style: K.display(20)),
+            const SizedBox(height: 12),
+            Text('⏰ Je démarre avant', style: K.body(14, w: FontWeight.w800)),
+            const SizedBox(height: 6),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final m in const [480, 510, 540, 570, 600, 630, 660, 690, 720])
+                ChoiceChip(
+                  label: Text('${m ~/ 60} h${m % 60 == 0 ? '' : ' ${m % 60}'}'),
+                  selected: s.startTarget == m,
+                  onSelected: (_) => setState(() => s.startTarget = m),
+                  selectedColor: K.lime,
+                  labelStyle: K.body(13, color: s.startTarget == m ? K.bg : K.ink, w: FontWeight.w800),
+                  backgroundColor: K.raised,
+                  side: BorderSide.none,
+                  showCheckmark: false,
+                ),
+            ]),
+            const SizedBox(height: 14),
+            Text('💼 Mon temps pro habituel par jour', style: K.body(14, w: FontWeight.w800)),
+            const SizedBox(height: 6),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final m in const [60, 90, 120, 150, 180, 210, 240, 300])
+                ChoiceChip(
+                  label: Text(_dur(m)),
+                  selected: s.dirProDefault == m,
+                  onSelected: (_) => setState(() => s.dirProDefault = m),
+                  selectedColor: K.lime,
+                  labelStyle: K.body(13, color: s.dirProDefault == m ? K.bg : K.ink, w: FontWeight.w800),
+                  backgroundColor: K.raised,
+                  side: BorderSide.none,
+                  showCheckmark: false,
+                ),
+            ]),
+            const SizedBox(height: 6),
+            Text('Il préremplit le briefing et « Préparer demain ». Un jour différent ? Change-le juste ce jour-là.', style: K.body(11, color: K.muted)),
+            const SizedBox(height: 14),
+            PrimaryButton(label: 'OK', onPressed: () => Navigator.pop(ctx)),
+          ]),
+        ),
+      ),
+    ),
+  );
+  await store.updateSettings();
 }
