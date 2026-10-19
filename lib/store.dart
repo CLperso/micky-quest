@@ -976,7 +976,9 @@ class AppStore extends ChangeNotifier {
     final by = <String, List<int>>{};
     for (final v in cabin) {
       if (v.angle.isEmpty || v.before < 0 || v.after < 0) continue;
-      by.putIfAbsent(v.angle, () => []).add(v.before - v.after);
+      for (final a in v.angle.split(' + ')) {
+        by.putIfAbsent(a, () => []).add(v.before - v.after);
+      }
     }
     return {
       for (final e in by.entries)

@@ -119,6 +119,8 @@ class _CabinScreenState extends State<CabinScreen> {
   _Angle? _angle;
   final List<TextEditingController> _fields = [];
   String _fauteOrHonte = '';
+  String _probLabel = ''; // à quel problème ce regard s'applique
+  final List<({String label, _Angle angle, List<String> notes})> _problems = []; // problèmes déjà regardés
   String _gesture = '';
   String _bookPick = '';
   bool _saved = false;
@@ -140,15 +142,41 @@ class _CabinScreenState extends State<CabinScreen> {
           if (e.value.isEmpty) e.key else for (final s in e.value) '${e.key}:$s'
       ];
 
+  List<String> _currentNotes() => [
+        if (_fauteOrHonte.isNotEmpty) _fauteOrHonte,
+        if (_angle != null)
+          for (var i = 0; i < _fields.length && i < _angle!.prompts.length; i++)
+            if (_fields[i].text.trim().isNotEmpty) '${_angle!.prompts[i]} : ${_fields[i].text.trim()}',
+      ];
+
+  /// Range le problème en cours et revient au choix d'un regard pour le suivant.
+  void _archive() {
+    if (_angle == null) return;
+    _problems.add((label: _probLabel, angle: _angle!, notes: _currentNotes()));
+    for (final c in _fields) {
+      c.dispose();
+    }
+    _fields.clear();
+    _angle = null;
+    _fauteOrHonte = '';
+    _probLabel = '';
+  }
+
+  List<({String label, _Angle angle, List<String> notes})> get _allProblems => [
+        ..._problems,
+        if (_angle != null) (label: _probLabel, angle: _angle!, notes: _currentNotes()),
+      ];
+
   Future<void> _save() async {
     if (_saved) return;
     _saved = true;
     final store = AppScope.read(context);
+    final all = _allProblems;
     final notes = <String>[
-      if (_fauteOrHonte.isNotEmpty) _fauteOrHonte,
-      if (_angle != null)
-        for (var i = 0; i < _fields.length && i < _angle!.prompts.length; i++)
-          if (_fields[i].text.trim().isNotEmpty) '${_angle!.prompts[i]} : ${_fields[i].text.trim()}',
+      for (var k = 0; k < all.length; k++) ...[
+        if (all.length > 1) '— ${k + 1}. ${all[k].label.isEmpty ? all[k].angle.name : '${all[k].label.replaceAll(':', ' · ')} (${all[k].angle.name})'}',
+        ...all[k].notes,
+      ],
     ];
     await store.saveCabinVisit(CabinVisit(
       ts: DateTime.now().millisecondsSinceEpoch,
@@ -160,7 +188,7 @@ class _CabinScreenState extends State<CabinScreen> {
       weights: _weightList,
       body: _body,
       origin: _origin,
-      angle: _angle?.name ?? '',
+      angle: {for (final p in all) p.angle.name}.join(' + '),
       gesture: _gesture,
       notes: notes.join('\n'),
     ));
@@ -442,6 +470,25 @@ class _CabinScreenState extends State<CabinScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       children: [
+        if (_problems.isNotEmpty) ...[
+          Panel(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('DÉJÀ REGARDÉ', style: K.body(10, color: K.muted, w: FontWeight.w900)),
+              const SizedBox(height: 4),
+              for (var k = 0; k < _problems.length; k++)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    '✓ ${k + 1}. ${_problems[k].label.isEmpty ? '' : '${_problems[k].label.replaceAll(':', ' · ')} — '}${_problems[k].angle.name}',
+                    style: K.body(13, color: _problems[k].angle.color),
+                  ),
+                ),
+              const SizedBox(height: 6),
+              Text('Problème ${_problems.length + 1} : choisis le regard qui lui va.', style: K.body(12, color: K.muted)),
+            ]),
+          ),
+          const SizedBox(height: 8),
+        ],
         if (sel.isNotEmpty)
           Text('Pour ${_weightList.map((w) => w.replaceAll(':', ' · ')).join(' + ')}', style: K.body(11, color: K.muted, w: FontWeight.w900)),
         const SizedBox(height: 8),
@@ -518,6 +565,18 @@ class _CabinScreenState extends State<CabinScreen> {
           ]),
         ),
         const SizedBox(height: 12),
+        Text(_problems.isEmpty ? 'Ce regard, c\'est pour… (facultatif)' : 'Problème ${_problems.length + 1}, c\'est…', style: K.body(13, w: FontWeight.w800)),
+        const SizedBox(height: 6),
+        Wrap(children: [
+          for (final w in _weightList.where((w) => !_problems.any((p) => p.label == w)))
+            _chip(w.replaceAll(':', ' · '), _probLabel == w, a.color, () => setState(() => _probLabel = _probLabel == w ? '' : w)),
+          if (_probLabel.isNotEmpty && !_weightList.contains(_probLabel)) _chip(_probLabel, true, a.color, () => setState(() => _probLabel = '')),
+          _chip('autre…', false, K.muted, () async {
+            final t = await askText(context, 'Ce problème, en quelques mots', hint: 'ex. : le mail à mon directeur');
+            if (t != null && t.trim().isNotEmpty) setState(() => _probLabel = t.trim());
+          }),
+        ]),
+        const SizedBox(height: 12),
         for (var i = 0; i < a.prompts.length; i++) ...[
           Text(a.prompts[i], style: K.body(13, color: a.color, w: FontWeight.w800)),
           const SizedBox(height: 4),
@@ -562,6 +621,11 @@ class _CabinScreenState extends State<CabinScreen> {
             const SizedBox(height: 10),
           ],
         ],
+        SecondaryButton(
+          label: '+ Un autre problème',
+          onPressed: () => setState(_archive),
+        ),
+        const SizedBox(height: 8),
         Row(children: [
           Expanded(
             child: SecondaryButton(
