@@ -7,6 +7,8 @@ import '../theme.dart';
 import 'block.dart';
 import 'dump.dart';
 import 'notebook.dart';
+import 'problems.dart';
+import 'timetable.dart' show askText;
 import 'matrix.dart';
 
 class BriefingScreen extends StatefulWidget {
@@ -196,6 +198,9 @@ class _BriefingScreenState extends State<BriefingScreen> {
               const SizedBox(height: 10),
             ],
             const SkinRow(),
+            const _StartCard(),
+            const SizedBox(height: 10),
+            const _ProblemAsk(),
             const SectionLabel('1 · Tes objectifs du jour'),
             Panel(
               border: K.gold,
@@ -517,6 +522,105 @@ class SkinRow extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+String _hm(int m) => '${m ~/ 60} h ${(m % 60).toString().padLeft(2, '0')}';
+
+/// Commencer plus tôt : heure visée, bonus du matin, où tu en es.
+class _StartCard extends StatelessWidget {
+  const _StartCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final target = store.settings.startTarget;
+    final med = store.medianStart();
+    final st = store.workStart(store.todayKey);
+    final morning = store.morningProMinutes(store.todayKey).round();
+    final opts = <int>{540, 570, 600, 630, 660, target}.toList()..sort();
+    return Panel(
+      border: K.lime,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.flag_rounded, color: K.lime),
+          const SizedBox(width: 8),
+          Expanded(child: Text('Commencer avant ${_hm(target)}', style: K.display(16))),
+        ]),
+        const SizedBox(height: 4),
+        Text(
+          st != null
+              ? 'Démarré à ${_hm(st.hour * 60 + st.minute)}${st.hour * 60 + st.minute <= target ? ' : à l\'heure, +20 XP' : ''} · $morning min de pro avant midi'
+              : 'Premier pro avant ${_hm(target)} : +20 XP. Avant midi : +10 XP dès 30 min de pro, +20 XP de plus à 90 min.',
+          style: K.body(12, color: K.muted),
+        ),
+        if (med != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            'Ces deux dernières semaines, tu commences vers ${_hm(med)}.${med > target + 45 ? ' Vise d\'abord ${_hm(((med - 30) ~/ 15) * 15)} : un pas à la fois.' : ''}',
+            style: K.body(12, color: K.ink),
+          ),
+        ],
+        const SizedBox(height: 8),
+        Wrap(spacing: 6, children: [
+          for (final m in opts)
+            ChoiceChip(
+              label: Text(_hm(m)),
+              selected: m == target,
+              onSelected: (_) async {
+                store.settings.startTarget = m;
+                await store.updateSettings();
+              },
+              selectedColor: K.lime,
+              labelStyle: K.body(12, w: FontWeight.w800, color: m == target ? K.bg : K.ink),
+              backgroundColor: K.raised,
+              side: BorderSide.none,
+              showCheckmark: false,
+            ),
+        ]),
+      ]),
+    );
+  }
+}
+
+/// « Un problème en tête ? » : ouvre la fiche problème.
+class _ProblemAsk extends StatelessWidget {
+  const _ProblemAsk();
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final open = store.openProblems;
+    return Panel(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Un problème en tête ce matin ?', style: K.display(16)),
+        const SizedBox(height: 4),
+        Text('Le poser, c\'est déjà le sortir de la tête. On le résout ou on le traverse, et on suit son évolution.', style: K.body(12, color: K.muted)),
+        const SizedBox(height: 8),
+        Wrap(spacing: 6, runSpacing: 6, children: [
+          ActionChip(
+            label: const Text('Oui, le noter'),
+            onPressed: () async {
+              final t = await askText(context, 'Le problème, concrètement', hint: 'un fait, pas un jugement sur toi');
+              if (t == null || t.trim().isEmpty) return;
+              final p = await store.addProblem(t.trim());
+              if (context.mounted) openScreen(context, ProblemScreen(problem: p, guided: true));
+            },
+            backgroundColor: K.lime,
+            labelStyle: K.body(12, color: K.bg, w: FontWeight.w800),
+            side: BorderSide.none,
+          ),
+          for (final p in open.take(3))
+            ActionChip(
+              label: Text(p.title.length > 24 ? '${p.title.substring(0, 24)}…' : p.title),
+              onPressed: () => openScreen(context, ProblemScreen(problem: p)),
+              backgroundColor: K.raised,
+              labelStyle: K.body(12, w: FontWeight.w800),
+              side: BorderSide.none,
+            ),
+        ]),
+      ]),
     );
   }
 }

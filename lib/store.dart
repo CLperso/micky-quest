@@ -53,6 +53,7 @@ class AppStore extends ChangeNotifier {
   List<Placement> placements = [];
   List<Slot> slots = [];
   List<CabinVisit> cabin = [];
+  List<Problem> problems = [];
   Settings settings = Settings();
   String lastChest = '';
 
@@ -112,6 +113,7 @@ class AppStore extends ChangeNotifier {
         placements = list('placements').map(Placement.fromJson).toList();
         slots = list('slots').map(Slot.fromJson).toList();
         cabin = list('cabin').map(CabinVisit.fromJson).toList();
+        problems = list('problems').map(Problem.fromJson).toList();
         settings = Settings.fromJson(Map<String, dynamic>.from((j['settings'] as Map?) ?? {}));
         lastChest = (j['lastChest'] as String?) ?? '';
       } catch (e) {
@@ -154,6 +156,7 @@ class AppStore extends ChangeNotifier {
         'placements': {for (final e in placements) e.id: e.toJson()},
         'slots': {for (final e in slots) e.id: e.toJson()},
         'cabin': {for (final e in cabin) e.id: e.toJson()},
+        'problems': {for (final e in problems) e.id: e.toJson()},
       };
 
   /// Date les enregistrements qui ont changé depuis la dernière fois.
@@ -212,6 +215,9 @@ class AppStore extends ChangeNotifier {
     }
     for (final e in cabin) {
       check('cabin', e.id, e.toJson(), (m) => e.mod = m);
+    }
+    for (final e in problems) {
+      check('problems', e.id, e.toJson(), (m) => e.mod = m);
     }
   }
 
@@ -272,6 +278,7 @@ class AppStore extends ChangeNotifier {
     mergeInto<Placement>(placements, list('placements'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Placement.fromJson);
     mergeInto<Slot>(slots, list('slots'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Slot.fromJson);
     mergeInto<CabinVisit>(cabin, list('cabin'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, CabinVisit.fromJson);
+    mergeInto<Problem>(problems, list('problems'), (e) => e.id, (j) => j['id'] as String, (e) => e.mod, Problem.fromJson);
     for (final j in list('plans')) {
       final d = j['day'] as String;
       final m = (j['mod'] as num?)?.toInt() ?? 0;
@@ -338,6 +345,7 @@ class AppStore extends ChangeNotifier {
       'placements': placements.map((e) => e.toJson()).toList(),
       'slots': slots.map((e) => e.toJson()).toList(),
       'cabin': cabin.map((e) => e.toJson()).toList(),
+      'problems': problems.map((e) => e.toJson()).toList(),
       'settings': settings.toJson(),
       'lastChest': lastChest,
     };
@@ -347,6 +355,8 @@ class AppStore extends ChangeNotifier {
   static String _s(Object? v) => (v as String?) ?? '';
 
   Future<void> commit() async {
+    _syncProblemSteps();
+    _checkMorning();
     await save();
     notifyListeners();
   }
@@ -910,6 +920,48 @@ class AppStore extends ChangeNotifier {
     return best == null ? null : DateTime.fromMillisecondsSinceEpoch(best);
   }
 
+  /// Minutes de pro faites avant midi (sessions et check-ins).
+  double morningProMinutes(String day) {
+    final d = DateTime.parse(day);
+    final noon = DateTime(d.year, d.month, d.day, 12).millisecondsSinceEpoch;
+    var m = 0.0;
+    for (final x in sessionsOn(day)) {
+      if (sessionCategory(x) != Act.pro) continue;
+      final end = x.end == 0 ? DateTime.now().millisecondsSinceEpoch : x.end;
+      if (x.start < noon) m += (min(end, noon) - x.start) / 60000;
+    }
+    return m;
+  }
+
+  /// Médiane de l'heure de démarrage sur 14 jours (minutes depuis minuit), null si moins de 4 jours.
+  int? medianStart() {
+    final v = <int>[];
+    for (var i = 1; i <= 14; i++) {
+      final st = workStart(dayKey(DateTime.now().subtract(Duration(days: i))));
+      if (st != null) v.add(st.hour * 60 + st.minute);
+    }
+    if (v.length < 4) return null;
+    v.sort();
+    return v[v.length ~/ 2];
+  }
+
+  /// Bonus du matin : démarrer avant l'heure visée, et du pro avant midi.
+  void _checkMorning() {
+    final day = todayKey;
+    final st = workStart(day);
+    if (st != null && st.hour * 60 + st.minute <= settings.startTarget) {
+      final r = 'Démarrage à l\'heure · $day';
+      if (!xpEvents.any((e) => e.reason == r)) _gainXp(20, r);
+    }
+    final m = morningProMinutes(day);
+    for (final (need, xp) in const [(30, 10), (90, 20)]) {
+      if (m >= need) {
+        final r = 'Matinée pro $need min · $day';
+        if (!xpEvents.any((e) => e.reason == r)) _gainXp(xp, r);
+      }
+    }
+  }
+
   /// Minutes passées à se préparer (check-ins et sessions « Se préparer »).
   double prepMinutes(String day) => minutesByTask(day)['label:Se préparer'] ?? 0;
 
@@ -984,6 +1036,75 @@ class AppStore extends ChangeNotifier {
       for (final e in by.entries)
         if (e.value.length >= 2) e.key: e.value.reduce((a, b) => a + b) / e.value.length
     };
+  }
+
+  // ---------- Mes problèmes ----------
+
+  List<Problem> get openProblems => problems.where((p) => p.open).toList()..sort((a, b) => b.ts.compareTo(a.ts));
+
+  Future<Problem> addProblem(String title, {String kind = 'resoudre', int? intensity}) async {
+    final p = Problem(ts: DateTime.now().millisecondsSinceEpoch, title: title, kind: kind);
+    if (intensity != null && intensity >= 0) p.rates[todayKey] = intensity;
+    problems.add(p);
+    await commit();
+    return p;
+  }
+
+  Future<void> rateProblem(Problem p, int v, {String? day}) async {
+    p.rates[day ?? todayKey] = v.clamp(0, 10);
+    await commit();
+  }
+
+  /// Ajoute une étape de solution ; [taskId] la lie à une tâche existante.
+  Future<void> addProblemStep(Problem p, String text, {String taskId = ''}) async {
+    p.steps.add({'id': newId(), 't': text, 'done': false, 'task': taskId});
+    await commit();
+  }
+
+  Future<void> toggleProblemStep(Problem p, Map<String, dynamic> st) async {
+    final done = st['done'] != true;
+    st['done'] = done;
+    if (done) _gainXp(5, 'Étape de solution');
+    final t = taskById((st['task'] as String?) ?? '');
+    if (t != null && done && !t.done) await completeTask(t);
+    await commit();
+  }
+
+  /// Crée une tâche à partir d'une étape (catégorie à part : pas dans une quête).
+  Future<void> stepToTask(Problem p, Map<String, dynamic> st) async {
+    final t = await addTask(st['t'] as String, quad: Quad.doNow, inQuest: false);
+    st['task'] = t.id;
+    await commit();
+  }
+
+  Future<void> snoozeCalm(Problem p) async {
+    p.calmSnooze = dayKey(DateTime.now().add(const Duration(days: 4)));
+    await commit();
+  }
+
+  Future<void> closeProblem(Problem p, String status, {String why = ''}) async {
+    p.status = status;
+    p.closedWhy = why;
+    if (status != 'ouvert') _gainXp(10, 'Problème ${Problem.statuses[status]}');
+    await commit();
+  }
+
+  /// Ouvert, à 3 ou moins sur les 3 derniers relevés (sur au moins 3 jours) : proposer de clore.
+  bool problemCalm(Problem p) {
+    final h = p.history;
+    if (!p.open || h.length < 4) return false;
+    if (p.calmSnooze.isNotEmpty && p.calmSnooze.compareTo(todayKey) > 0) return false;
+    return h.sublist(h.length - 3).every((e) => e.value <= 3);
+  }
+
+  /// Une tâche liée à une étape est faite : l'étape aussi.
+  void _syncProblemSteps() {
+    for (final p in problems) {
+      for (final st in p.steps) {
+        final t = taskById((st['task'] as String?) ?? '');
+        if (t != null && t.done && st['done'] != true) st['done'] = true;
+      }
+    }
   }
 
   /// Plusieurs passages intenses ces 3 derniers jours.
@@ -1308,7 +1429,11 @@ class AppStore extends ChangeNotifier {
                   ? 'Budget tenu'
                   : e.reason.startsWith('Feu de camp')
                       ? 'Feu de camp'
-                      : e.reason.startsWith('Mieux que ta médiane')
+                      : e.reason.startsWith('Démarrage à l')
+                          ? 'Démarrage à l\'heure'
+                          : e.reason.startsWith('Matinée pro')
+                          ? 'Matinée pro'
+                          : e.reason.startsWith('Mieux que ta médiane')
                           ? 'Mieux que ta médiane'
                           : e.reason.startsWith('Remontée')
                               ? 'Remontée'

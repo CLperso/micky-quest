@@ -12,6 +12,7 @@ import '../theme.dart';
 import 'block.dart';
 import 'slot.dart' show EmotionWords, MiniMoodGrid, moodColor;
 import 'timetable.dart' show askText;
+import 'problems.dart' show ProblemScreen, problemColor;
 
 const _lav = Color(0xFFB9A7FF);
 
@@ -120,6 +121,12 @@ class _CabinScreenState extends State<CabinScreen> {
   final List<TextEditingController> _fields = [];
   String _fauteOrHonte = '';
   String _probLabel = ''; // à quel problème ce regard s'applique
+  bool _triaged = false; // problèmes triés : résoudre / traverser / les deux
+  final List<({String title, String kind, Problem? existing})> _cands = [];
+  final List<Problem> _queue = [];
+  final Set<String> _done = {}; // 'r:id' résolu, 't:id' traversé
+  Problem? _for; // problème pour lequel on choisit un regard
+  final _pas = TextEditingController();
   final List<({String label, _Angle angle, List<String> notes})> _problems = []; // problèmes déjà regardés
   String _gesture = '';
   String _bookPick = '';
@@ -129,6 +136,7 @@ class _CabinScreenState extends State<CabinScreen> {
 
   @override
   void dispose() {
+    _pas.dispose();
     for (final c in _fields) {
       c.dispose();
     }
@@ -260,7 +268,9 @@ class _CabinScreenState extends State<CabinScreen> {
       case 2:
         return _weightStep();
       case 3:
-        return _angle == null ? _angleList(store) : _exercise(store);
+        if (!_triaged) return _triage(store);
+        if (_angle != null) return _exercise(store);
+        return _for != null ? _angleList(store) : _queueView(store);
       case 4:
         return _gestureStep(store);
       default:
@@ -445,9 +455,182 @@ class _CabinScreenState extends State<CabinScreen> {
               ),
           ],
           const SizedBox(height: 14),
-          PrimaryButton(label: 'Choisir un regard', color: _lav, onPressed: _next),
+          PrimaryButton(label: 'Suite', color: _lav, onPressed: _next),
         ],
       );
+
+  // ---------- 3 · Problèmes : résoudre ou traverser ----------
+
+  void _buildCands(AppStore store) {
+    if (_cands.isNotEmpty) return;
+    for (final e in _weightsSel.entries) {
+      final w = _weights.firstWhere((x) => x.id == e.key);
+      final t = e.value.isEmpty ? w.label : '${w.label} · ${e.value.join(', ')}';
+      final kind = const {'tristesse', 'lassitude', 'solitude', 'honte'}.contains(e.key) ? 'traverser' : 'resoudre';
+      _cands.add((title: t, kind: kind, existing: null));
+    }
+  }
+
+  Widget _kindChips(String kind, ValueChanged<String> on) => Row(children: [
+        for (final k in Problem.kinds.entries)
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(right: k.key == 'deux' ? 0 : 6),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => on(k.key),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: kind == k.key ? problemColor(Problem(ts: 0, title: '', kind: k.key)) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: kind == k.key ? Colors.transparent : K.line, width: 2),
+                  ),
+                  child: Text(k.key == 'resoudre' ? 'Ça se résout' : k.key == 'traverser' ? 'Ça se traverse' : 'Les deux',
+                      style: K.body(12, w: FontWeight.w800, color: kind == k.key ? K.bg : K.ink)),
+                ),
+              ),
+            ),
+          ),
+      ]);
+
+  Widget _triage(AppStore store) {
+    _buildCands(store);
+    final others = store.openProblems.where((p) => !_cands.any((c) => c.existing?.id == p.id)).toList();
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+      children: [
+        Text('Pour chaque problème : est-ce que ça se résout, ou est-ce que ça se traverse ?', style: K.body(13, color: K.muted)),
+        const SizedBox(height: 10),
+        for (var i = 0; i < _cands.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Panel(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Text('${i + 1}', style: K.display(16, color: _lav)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: InkWell(
+                      onTap: _cands[i].existing != null
+                          ? null
+                          : () async {
+                              final t = await askText(context, 'Le problème, concrètement', initial: _cands[i].title);
+                              if (t != null && t.trim().isNotEmpty) setState(() => _cands[i] = (title: t.trim(), kind: _cands[i].kind, existing: null));
+                            },
+                      child: Text(_cands[i].title, style: K.body(14, w: FontWeight.w800)),
+                    ),
+                  ),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => setState(() => _cands.removeAt(i)),
+                    icon: const Icon(Icons.close_rounded, color: K.muted, size: 18),
+                  ),
+                ]),
+                if (_cands[i].existing == null) Text('touche le titre pour le dire concrètement', style: K.body(10, color: K.dim)),
+                const SizedBox(height: 8),
+                _kindChips(_cands[i].kind, (k) => setState(() => _cands[i] = (title: _cands[i].title, kind: k, existing: _cands[i].existing))),
+              ]),
+            ),
+          ),
+        TextButton(
+          onPressed: () async {
+            final t = await askText(context, 'Un autre problème', hint: 'concret : « le mail à mon directeur »');
+            if (t != null && t.trim().isNotEmpty) setState(() => _cands.add((title: t.trim(), kind: 'resoudre', existing: null)));
+          },
+          child: Align(alignment: Alignment.centerLeft, child: Text('+ un autre problème', style: K.body(13, color: K.cyan, w: FontWeight.w800))),
+        ),
+        if (others.isNotEmpty) ...[
+          Text('Ou reprendre un problème ouvert :', style: K.body(12, color: K.muted)),
+          const SizedBox(height: 6),
+          Wrap(children: [
+            for (final p in others) _chip('+ ${p.title}', false, problemColor(p), () => setState(() => _cands.add((title: p.title, kind: p.kind, existing: p)))),
+          ]),
+        ],
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            color: _lav.withValues(alpha: 0.08),
+            border: const Border(left: BorderSide(color: _lav, width: 3)),
+            borderRadius: const BorderRadius.only(topRight: Radius.circular(12), bottomRight: Radius.circular(12)),
+          ),
+          child: Text('Parmi les choses, les unes dépendent de nous, les autres n\'en dépendent pas. — Épictète', style: _quoteStyle(13)),
+        ),
+        const SizedBox(height: 14),
+        PrimaryButton(
+          label: _cands.isEmpty ? 'Passer aux regards' : 'Commencer',
+          color: _lav,
+          onPressed: () async {
+            for (final c in _cands) {
+              if (c.existing != null) {
+                c.existing!.kind = c.kind;
+                _queue.add(c.existing!);
+              } else {
+                _queue.add(await store.addProblem(c.title, kind: c.kind, intensity: _before >= 0 ? _before : null));
+              }
+            }
+            if (_cands.isEmpty) {
+              // pas de problème nommé : on garde l'ancien parcours (un regard)
+              _for = null;
+            }
+            await store.commit();
+            setState(() => _triaged = true);
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _queueView(AppStore store) {
+    if (_queue.isEmpty) return _angleList(store);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+      children: [
+        Text('Un problème à la fois. Dans l\'ordre que tu veux.', style: K.body(13, color: K.muted)),
+        const SizedBox(height: 10),
+        for (final p in _queue)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Panel(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(child: Text(p.title, style: K.body(14, w: FontWeight.w800))),
+                  Pill(Problem.kinds[p.kind]!, color: K.bg, fill: problemColor(p)),
+                ]),
+                const SizedBox(height: 8),
+                Row(children: [
+                  if (p.kind != 'traverser')
+                    Expanded(
+                      child: _done.contains('r:${p.id}')
+                          ? Text('✓ résolution posée', style: K.body(13, color: K.lime, w: FontWeight.w800))
+                          : SecondaryButton(
+                              label: 'Résoudre',
+                              onPressed: () async {
+                                final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => ProblemScreen(problem: p, guided: true)));
+                                if (ok == true) setState(() => _done.add('r:${p.id}'));
+                              },
+                            ),
+                    ),
+                  if (p.kind == 'deux') const SizedBox(width: 8),
+                  if (p.kind != 'resoudre')
+                    Expanded(
+                      child: _done.contains('t:${p.id}')
+                          ? Text('✓ regardé autrement', style: K.body(13, color: _lav, w: FontWeight.w800))
+                          : SecondaryButton(label: 'Un regard', onPressed: () => setState(() => _for = p)),
+                    ),
+                ]),
+              ]),
+            ),
+          ),
+        const SizedBox(height: 6),
+        Text('Tout reste dans « Mes problèmes » : tu suivras l\'intensité au feu de camp.', style: K.body(11, color: K.dim)),
+        const SizedBox(height: 12),
+        PrimaryButton(label: 'Un geste', color: _lav, onPressed: _next),
+      ],
+    );
+  }
 
   // ---------- 3 · Angle ----------
 
@@ -470,24 +653,12 @@ class _CabinScreenState extends State<CabinScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       children: [
-        if (_problems.isNotEmpty) ...[
-          Panel(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('DÉJÀ REGARDÉ', style: K.body(10, color: K.muted, w: FontWeight.w900)),
-              const SizedBox(height: 4),
-              for (var k = 0; k < _problems.length; k++)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text(
-                    '✓ ${k + 1}. ${_problems[k].label.isEmpty ? '' : '${_problems[k].label.replaceAll(':', ' · ')} — '}${_problems[k].angle.name}',
-                    style: K.body(13, color: _problems[k].angle.color),
-                  ),
-                ),
-              const SizedBox(height: 6),
-              Text('Problème ${_problems.length + 1} : choisis le regard qui lui va.', style: K.body(12, color: K.muted)),
-            ]),
-          ),
-          const SizedBox(height: 8),
+        if (_for != null) ...[
+          Row(children: [
+            Expanded(child: Text('Un regard pour « ${_for!.title} »', style: K.display(16))),
+            TextButton(onPressed: () => setState(() => _for = null), child: Text('retour', style: K.body(12, color: K.muted))),
+          ]),
+          const SizedBox(height: 4),
         ],
         if (sel.isNotEmpty)
           Text('Pour ${_weightList.map((w) => w.replaceAll(':', ' · ')).join(' + ')}', style: K.body(11, color: K.muted, w: FontWeight.w900)),
@@ -565,17 +736,6 @@ class _CabinScreenState extends State<CabinScreen> {
           ]),
         ),
         const SizedBox(height: 12),
-        Text(_problems.isEmpty ? 'Ce regard, c\'est pour… (facultatif)' : 'Problème ${_problems.length + 1}, c\'est…', style: K.body(13, w: FontWeight.w800)),
-        const SizedBox(height: 6),
-        Wrap(children: [
-          for (final w in _weightList.where((w) => !_problems.any((p) => p.label == w)))
-            _chip(w.replaceAll(':', ' · '), _probLabel == w, a.color, () => setState(() => _probLabel = _probLabel == w ? '' : w)),
-          if (_probLabel.isNotEmpty && !_weightList.contains(_probLabel)) _chip(_probLabel, true, a.color, () => setState(() => _probLabel = '')),
-          _chip('autre…', false, K.muted, () async {
-            final t = await askText(context, 'Ce problème, en quelques mots', hint: 'ex. : le mail à mon directeur');
-            if (t != null && t.trim().isNotEmpty) setState(() => _probLabel = t.trim());
-          }),
-        ]),
         const SizedBox(height: 12),
         for (var i = 0; i < a.prompts.length; i++) ...[
           Text(a.prompts[i], style: K.body(13, color: a.color, w: FontWeight.w800)),
@@ -621,11 +781,14 @@ class _CabinScreenState extends State<CabinScreen> {
             const SizedBox(height: 10),
           ],
         ],
-        SecondaryButton(
-          label: '+ Un autre problème',
-          onPressed: () => setState(_archive),
-        ),
-        const SizedBox(height: 8),
+        if (_for != null) ...[
+          Text('Un petit pas qui compte, malgré ça (facultatif)', style: K.body(13, color: K.lime, w: FontWeight.w800)),
+          const SizedBox(height: 4),
+          TextField(controller: _pas, textCapitalization: TextCapitalization.sentences, decoration: const InputDecoration(hintText: 'ex. : marcher 20 min avec quelqu\'un')),
+          const SizedBox(height: 4),
+          Text('Il rejoint la fiche du problème, dans « Mes problèmes ».', style: K.body(11, color: K.dim)),
+          const SizedBox(height: 10),
+        ],
         Row(children: [
           Expanded(
             child: SecondaryButton(
@@ -639,7 +802,24 @@ class _CabinScreenState extends State<CabinScreen> {
             ),
           ),
           const SizedBox(width: 8),
-          Expanded(child: PrimaryButton(label: 'Un geste', color: _lav, onPressed: _next)),
+          Expanded(
+            child: PrimaryButton(
+              label: _for != null ? 'Fini pour ce problème' : 'Un geste',
+              color: _lav,
+              onPressed: () async {
+                final p = _for;
+                if (p == null) return _next();
+                if (_pas.text.trim().isNotEmpty) await store.addProblemStep(p, _pas.text.trim());
+                _pas.clear();
+                _probLabel = p.title;
+                setState(() {
+                  _archive();
+                  _done.add('t:${p.id}');
+                  _for = null;
+                });
+              },
+            ),
+          ),
         ]),
       ],
     );

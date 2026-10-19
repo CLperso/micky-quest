@@ -729,6 +729,7 @@ class Settings {
   int startHour;
   int endHour;
   int intervalMin;
+  int startTarget; // heure visée pour commencer le pro, en minutes depuis minuit
   bool checkinsDuringSession;
   int briefingHour;
   int briefingMinute;
@@ -767,6 +768,7 @@ class Settings {
     this.startHour = 9,
     this.endHour = 21,
     this.intervalMin = 30,
+    this.startTarget = 600,
     this.checkinsDuringSession = false,
     this.briefingHour = 8,
     this.briefingMinute = 30,
@@ -812,6 +814,7 @@ class Settings {
         startHour: _i(j['start'], 9),
         endHour: _i(j['end'], 21),
         intervalMin: _i(j['interval'], 30),
+        startTarget: _i(j['startT'], 600),
         checkinsDuringSession: _b(j['duringSession']),
         briefingHour: _i(j['briefH'], 8),
         briefingMinute: _i(j['briefM'], 30),
@@ -853,6 +856,7 @@ class Settings {
         'start': startHour,
         'end': endHour,
         'interval': intervalMin,
+        'startT': startTarget,
         'duringSession': checkinsDuringSession,
         'briefH': briefingHour,
         'briefM': briefingMinute,
@@ -1265,4 +1269,85 @@ class Expense {
 
   Map<String, dynamic> toJson() =>
       {'id': id, 'ts': ts, 'amount': amount, 'why': why, 'cat': category, 'removed': removed, 'mod': mod};
+}
+
+/// Un problème suivi dans le temps (cabane, « Mes problèmes », feu de camp).
+class Problem {
+  String id;
+  int ts;
+  String title;
+  String kind; // resoudre, traverser, deux
+  String status; // ouvert, apaise, resolu, accepte
+  String goal; // à quoi je verrai que c'est mieux
+  List<Map<String, dynamic>> ideas; // {t, f (0-3), e (0-3), c (choisie)}
+  List<Map<String, dynamic>> steps; // {id, t, done, task}
+  Map<String, int> rates; // jour → intensité 0..10
+  String closedWhy; // ce qui a aidé
+  String calmSnooze; // « pas encore » : ne plus proposer de clore avant ce jour
+  int mod;
+
+  Problem({
+    String? id,
+    required this.ts,
+    required this.title,
+    this.kind = 'resoudre',
+    this.status = 'ouvert',
+    this.goal = '',
+    List<Map<String, dynamic>>? ideas,
+    List<Map<String, dynamic>>? steps,
+    Map<String, int>? rates,
+    this.closedWhy = '',
+    this.calmSnooze = '',
+    this.mod = 0,
+  })  : id = id ?? newId(),
+        ideas = ideas ?? [],
+        steps = steps ?? [],
+        rates = rates ?? {};
+
+  static const kinds = {'resoudre': 'à résoudre', 'traverser': 'à traverser', 'deux': 'les deux'};
+  static const statuses = {'ouvert': 'ouvert', 'apaise': 'apaisé', 'resolu': 'résolu', 'accepte': 'accepté'};
+
+  bool get open => status == 'ouvert';
+
+  List<MapEntry<String, int>> get history => rates.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
+  int? get current => history.isEmpty ? null : history.last.value;
+  int? get first => history.isEmpty ? null : history.first.value;
+  String get firstDay => history.isEmpty ? '' : history.first.key;
+  int get stepsDone => steps.where((s) => s['done'] == true).length;
+  Map<String, dynamic>? get nextStep {
+    for (final s in steps) {
+      if (s['done'] != true) return s;
+    }
+    return null;
+  }
+
+  factory Problem.fromJson(Map<String, dynamic> j) => Problem(
+        id: _s(j['id']),
+        ts: _i(j['ts']),
+        title: _s(j['title']),
+        kind: _s(j['kind'], 'resoudre'),
+        status: _s(j['status'], 'ouvert'),
+        goal: _s(j['goal']),
+        ideas: [for (final x in (j['ideas'] as List? ?? [])) Map<String, dynamic>.from(x as Map)],
+        steps: [for (final x in (j['steps'] as List? ?? [])) Map<String, dynamic>.from(x as Map)],
+        rates: {for (final e in ((j['rates'] as Map?) ?? {}).entries) e.key as String: (e.value as num).toInt()},
+        closedWhy: _s(j['why']),
+        calmSnooze: _s(j['snz']),
+        mod: _i(j['mod']),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'ts': ts,
+        'title': title,
+        'kind': kind,
+        'status': status,
+        'goal': goal,
+        'ideas': ideas,
+        'steps': steps,
+        'rates': rates,
+        'why': closedWhy,
+        'snz': calmSnooze,
+        'mod': mod,
+      };
 }

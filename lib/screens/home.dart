@@ -14,6 +14,7 @@ import 'habits.dart';
 import 'settings.dart';
 import 'block.dart';
 import 'cabin.dart';
+import 'problems.dart';
 import 'dump.dart';
 import 'boss.dart';
 import 'house.dart';
@@ -255,6 +256,40 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
         ),
+        const SizedBox(height: 10),
+        Builder(builder: (context) {
+          final store = AppScope.of(context);
+          final open = store.openProblems;
+          return Material(
+            color: K.card,
+            borderRadius: BorderRadius.circular(18),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: () => openScreen(context, const ProblemsScreen()),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                child: Row(children: [
+                  const Icon(Icons.extension_rounded, color: K.lime),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Mes problèmes', style: K.display(15)),
+                      Text(
+                        open.isEmpty
+                            ? 'résoudre ou traverser, et suivre l\'évolution'
+                            : '${open.length} ouvert${open.length > 1 ? 's' : ''}${open.first.nextStep == null ? '' : ' · prochaine étape : ${open.first.nextStep!['t']}'}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: K.body(11, color: K.muted),
+                      ),
+                    ]),
+                  ),
+                  const Icon(Icons.chevron_right_rounded, color: K.lime),
+                ]),
+              ),
+            ),
+          );
+        }),
       ],
     );
   }

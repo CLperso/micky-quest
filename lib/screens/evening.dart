@@ -10,6 +10,7 @@ import 'checkin.dart';
 import 'habits.dart';
 import 'house.dart';
 import 'notebook.dart';
+import 'problems.dart';
 import 'reflect.dart';
 
 /// Onglet « Soir » : accès au feu de camp et aux replays.
@@ -237,6 +238,8 @@ class _EveningScreenState extends State<EveningScreen> {
             _GainsRecap(day: day),
             const SizedBox(height: 12),
             SelfCompareCard(day: day),
+            const SizedBox(height: 12),
+            ProblemsFireCard(day: day),
             const SizedBox(height: 12),
             if (store.activeHabits.isNotEmpty) ...[
               const HabitsCard(),
