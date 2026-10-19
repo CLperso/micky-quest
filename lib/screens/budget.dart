@@ -43,7 +43,7 @@ Future<void> editAvailable(BuildContext context) async {
         ),
       ]),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, -1), child: Text('Repartir à ${euros(store.planTotal)}')),
+        TextButton(onPressed: () => Navigator.pop(ctx, -1), child: const Text('Jour de paie…')),
         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
         TextButton(onPressed: () => Navigator.pop(ctx, double.tryParse(c.text.replaceAll(',', '.').trim())), child: const Text('OK')),
       ],
@@ -52,9 +52,156 @@ Future<void> editAvailable(BuildContext context) async {
   c.dispose();
   if (v == null) return;
   if (v < 0) {
-    await store.resetToPlan();
+    if (context.mounted) await paydayDialog(context);
   } else {
     await store.setAvailable(v);
+  }
+}
+
+/// Jour de paie : salaire reçu → l'appli enlève frais fixes et charges, le reste va aux enveloppes.
+Future<void> paydayDialog(BuildContext context) async {
+  final store = AppScope.read(context);
+  final c = TextEditingController(text: store.settings.salary.toStringAsFixed(2).replaceAll('.', ','));
+  var payAppel = store.appelDueAt(store.lastPayday());
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(builder: (ctx, setD) {
+      final sal = double.tryParse(c.text.replaceAll(',', '.').trim()) ?? 0;
+      final st = store.settings;
+      final avail = store.availableFromSalary(sal, payAppel: payAppel);
+      final chargesPart = payAppel ? max(0.0, st.chargesNext - st.chargesReserve) : st.chargesMonthly;
+      Widget line(String l, String v, {Color? color, bool bold = false}) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(children: [
+              Expanded(child: Text(l, style: K.body(13, color: bold ? K.ink : K.muted, w: bold ? FontWeight.w800 : FontWeight.w400))),
+              Text(v, style: K.body(13, color: color ?? K.ink, w: bold ? FontWeight.w800 : FontWeight.w400)),
+            ]),
+          );
+      return AlertDialog(
+        backgroundColor: K.card,
+        title: const Text('Jour de paie'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          TextField(
+            controller: c,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            onChanged: (_) => setD(() {}),
+            decoration: const InputDecoration(labelText: 'Salaire et aides reçus', suffixText: '€'),
+          ),
+          const SizedBox(height: 6),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            value: payAppel,
+            onChanged: (v) => setD(() => payAppel = v ?? false),
+            title: Text('Payer l\'appel de charges (${euros(st.chargesNext)})', style: K.body(13)),
+            subtitle: Text(payAppel ? '${euros(st.chargesReserve)} déjà de côté' : 'Sinon, ${euros(st.chargesMonthly)} mis de côté',
+                style: K.body(11, color: K.muted)),
+          ),
+          line('Salaire et aides', euros(sal)),
+          line('Frais fixes', '− ${euros(store.fixedTotal())}'),
+          line(payAppel ? 'Appel de charges (reste à payer)' : 'Charges mises de côté', '− ${euros(chargesPart)}'),
+          const Divider(),
+          line('Pour les enveloppes', euros(max(0.0, avail)), color: avail <= 0 ? K.coral : K.lime, bold: true),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          TextButton(onPressed: sal <= 0 ? null : () => Navigator.pop(ctx, true), child: const Text('Valider')),
+        ],
+      );
+    }),
+  );
+  final sal = double.tryParse(c.text.replaceAll(',', '.').trim()) ?? 0;
+  c.dispose();
+  if (ok == true) await store.applyPayday(sal, payAppel: payAppel);
+}
+
+/// Régler l'enveloppe charges : déjà de côté, prochain appel, mise de côté mensuelle.
+Future<void> editCharges(BuildContext context) async {
+  final store = AppScope.read(context);
+  final st = store.settings;
+  String f(double v) => v.toStringAsFixed(2).replaceAll('.', ',');
+  final res = TextEditingController(text: f(st.chargesReserve));
+  final next = TextEditingController(text: f(st.chargesNext));
+  final month = TextEditingController(text: f(st.chargesMonthly));
+  double? p(TextEditingController c) => double.tryParse(c.text.replaceAll(',', '.').trim());
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: K.card,
+      title: const Text('Charges de l\'appart'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: res, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Déjà mis de côté', suffixText: '€')),
+        TextField(controller: next, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Prochain appel', suffixText: '€')),
+        TextField(controller: month, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'À mettre de côté chaque mois', suffixText: '€')),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+        TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('OK')),
+      ],
+    ),
+  );
+  if (ok == true) await store.setCharges(reserve: p(res), next: p(next), monthly: p(month));
+  res.dispose();
+  next.dispose();
+  month.dispose();
+}
+
+/// Prochain appel de charges (1er janvier, avril, juillet ou octobre) après aujourd'hui.
+DateTime nextAppel() {
+  final now = DateTime.now();
+  for (var i = 0; i < 13; i++) {
+    final d = DateTime(now.year, now.month + i, 1);
+    if ([1, 4, 7, 10].contains(d.month) && d.isAfter(now)) return d;
+  }
+  return DateTime(now.year + 1, 1, 1);
+}
+
+/// L'enveloppe charges : séparée, jamais partagée avec les autres.
+class ChargesTile extends StatelessWidget {
+  const ChargesTile({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final st = AppScope.of(context).settings;
+    final frac = st.chargesNext <= 0 ? 1.0 : (st.chargesReserve / st.chargesNext).clamp(0.0, 1.0);
+    final a = nextAppel();
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => editCharges(context),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(color: K.bg, borderRadius: BorderRadius.circular(12), border: Border.all(color: K.raised, width: 2)),
+        child: Row(children: [
+          Stack(clipBehavior: Clip.none, children: [
+            const Icon(Icons.mail_rounded, color: K.cyan, size: 30),
+            Positioned(
+              right: -9,
+              bottom: -4,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: const BoxDecoration(color: K.bg, shape: BoxShape.circle),
+                child: const Icon(Icons.apartment_rounded, color: K.gold, size: 14),
+              ),
+            ),
+          ]),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Expanded(child: Text('Charges de l\'appart', style: K.body(13, w: FontWeight.w800))),
+                Text('${euros(st.chargesReserve.roundToDouble())} / ${euros(st.chargesNext.roundToDouble())}',
+                    style: K.body(13, color: K.cyan, w: FontWeight.w800)),
+              ]),
+              const SizedBox(height: 4),
+              Bar(frac, color: K.cyan, height: 5),
+              const SizedBox(height: 3),
+              Text('De côté pour l\'appel du ${_date(a)} ${a.year} · +${euros(st.chargesMonthly)} à chaque paie',
+                  style: K.body(11, color: K.muted)),
+            ]),
+          ),
+        ]),
+      ),
+    );
   }
 }
 
@@ -156,7 +303,7 @@ class EnvelopeTile extends StatelessWidget {
           ]),
           const SizedBox(height: 4),
           Text(Expense.labels[cat]!, style: K.body(11, color: K.muted), maxLines: 1, overflow: TextOverflow.ellipsis),
-          Text(euros(left.roundToDouble()), style: K.body(14, color: color, w: FontWeight.w800)),
+          Text(store.envelopeCovered(cat) ? 'couvert' : euros(left.roundToDouble()), style: K.body(14, color: color, w: FontWeight.w800)),
           const SizedBox(height: 4),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -196,16 +343,17 @@ class BudgetCard extends StatelessWidget {
               icon: const Icon(Icons.edit_rounded, color: K.muted, size: 18),
             ),
           ]),
-          if (store.paydayPassed) ...[
+          if (store.paydayPassed || store.settings.periodStart == 0) ...[
             Container(
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(color: K.bg, borderRadius: BorderRadius.circular(12), border: Border.all(color: K.gold, width: 2)),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Jour de paie : nouveau mois de budget', style: K.body(13, w: FontWeight.w800)),
+                Text(store.paydayPassed ? 'Jour de paie : nouveau mois de budget' : 'Combien tu as jusqu\'à la paie ?',
+                    style: K.body(13, w: FontWeight.w800)),
                 const SizedBox(height: 4),
                 Row(children: [
-                  TextButton(onPressed: () => store.resetToPlan(), child: Text('Repartir à ${euros(store.planTotal)}')),
+                  if (store.paydayPassed) TextButton(onPressed: () => paydayDialog(context), child: const Text('Calculer mon mois')),
                   TextButton(onPressed: () => editAvailable(context), child: const Text('Saisir le montant')),
                 ]),
               ]),
@@ -247,6 +395,8 @@ class BudgetCard extends StatelessWidget {
             childAspectRatio: 0.95,
             children: [for (final c in Expense.categories) EnvelopeTile(c)],
           ),
+          const SizedBox(height: 8),
+          const ChargesTile(),
           const SizedBox(height: 10),
           Row(children: [
             Expanded(
@@ -489,13 +639,15 @@ class BudgetScreen extends StatelessWidget {
               Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
-                  onPressed: () => store.resetToPlan(),
-                  icon: const Icon(Icons.restart_alt_rounded, size: 18),
-                  label: Text('Repartir à ${euros(store.planTotal)} depuis la paie'),
+                  onPressed: () => paydayDialog(context),
+                  icon: const Icon(Icons.payments_rounded, size: 18),
+                  label: const Text('Jour de paie : calculer mon mois'),
                 ),
               ),
             ]),
           ),
+          const SizedBox(height: 12),
+          const ChargesTile(),
           const SizedBox(height: 12),
           const _FixedCosts(),
           const SizedBox(height: 12),

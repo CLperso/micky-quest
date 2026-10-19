@@ -2419,7 +2419,64 @@ class AppStore extends ChangeNotifier {
     return total <= 0 ? 0 : periodAmount * envelopeWeight(cat) / total;
   }
 
-  double envelopeLeft(String cat) => envelopeAlloc(cat) - (spentByEnvelope()[cat] ?? 0);
+  /// Reste par enveloppe, avec rééquilibrage : un dépassement est pris sur les autres enveloppes,
+  /// au prorata de ce qui leur reste. Le total suit toujours ce qui reste vraiment.
+  Map<String, double> envelopeLefts() {
+    final spent = spentByEnvelope();
+    final raw = {for (final c in Expense.categories) c: envelopeAlloc(c) - (spent[c] ?? 0)};
+    final over = raw.values.where((v) => v < 0).fold(0.0, (a, v) => a - v);
+    final spare = raw.values.where((v) => v > 0).fold(0.0, (a, v) => a + v);
+    if (over <= 0) return raw;
+    if (spare <= over) {
+      // Plus rien nulle part : le manque se répartit selon le plan.
+      final w = Expense.categories.fold(0.0, (a, c) => a + envelopeWeight(c));
+      return {for (final c in Expense.categories) c: w <= 0 ? 0 : periodLeft() * envelopeWeight(c) / w};
+    }
+    return {for (final c in Expense.categories) c: raw[c]! <= 0 ? 0 : raw[c]! - over * raw[c]! / spare};
+  }
+
+  double envelopeLeft(String cat) => envelopeLefts()[cat] ?? 0;
+
+  /// L'enveloppe a dépassé sa part, et ce sont les autres qui couvrent.
+  bool envelopeCovered(String cat) => envelopeAlloc(cat) - (spentByEnvelope()[cat] ?? 0) < 0 && periodLeft() > 0;
+
+  // ---------- Enveloppe charges (séparée, jamais partagée) ----------
+
+  /// Un appel de charges (1er janvier, avril, juillet, octobre) tombe dans la période qui commence ce jour de paie.
+  bool appelDueAt(DateTime payday) {
+    final prev = lastPayday(payday.subtract(const Duration(days: 1)));
+    for (final m in const [1, 4, 7, 10]) {
+      for (final y in [payday.year - 1, payday.year]) {
+        final a = DateTime(y, m, 1);
+        if (a.isAfter(prev) && !a.isAfter(payday)) return true;
+      }
+    }
+    return false;
+  }
+
+  /// Ce qui reste pour les 6 enveloppes après frais fixes et charges.
+  double availableFromSalary(double salary, {required bool payAppel}) {
+    final base = salary - fixedTotal();
+    if (payAppel) return base - max(0, settings.chargesNext - settings.chargesReserve);
+    return base - settings.chargesMonthly;
+  }
+
+  /// Jour de paie : calcule le disponible, met de côté ou paie l'appel, repart sur un nouveau mois.
+  Future<void> applyPayday(double salary, {required bool payAppel}) async {
+    final avail = availableFromSalary(salary, payAppel: payAppel);
+    settings.salary = salary;
+    settings.chargesReserve = payAppel ? 0 : settings.chargesReserve + settings.chargesMonthly;
+    settings.periodStart = lastPayday().millisecondsSinceEpoch;
+    settings.periodAmount = max(0, avail);
+    await commit();
+  }
+
+  Future<void> setCharges({double? reserve, double? next, double? monthly}) async {
+    if (reserve != null) settings.chargesReserve = max(0, reserve);
+    if (next != null) settings.chargesNext = max(0, next);
+    if (monthly != null) settings.chargesMonthly = max(0, monthly);
+    await commit();
+  }
 
   /// Ce que tu peux dépenser au maximum ce jour-là pour tenir jusqu'à la paie :
   /// (montant − dépensé avant ce jour dans la période) ÷ jours restants, ce jour compris.
@@ -2500,7 +2557,9 @@ class AppStore extends ChangeNotifier {
       ];
 
   /// Les frais fixes enregistrés, ou ceux du plan s'il n'y en a pas encore.
-  List<String> get fixedCosts => settings.fixedCosts.isEmpty ? Expense.fixedPlan : settings.fixedCosts;
+  List<String> get fixedCosts => settings.fixedCosts.isEmpty
+      ? Expense.fixedPlan
+      : settings.fixedCosts.where((l) => !l.contains("Charges de l'appart")).toList();
 
   double fixedTotal([String? kind]) => [
         if (kind == null) ...[...fixedOf('abonnement'), ...fixedOf('charge')] else ...fixedOf(kind),
@@ -2508,7 +2567,7 @@ class AppStore extends ChangeNotifier {
 
   /// Ajoute (index null), modifie ou supprime (nom vide) un frais fixe.
   Future<void> setFixedCost(int? index, String kind, String name, double amount) async {
-    if (settings.fixedCosts.isEmpty) settings.fixedCosts = List<String>.from(Expense.fixedPlan);
+    settings.fixedCosts = List<String>.from(fixedCosts);
     final line = '$kind|${name.replaceAll('|', ' ')}|$amount';
     if (index == null) {
       if (name.trim().isNotEmpty) settings.fixedCosts.add(line);

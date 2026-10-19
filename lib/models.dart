@@ -748,6 +748,10 @@ class Settings {
   int payday; // jour de paie : la période de budget va de ce jour à la veille du suivant
   int periodStart; // ms : dernière saisie du montant disponible (0 = jamais)
   double periodAmount; // montant disponible saisi à ce moment-là
+  double salary; // salaire et aides reçus à chaque paie
+  double chargesReserve; // argent mis de côté pour les charges de l'appart
+  double chargesNext; // montant du prochain appel de charges
+  double chargesMonthly; // à mettre de côté chaque mois pour les charges
   List<String> fixedCosts; // frais fixes mensuels : « type|nom|montant » (type : abonnement ou charge)
   List<String> projects; // projets perso précisés dans les check-ins (« ces apps »…)
   List<String> books; // pile de philo : « Titre|pages »
@@ -781,6 +785,10 @@ class Settings {
     Map<String, double>? envelopes,
     List<String>? fixedCosts,
     this.payday = 27,
+    this.salary = 2349,
+    this.chargesReserve = 0,
+    this.chargesNext = 1298.74,
+    this.chargesMonthly = 433,
     this.periodStart = 0,
     this.periodAmount = 0,
     List<String>? projects,
@@ -823,6 +831,10 @@ class Settings {
           for (final e in ((j['env'] as Map?) ?? {}).entries) e.key.toString(): (e.value as num?)?.toDouble() ?? 0,
         },
         payday: _i(j['payday'], 27),
+        salary: (j['salary'] as num?)?.toDouble() ?? 2349,
+        chargesReserve: (j['chRes'] as num?)?.toDouble() ?? 0,
+        chargesNext: (j['chNext'] as num?)?.toDouble() ?? 1298.74,
+        chargesMonthly: (j['chMonth'] as num?)?.toDouble() ?? 433,
         periodStart: _i(j['pStart']),
         periodAmount: (j['pAmount'] as num?)?.toDouble() ?? 0,
         fixedCosts: ((j['fixed'] as List?) ?? []).map((e) => e.toString()).toList(),
@@ -859,6 +871,10 @@ class Settings {
         'env': envelopes,
         'fixed': fixedCosts,
         'payday': payday,
+        'salary': salary,
+        'chRes': chargesReserve,
+        'chNext': chargesNext,
+        'chMonth': chargesMonthly,
         'pStart': periodStart,
         'pAmount': periodAmount,
         'projects': projects,
@@ -1223,7 +1239,6 @@ class Expense {
     'abonnement|Amazon Prime|6.99',
     'abonnement|Uber One|5.99',
     'charge|Loyer|400',
-    'charge|Charges de l\'appart (à mettre de côté)|433',
     'charge|Navigo|90.80',
     'charge|Frais bancaires|7.40',
   ];
