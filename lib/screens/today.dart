@@ -22,7 +22,8 @@ class TodayScreen extends StatelessWidget {
     final store = AppScope.of(context);
     final plan = store.today;
     final inQuests = {for (final t in [...store.questSteps('pro'), ...store.questSteps('perso')]) t.id};
-    final others = store.openTasks.where((t) => !inQuests.contains(t.id) && store.inToday(t)).toList();
+    final others = store.openTasks.where((t) => !inQuests.contains(t.id) && store.inToday(t)).toList()
+      ..sort((a, b) => (a.plannedAt == 0 ? 1 << 52 : a.plannedAt).compareTo(b.plannedAt == 0 ? 1 << 52 : b.plannedAt));
     final sorted = store.openTasks.where((t) => !store.inToday(t)).toList();
 
     final body = ListView(
@@ -47,7 +48,7 @@ class TodayScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(children: [
-                Expanded(child: Text('Autres tâches du jour', style: K.display(15))),
+                Expanded(child: Text('Aussi aujourd\'hui', style: K.display(15))),
                 if (sorted.isNotEmpty)
                   TextButton(
                     onPressed: () => _pickSorted(context, store, sorted),
@@ -55,70 +56,14 @@ class TodayScreen extends StatelessWidget {
                   ),
               ]),
               if (others.isEmpty)
-                Text('Rien d\'autre. « Faire maintenant » et les tâches avec une heure aujourd\'hui arrivent ici.', style: K.body(12, color: K.muted)),
+                Text('Rien d\'autre. « Faire maintenant » et ce qui a une heure aujourd\'hui arrive ici.', style: K.body(12, color: K.muted)),
               for (final t in others) TaskRow(task: t, color: K.quadColors[t.quad] ?? K.gold),
             ],
           ),
         ),
         if (store.toPlaceToday.isNotEmpty) ...[
           const SizedBox(height: 10),
-          Panel(
-            border: K.gold,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  Expanded(child: Text('À caser aujourd\'hui ?', style: K.display(16, color: K.gold))),
-                  Text('depuis Planifier', style: K.body(11, color: K.muted)),
-                ]),
-                Text('Tes tâches « Planifier » sans heure. « Pas auj. » les cache jusqu\'à demain.', style: K.body(11, color: K.muted)),
-                const SizedBox(height: 4),
-                for (final t in store.toPlaceToday.take(8))
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Row(children: [
-                      Container(width: 4, height: 34, decoration: BoxDecoration(color: t.category == 'pro' ? K.lime : t.category == 'perso' ? K.pink : K.gold, borderRadius: BorderRadius.circular(2))),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: InkWell(
-                          onTap: () => showTaskPanel(context, t),
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(t.title, style: K.body(13, w: FontWeight.w800)),
-                            Text(
-                              [
-                                if (t.category.isNotEmpty) t.category,
-                                if (t.estimateMin > 0) '${t.estimateMin} min',
-                                if (t.condition.isNotEmpty) 'seulement quand : ${t.condition}',
-                              ].join(' · '),
-                              style: K.body(11, color: K.muted),
-                            ),
-                          ]),
-                        ),
-                      ),
-                      InkWell(
-                        borderRadius: BorderRadius.circular(999),
-                        onTap: () => openScreen(context, PlanningScreen(day: store.todayKey, place: t)),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(color: K.lime, borderRadius: BorderRadius.circular(999)),
-                          child: Text('Caser', style: K.body(11, color: K.bg, w: FontWeight.w900)),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      InkWell(
-                        borderRadius: BorderRadius.circular(999),
-                        onTap: () => store.hideToday(t),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(border: Border.all(color: K.line, width: 2), borderRadius: BorderRadius.circular(999)),
-                          child: Text('Pas auj.', style: K.body(11, color: K.muted, w: FontWeight.w800)),
-                        ),
-                      ),
-                    ]),
-                  ),
-              ],
-            ),
-          ),
+          const _MaybeToday(),
         ],
         const SizedBox(height: 18),
         const PlanningView(),
@@ -548,10 +493,9 @@ class TaskRow extends StatelessWidget {
                           .copyWith(decoration: t.done ? TextDecoration.lineThrough : null)),
                   Text(
                     [
-                      if (t.estimateMin > 0) 'pari ${t.estimateMin} min',
+                      if (t.estimateMin > 0) '${t.estimateMin} min',
                       if (t.isBoss) 'boss',
                       if (t.condition.isNotEmpty) 'si ${t.condition}',
-                      if (t.deferred) 'reportée',
                       if (quest.isEmpty && t.category.isNotEmpty) t.category,
                     ].join(' · '),
                     style: K.body(11, color: K.muted),
@@ -638,6 +582,85 @@ class _QuestsTabState extends State<QuestsTab> {
         ),
         Expanded(child: mode == 1 ? const TodayScreen() : widget.matrix),
       ],
+    );
+  }
+}
+
+/// « Peut-être aujourd'hui ? » : tâches Planifier sans heure, repliées par défaut.
+class _MaybeToday extends StatefulWidget {
+  const _MaybeToday();
+
+  @override
+  State<_MaybeToday> createState() => _MaybeTodayState();
+}
+
+class _MaybeTodayState extends State<_MaybeToday> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final list = store.toPlaceToday;
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: () => setState(() => _open = !_open),
+            child: Row(children: [
+              Expanded(child: Text('Peut-être aujourd\'hui ? (${list.length})', style: K.display(15, color: K.gold))),
+              Icon(_open ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: K.gold),
+            ]),
+          ),
+          if (_open) ...[
+            Text('Tes tâches « Planifier » sans heure. « Caser » les pose dans le planning, « Pas auj. » les cache jusqu\'à demain.', style: K.body(11, color: K.muted)),
+            const SizedBox(height: 4),
+                for (final t in list.take(8))
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(children: [
+                      Container(width: 4, height: 34, decoration: BoxDecoration(color: t.category == 'pro' ? K.lime : t.category == 'perso' ? K.pink : K.gold, borderRadius: BorderRadius.circular(2))),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => showTaskPanel(context, t),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(t.title, style: K.body(13, w: FontWeight.w800)),
+                            Text(
+                              [
+                                if (t.category.isNotEmpty) t.category,
+                                if (t.estimateMin > 0) '${t.estimateMin} min',
+                                if (t.condition.isNotEmpty) 'seulement quand : ${t.condition}',
+                              ].join(' · '),
+                              style: K.body(11, color: K.muted),
+                            ),
+                          ]),
+                        ),
+                      ),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(999),
+                        onTap: () => openScreen(context, PlanningScreen(day: store.todayKey, place: t)),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(color: K.lime, borderRadius: BorderRadius.circular(999)),
+                          child: Text('Caser', style: K.body(11, color: K.bg, w: FontWeight.w900)),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(999),
+                        onTap: () => store.hideToday(t),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(border: Border.all(color: K.line, width: 2), borderRadius: BorderRadius.circular(999)),
+                          child: Text('Pas auj.', style: K.body(11, color: K.muted, w: FontWeight.w800)),
+                        ),
+                      ),
+                    ]),
+                  ),
+          ],
+        ],
+      ),
     );
   }
 }

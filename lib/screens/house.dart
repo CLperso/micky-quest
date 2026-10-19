@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 
 import '../main.dart';
@@ -302,6 +303,7 @@ class _HouseScreenState extends State<HouseScreen> {
   String _room = 'salon';
   String? _dragging;
   Offset? _dragPos;
+  Offset _grab = Offset.zero; // doigt − pointe avant de la case de l'objet
   static const n = 5; // grille n × n
   static const cw = 64.0; // largeur d'une case à l'écran
   static const ch = 32.0;
@@ -395,47 +397,52 @@ class _HouseScreenState extends State<HouseScreen> {
             else
               LayoutBuilder(builder: (context, c) {
                 final size = Size(c.maxWidth, 360);
-                return GestureDetector(
-                  onPanStart: (d) {
-                    // objet sous le doigt ?
-                    for (final p in placed.reversed) {
-                      final o = Objects.byId(p.id)!;
-                      final at = _cell(p.gx, p.gy, size);
-                      final rect = Rect.fromCenter(center: at.translate(0, o.wall ? -70 : -26), width: 64, height: 70);
-                      if (rect.contains(d.localPosition)) {
-                        HapticFeedback.selectionClick();
-                        setState(() {
-                          _dragging = p.id;
-                          _dragPos = d.localPosition;
-                        });
-                        return;
-                      }
-                    }
-                  },
-                  onPanUpdate: (d) {
-                    if (_dragging != null) setState(() => _dragPos = d.localPosition);
-                  },
-                  onPanEnd: (_) async {
-                    if (_dragging == null || _dragPos == null) return;
-                    final cell = _hit(_dragPos!, size);
-                    final id = _dragging!;
-                    setState(() {
-                      _dragging = null;
-                      _dragPos = null;
-                    });
-                    if (cell != null) await store.placeObject(id, _room, cell.$1, cell.$2);
-                  },
-                  onTapUp: (d) async {
-                    final cell = _hit(d.localPosition, size);
-                    if (cell == null) return;
-                    final occupied = placed.any((p) => p.gx == cell.$1 && p.gy == cell.$2);
-                    if (occupied) {
-                      final p = placed.firstWhere((p) => p.gx == cell.$1 && p.gy == cell.$2);
-                      _objectMenu(store, Objects.byId(p.id)!);
-                    } else if (inventory.isNotEmpty) {
-                      final o = await _pickFromInventory(inventory);
-                      if (o != null) await store.placeObject(o.id, _room, cell.$1, cell.$2);
-                    }
+                Offset bottomOf(Offset finger) => finger - _grab;
+                (int, int)? dropCell() => _dragPos == null ? null : _hit(bottomOf(_dragPos!) - const Offset(0, ch / 2), size);
+                return RawGestureDetector(
+                  gestures: {
+                    TapGestureRecognizer: GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
+                      () => TapGestureRecognizer(),
+                      (r) => r.onTapUp = (d) async {
+                        final hitP = _objectUnder(placed, d.localPosition, size);
+                        if (hitP != null) {
+                          _objectMenu(store, Objects.byId(hitP.id)!);
+                          return;
+                        }
+                        final cell = _hit(d.localPosition, size);
+                        if (cell == null || inventory.isEmpty) return;
+                        final o = await _pickFromInventory(inventory);
+                        if (o != null) await store.placeObject(o.id, _room, cell.$1, cell.$2);
+                      },
+                    ),
+                    LongPressGestureRecognizer: GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
+                      () => LongPressGestureRecognizer(duration: const Duration(milliseconds: 160)),
+                      (r) => r
+                        ..onLongPressStart = (d) {
+                          final hitP = _objectUnder(placed, d.localPosition, size);
+                          if (hitP == null) return;
+                          HapticFeedback.selectionClick();
+                          final at = _cell(hitP.gx, hitP.gy, size);
+                          setState(() {
+                            _dragging = hitP.id;
+                            _dragPos = d.localPosition;
+                            _grab = d.localPosition - Offset(at.dx, at.dy + ch);
+                          });
+                        }
+                        ..onLongPressMoveUpdate = (d) {
+                          if (_dragging != null) setState(() => _dragPos = d.localPosition);
+                        }
+                        ..onLongPressEnd = (_) async {
+                          if (_dragging == null) return;
+                          final cell = dropCell();
+                          final id = _dragging!;
+                          setState(() {
+                            _dragging = null;
+                            _dragPos = null;
+                          });
+                          if (cell != null) await store.placeObject(id, _room, cell.$1, cell.$2);
+                        },
+                    ),
                   },
                   child: Container(
                     height: size.height,
@@ -447,7 +454,7 @@ class _HouseScreenState extends State<HouseScreen> {
                       borderRadius: BorderRadius.circular(26),
                       child: Stack(
                         children: [
-                          Positioned.fill(child: CustomPaint(painter: _RoomPainter(_room, _cell, size, highlight: _dragging == null || _dragPos == null ? null : _hit(_dragPos!, size)))),
+                          Positioned.fill(child: CustomPaint(painter: _RoomPainter(_room, _cell, size, highlight: _dragging == null ? null : dropCell()))),
                           for (final p in placed)
                             if (p.id != _dragging)
                               _objectAt(Objects.byId(p.id)!, _cell(p.gx, p.gy, size)),
@@ -473,11 +480,7 @@ class _HouseScreenState extends State<HouseScreen> {
                             );
                           }),
                           if (_dragging != null && _dragPos != null)
-                            Positioned(
-                              left: _dragPos!.dx - 36,
-                              top: _dragPos!.dy - 80,
-                              child: Opacity(opacity: 0.9, child: ObjectImage(Objects.byId(_dragging!)!, size: 72)),
-                            ),
+                            _objectAt(Objects.byId(_dragging!)!, bottomOf(_dragPos!) - const Offset(0, ch), opacity: 0.85),
                           Positioned(
                             left: 12,
                             bottom: 10,
@@ -485,7 +488,7 @@ class _HouseScreenState extends State<HouseScreen> {
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                               decoration: BoxDecoration(color: K.bg.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(999)),
                               child: Text(
-                                placed.isEmpty ? 'Touche une case pour poser un objet' : 'Glisse un objet pour le déplacer · touche-le pour les options',
+                                placed.isEmpty ? 'Touche une case pour poser un objet' : 'Appuie sur un objet puis glisse · touche-le pour les options',
                                 style: K.body(11, color: K.lime, w: FontWeight.w800),
                               ),
                             ),
@@ -623,14 +626,33 @@ class _HouseScreenState extends State<HouseScreen> {
     'lampe_etoile': 0.45,
   };
 
+  /// Zone occupée à l'écran par un objet posé (même géométrie que _objectAt).
+  Rect _objRect(GameObject o, Offset at) {
+    if (o.wall) return Rect.fromLTWH(at.dx - 38, at.dy - 96, 76, 76);
+    if (o.id == 'tapis') return Rect.fromCenter(center: at.translate(0, ch / 2), width: cw * 1.1, height: ch * 1.24);
+    final k = _scale[o.id] ?? 0.85;
+    final w = (cw + 6) * k, h = 86.0 * k;
+    return Rect.fromLTWH(at.dx - w / 2, at.dy + ch - 3 - h, w, h + 3);
+  }
+
+  /// L'objet sous le doigt, le plus en avant d'abord.
+  Placement? _objectUnder(List<Placement> placed, Offset p, Size size) {
+    for (final pl in placed.reversed) {
+      final o = Objects.byId(pl.id);
+      if (o == null) continue;
+      if (_objRect(o, _cell(pl.gx, pl.gy, size)).inflate(4).contains(p)) return pl;
+    }
+    return null;
+  }
+
   /// [at] = sommet arrière de la case. Les objets au sol posent leur bas sur la pointe avant de la case.
-  Widget _objectAt(GameObject o, Offset at) {
+  Widget _objectAt(GameObject o, Offset at, {double opacity = 1}) {
     if (o.wall) {
       const size = 76.0;
       return Positioned(
         left: at.dx - size / 2,
         top: at.dy - size - 20,
-        child: IgnorePointer(child: ObjectImage(o, size: size)),
+        child: IgnorePointer(child: Opacity(opacity: opacity, child: ObjectImage(o, size: size))),
       );
     }
     if (o.id == 'tapis') {
@@ -640,7 +662,7 @@ class _HouseScreenState extends State<HouseScreen> {
         top: at.dy + ch / 2 - ch * 0.62,
         width: cw * 1.1,
         height: ch * 1.24,
-        child: IgnorePointer(child: Image.asset(o.asset, fit: BoxFit.fill)),
+        child: IgnorePointer(child: Opacity(opacity: opacity, child: Image.asset(o.asset, fit: BoxFit.fill))),
       );
     }
     // taille relative au lit (1.0) : une lampe ou une étoile restent petites
@@ -652,9 +674,12 @@ class _HouseScreenState extends State<HouseScreen> {
       width: w,
       height: h,
       child: IgnorePointer(
-        child: o.asset.isEmpty
-            ? Align(alignment: Alignment.bottomCenter, child: ObjectImage(o, size: 56))
-            : Image.asset(o.asset, fit: BoxFit.contain, alignment: Alignment.bottomCenter),
+        child: Opacity(
+          opacity: opacity,
+          child: o.asset.isEmpty
+              ? Align(alignment: Alignment.bottomCenter, child: ObjectImage(o, size: 56))
+              : Image.asset(o.asset, fit: BoxFit.contain, alignment: Alignment.bottomCenter),
+        ),
       ),
     );
   }

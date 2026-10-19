@@ -132,7 +132,12 @@ class _CabinScreenState extends State<CabinScreen> {
   String _bookPick = '';
   bool _saved = false;
 
-  static const _stepNames = ['Souffle', 'Évaluer', 'Ce qui pèse', 'Angle', 'Geste', 'Après'];
+  String _door = ''; // '', souffle, dessus
+  bool _breathDone = false;
+  int _angleIdx = 0; // regard proposé (rang dans le classement)
+  bool _write = false; // écrire les réponses au regard
+
+  static const _stepNames = ['Ce qui est là', 'Un regard', 'Un geste'];
 
   @override
   void dispose() {
@@ -143,38 +148,30 @@ class _CabinScreenState extends State<CabinScreen> {
     super.dispose();
   }
 
-  void _next() => setState(() => _step = min(5, _step + 1));
+  void _next() => setState(() => _step = min(2, _step + 1));
 
-  /// Revenir d'un cran : sous-écran d'abord (exercice, regard, tri), puis l'étape précédente.
-  /// Renvoie false s'il n'y a plus rien avant (on peut quitter la cabane).
+  /// Revenir d'un cran ; false s'il n'y a plus rien avant (on peut quitter la cabane).
   bool _back() {
-    if (_step == 3) {
-      if (_angle != null) {
-        setState(() => _angle = null);
-        return true;
-      }
-      if (_for != null) {
-        setState(() => _for = null);
-        return true;
-      }
-      if (_triaged) {
-        setState(() {
-          // les problèmes déjà créés reviennent dans le tri, sans doublon
-          _cands
-            ..clear()
-            ..addAll([for (final p in _queue) (title: p.title, kind: p.kind, existing: p)]);
-          _queue.clear();
-          _triaged = false;
-        });
-        return true;
-      }
-    }
-    if (_step == 0 && _breath.isNotEmpty) {
-      setState(() => _breath = '');
+    if (_door == 'souffle') {
+      setState(() {
+        if (_breathDone) {
+          _breathDone = false;
+        } else if (_breath.isNotEmpty) {
+          _breath = '';
+        } else {
+          _door = '';
+        }
+      });
       return true;
     }
-    if (_step > 0) {
-      setState(() => _step--);
+    if (_door == 'dessus') {
+      setState(() {
+        if (_step > 0) {
+          _step--;
+        } else {
+          _door = '';
+        }
+      });
       return true;
     }
     return false;
@@ -182,169 +179,438 @@ class _CabinScreenState extends State<CabinScreen> {
 
   void _goTo(int i) {
     if (i >= _step) return;
-    setState(() {
-      _step = i;
-      if (i < 3) {
-        _angle = null;
-        _for = null;
-      }
-    });
+    setState(() => _step = i);
   }
 
-  List<String> get _weightList => [
-        for (final e in _weightsSel.entries)
-          if (e.value.isEmpty) e.key else for (final s in e.value) '${e.key}:$s'
-      ];
+  /// Regards classés : favoris, ce qui colle à ce qui pèse, ce qui t'a aidée.
+  List<_Angle> _ranked(AppStore store) {
+    final eff = store.angleEfficacy();
+    final fav = store.settings.favAngles;
+    final sel = _weightsSel.keys.toSet();
+    int score(_Angle a) {
+      var s = 0;
+      if (fav.contains(a.id)) s += 100;
+      s += a.forWeights.where(sel.contains).length * 10;
+      s += ((eff[a.name] ?? 0) * 5).round();
+      return s;
+    }
 
-  List<String> _currentNotes() => [
-        if (_fauteOrHonte.isNotEmpty) _fauteOrHonte,
-        if (_angle != null)
-          for (var i = 0; i < _fields.length && i < _angle!.prompts.length; i++)
-            if (_fields[i].text.trim().isNotEmpty) '${_angle!.prompts[i]} : ${_fields[i].text.trim()}',
-      ];
+    return [..._angles]..sort((a, b) => score(b).compareTo(score(a)));
+  }
 
-  /// Range le problème en cours et revient au choix d'un regard pour le suivant.
-  void _archive() {
-    if (_angle == null) return;
-    _problems.add((label: _probLabel, angle: _angle!, notes: _currentNotes()));
+  void _setAngle(_Angle a) {
     for (final c in _fields) {
       c.dispose();
     }
-    _fields.clear();
-    _angle = null;
-    _fauteOrHonte = '';
-    _probLabel = '';
-  }
-
-  List<({String label, _Angle angle, List<String> notes})> get _allProblems => [
-        ..._problems,
-        if (_angle != null) (label: _probLabel, angle: _angle!, notes: _currentNotes()),
-      ];
-
-  Future<void> _save() async {
-    if (_saved) return;
-    _saved = true;
-    final store = AppScope.read(context);
-    final all = _allProblems;
-    final notes = <String>[
-      for (var k = 0; k < all.length; k++) ...[
-        if (all.length > 1) '— ${k + 1}. ${all[k].label.isEmpty ? all[k].angle.name : '${all[k].label.replaceAll(':', ' · ')} (${all[k].angle.name})'}',
-        ...all[k].notes,
-      ],
-    ];
-    await store.saveCabinVisit(CabinVisit(
-      ts: DateTime.now().millisecondsSinceEpoch,
-      mood: _mood,
-      energy: _energy,
-      emotion: _emotion,
-      before: _before,
-      after: _after,
-      weights: _weightList,
-      body: _body,
-      origin: _origin,
-      angle: {for (final p in all) p.angle.name}.join(' + '),
-      gesture: _gesture,
-      notes: notes.join('\n'),
-    ));
+    _fields
+      ..clear()
+      ..addAll(List.generate(a.prompts.length, (_) => TextEditingController()));
+    _angle = a;
   }
 
   @override
   Widget build(BuildContext context) {
     final store = AppScope.of(context);
+    final title = _door == '' ? 'La cabane de Micky' : (_door == 'souffle' ? 'Souffler' : _stepNames[_step]);
     return PopScope(
-      canPop: _step == 0 && _breath.isEmpty,
+      canPop: _door == '',
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _back();
       },
       child: Scaffold(
-      backgroundColor: K.bg,
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () {
-            if (!_back()) Navigator.of(context).maybePop();
-          },
-        ),
-        title: Text(_step == 0 ? 'La cabane de Micky' : _stepNames[_step]),
-        actions: [
-          if (_step < 5) TextButton(onPressed: _next, child: Text('passer ›', style: K.body(13, color: K.muted))),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert_rounded, color: K.muted),
-            color: K.card,
-            onSelected: (v) {
-              if (v == 'books') openScreen(context, const _BooksScreen());
-              if (v == 'letter') _editLetter(store);
-              if (v == 'contacts') openScreen(context, const _ContactsScreen());
-              if (v == 'library') openScreen(context, const _LibraryScreen());
+        backgroundColor: K.bg,
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: () {
+              if (!_back()) Navigator.of(context).maybePop();
             },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'library', child: Text('Ma bibliothèque')),
-              PopupMenuItem(value: 'books', child: Text('Ma pile de livres')),
-              PopupMenuItem(value: 'letter', child: Text('Ma lettre des bons jours')),
-              PopupMenuItem(value: 'contacts', child: Text('Mes personnes')),
-            ],
           ),
-        ],
-      ),
-      body: Container(
-        decoration: const BoxDecoration(gradient: RadialGradient(center: Alignment(0, -1.2), radius: 1.2, colors: [Color(0xFF2A2350), K.bg])),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                child: Row(children: [
-                  for (var i = 0; i < 6; i++)
-                    Expanded(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => _goTo(i),
-                        child: Padding(
-                          padding: EdgeInsets.only(right: i < 5 ? 4 : 0, top: 4, bottom: 4),
-                          child: Column(children: [
-                            Container(height: 4, decoration: BoxDecoration(color: i <= _step ? _lav : K.line, borderRadius: BorderRadius.circular(2))),
-                            const SizedBox(height: 3),
-                            Text(_stepNames[i], style: K.body(9, color: i == _step ? _lav : (i < _step ? K.ink : K.muted), w: FontWeight.w800)),
-                          ]),
+          title: Text(title),
+          actions: [
+            if (_door == 'dessus' && _step < 2) TextButton(onPressed: _next, child: Text('passer ›', style: K.body(13, color: K.muted))),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert_rounded, color: K.muted),
+              color: K.card,
+              onSelected: (v) {
+                if (v == 'books') openScreen(context, const _BooksScreen());
+                if (v == 'letter') _editLetter(store);
+                if (v == 'contacts') openScreen(context, const _ContactsScreen());
+                if (v == 'library') openScreen(context, const _LibraryScreen());
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'library', child: Text('Ma bibliothèque')),
+                PopupMenuItem(value: 'books', child: Text('Ma pile de livres')),
+                PopupMenuItem(value: 'letter', child: Text('Ma lettre des bons jours')),
+                PopupMenuItem(value: 'contacts', child: Text('Mes personnes')),
+              ],
+            ),
+          ],
+        ),
+        body: Container(
+          decoration: const BoxDecoration(gradient: RadialGradient(center: Alignment(0, -1.2), radius: 1.2, colors: [Color(0xFF2A2350), K.bg])),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              children: [
+                if (_door == 'dessus')
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                    child: Row(children: [
+                      for (var i = 0; i < 3; i++)
+                        Expanded(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => _goTo(i),
+                            child: Padding(
+                              padding: EdgeInsets.only(right: i < 2 ? 4 : 0, top: 4, bottom: 4),
+                              child: Column(children: [
+                                Container(height: 4, decoration: BoxDecoration(color: i <= _step ? _lav : K.line, borderRadius: BorderRadius.circular(2))),
+                                const SizedBox(height: 3),
+                                Text(_stepNames[i], style: K.body(9, color: i == _step ? _lav : (i < _step ? K.ink : K.muted), w: FontWeight.w800)),
+                              ]),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                ]),
-              ),
-              Expanded(child: _body0(store)),
-            ],
+                    ]),
+                  ),
+                Expanded(child: _body0(store)),
+              ],
+            ),
           ),
         ),
       ),
-    ),
     );
   }
 
   Widget _body0(AppStore store) {
+    if (_door == '') return _doors(store);
+    if (_door == 'souffle') {
+      if (_breathDone) return _breathEnd(store);
+      return _breathStep();
+    }
     switch (_step) {
       case 0:
-        return _breathStep();
+        return _whatStep();
       case 1:
-        return _evalStep();
-      case 2:
-        return _weightStep();
-      case 3:
-        if (!_triaged) return _triage(store);
-        if (_angle != null) return _exercise(store);
-        return _for != null ? _angleList(store) : _queueView(store);
-      case 4:
-        return _gestureStep(store);
+        return _regard(store);
       default:
-        return _afterStep(store);
+        return _gestureAfter(store);
     }
   }
+
+  // ---------- Porte d'entrée ----------
+
+  Widget _door1(String icon, String t, String sub, Color c, VoidCallback onTap) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Material(
+          color: K.card,
+          borderRadius: BorderRadius.circular(20),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), border: Border.all(color: c, width: 2)),
+              child: Row(children: [
+                Text(icon, style: const TextStyle(fontSize: 28)),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(t, style: K.display(19)),
+                    Text(sub, style: K.body(12, color: K.muted)),
+                  ]),
+                ),
+                Icon(Icons.chevron_right_rounded, color: c),
+              ]),
+            ),
+          ),
+        ),
+      );
+
+  Widget _doors(AppStore store) => ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        children: [
+          Panel(
+            child: Row(children: [
+              ClipOval(child: Image.asset(K.micky['bed'] ?? K.micky['happy']!, width: 52, height: 52, fit: BoxFit.cover)),
+              const SizedBox(width: 12),
+              Expanded(child: Text('De quoi tu as besoin, là ?', style: K.body(15))),
+            ]),
+          ),
+          const SizedBox(height: 12),
+          _door1('🌬', 'Juste souffler', '2 à 3 min, rien à remplir', K.cyan, () => setState(() => _door = 'souffle')),
+          _door1('🫧', 'Travailler dessus', 'ce qui est là · un regard · un geste', _lav, () => setState(() {
+                _door = 'dessus';
+                _step = 0;
+              })),
+          _door1('🧩', 'J\'ai un problème à régler', 'direct dans « Mes problèmes »', K.lime, () async {
+            final t = await askText(context, 'Le problème, concrètement', hint: 'un fait, pas un jugement sur toi');
+            if (t == null || t.trim().isEmpty || !mounted) return;
+            final p = await store.addProblem(t.trim());
+            if (!mounted) return;
+            Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => ProblemScreen(problem: p, guided: true)));
+          }),
+        ],
+      );
+
+  Widget _breathEnd(AppStore store) => ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        children: [
+          Text('C\'est fait. Comment ça va, maintenant ?', style: K.display(18)),
+          const SizedBox(height: 10),
+          Text('Facultatif : l\'intensité de ce qui pesait (0 = plus rien).', style: K.body(12, color: K.muted)),
+          const SizedBox(height: 6),
+          _scale(_after, (v) => setState(() => _after = v)),
+          const SizedBox(height: 16),
+          SecondaryButton(label: 'Travailler dessus quand même', onPressed: () => setState(() {
+                _door = 'dessus';
+                _step = 0;
+              })),
+          const SizedBox(height: 8),
+          PrimaryButton(
+            label: 'Terminer',
+            color: _lav,
+            onPressed: () async {
+              await store.noteSerenity('cabane · souffler');
+              await _save();
+              if (mounted) Navigator.pop(context);
+            },
+          ),
+        ],
+      );
+
+  // ---------- Travailler dessus · 1 · ce qui est là ----------
+
+  Widget _whatStep() => ListView(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+        children: [
+          Panel(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              MiniMoodGrid(
+                mood: _mood,
+                energy: _energy,
+                onChanged: (m, e) => setState(() {
+                  _mood = m;
+                  _energy = e;
+                  if (!EmotionWords.keeps(_emotion, m, e)) _emotion = '';
+                }),
+              ),
+              if (_mood > 0) ...[
+                const SizedBox(height: 8),
+                EmotionWords(mood: _mood, energy: _energy, value: _emotion, color: moodColor(_mood, _energy), onChanged: (w) => setState(() => _emotion = w)),
+              ],
+            ]),
+          ),
+          const SizedBox(height: 10),
+          Text('Intensité', style: K.body(14, w: FontWeight.w800)),
+          const SizedBox(height: 6),
+          _scale(_before, (v) => setState(() => _before = v)),
+          const SizedBox(height: 12),
+          Text('Ce qui pèse (1 à 3, facultatif)', style: K.body(14, w: FontWeight.w800)),
+          const SizedBox(height: 6),
+          Wrap(children: [
+            for (final w in _weights)
+              _chip(w.label, _weightsSel.containsKey(w.id), w.color, () => setState(() {
+                    if (_weightsSel.containsKey(w.id)) {
+                      _weightsSel.remove(w.id);
+                    } else if (_weightsSel.length < 3) {
+                      _weightsSel[w.id] = {};
+                    }
+                  })),
+          ]),
+          if (_mood > 0 && _mood <= 2 && _energy >= 0 && _energy < 40) ...[
+            const SizedBox(height: 4),
+            Text('Si c\'est surtout le corps (faim, fatigue, cycle) : manger, boire ou t\'allonger 10 min passe avant tout.', style: K.body(11, color: K.dim)),
+          ],
+          const SizedBox(height: 16),
+          PrimaryButton(
+            label: 'Un regard',
+            color: _lav,
+            onPressed: () {
+              _angleIdx = 0;
+              _write = false;
+              _next();
+            },
+          ),
+        ],
+      );
+
+  // ---------- Travailler dessus · 2 · un regard ----------
+
+  Widget _regard(AppStore store) {
+    final list = _ranked(store);
+    final a = list[_angleIdx % list.length];
+    if (_angle?.id != a.id) _setAngle(a);
+    final eff = store.angleEfficacy()[a.name];
+    final fav = store.settings.favAngles.contains(a.id);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+      children: [
+        Text(
+          eff != null && eff > 0 ? 'POUR TOI, AUJOURD\'HUI · T\'A DÉJÀ AIDÉE (−${eff.toStringAsFixed(1).replaceAll('.', ',')})' : (fav ? 'POUR TOI · UN DE TES FAVORIS' : 'POUR TOI, AUJOURD\'HUI'),
+          style: K.body(11, color: a.color, w: FontWeight.w900),
+        ),
+        const SizedBox(height: 2),
+        Text(a.name, style: K.display(22)),
+        Text(a.line, style: K.body(13, color: K.muted)),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            color: a.color.withValues(alpha: 0.08),
+            border: Border(left: BorderSide(color: a.color, width: 3)),
+            borderRadius: const BorderRadius.only(topRight: Radius.circular(12), bottomRight: Radius.circular(12)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(a.quote, style: _quoteStyle(15)),
+            if (a.source.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text('— ${a.source}', style: K.body(11, color: K.muted))),
+          ]),
+        ),
+        const SizedBox(height: 10),
+        Panel(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(_write ? 'À écrire, si tu veux' : 'Juste une question', style: K.body(14, w: FontWeight.w800)),
+            const SizedBox(height: 4),
+            if (!_write) ...[
+              Text(a.prompts.join(' · '), style: K.body(13)),
+              const SizedBox(height: 4),
+              InkWell(
+                onTap: () => setState(() => _write = true),
+                child: Text('Tu peux y répondre dans ta tête, ou ✎ l\'écrire.', style: K.body(12, color: K.dim)),
+              ),
+            ] else
+              for (var i = 0; i < a.prompts.length; i++) ...[
+                Text(a.prompts[i], style: K.body(12, color: a.color, w: FontWeight.w800)),
+                const SizedBox(height: 4),
+                TextField(controller: _fields[i], maxLines: null, minLines: 2, textCapitalization: TextCapitalization.sentences),
+                const SizedBox(height: 8),
+              ],
+          ]),
+        ),
+        const SizedBox(height: 6),
+        Row(children: [
+          TextButton.icon(
+            onPressed: () => setState(() {
+              _angleIdx++;
+              _write = false;
+            }),
+            icon: const Icon(Icons.refresh_rounded, color: K.cyan, size: 18),
+            label: Text('un autre regard', style: K.body(13, color: K.cyan, w: FontWeight.w800)),
+          ),
+          const Spacer(),
+          TextButton(
+            onPressed: () async {
+              final last = _fields.reversed.map((c) => c.text.trim()).firstWhere((t) => t.isNotEmpty, orElse: () => a.quote);
+              if (!store.settings.library.contains(last)) store.settings.library.insert(0, last);
+              await store.updateSettings();
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gardée dans ta bibliothèque')));
+            },
+            child: Text('☆ garder la phrase', style: K.body(13, color: K.muted)),
+          ),
+        ]),
+        const SizedBox(height: 10),
+        PrimaryButton(label: 'Un geste', color: _lav, onPressed: _next),
+      ],
+    );
+  }
+
+  // ---------- Travailler dessus · 3 · un geste, puis après ----------
+
+  Widget _gestureAfter(AppStore store) => ListView(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+        children: [
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+            childAspectRatio: 2.4,
+            children: [
+              for (final g in _gestures)
+                InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () => _doGesture(store, g),
+                  child: Container(
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: _gesture == g.id ? _lav : K.card,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: _gesture == g.id ? _lav : K.line, width: 2),
+                    ),
+                    child: Text('${g.icon} ${g.label}', textAlign: TextAlign.center, maxLines: 2, style: K.body(13, color: _gesture == g.id ? K.bg : K.ink, w: FontWeight.w800)),
+                  ),
+                ),
+            ],
+          ),
+          if (_bookPick.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Panel(
+              border: K.gold,
+              child: Row(children: [
+                Expanded(child: Text('📖 $_bookPick', style: K.body(13, w: FontWeight.w800))),
+                TextButton(onPressed: () => _pickBook(store), child: Text('autre', style: K.body(12, color: K.gold))),
+              ]),
+            ),
+          ],
+          const SizedBox(height: 14),
+          Row(children: [
+            Expanded(child: Text('Et maintenant, l\'intensité ?', style: K.body(14, w: FontWeight.w800))),
+            if (_before >= 0) Text('avant : $_before', style: K.body(12, color: K.dim)),
+          ]),
+          const SizedBox(height: 6),
+          _scale(_after, (v) => setState(() => _after = v)),
+          if (_before >= 0 && _after >= 0) ...[
+            const SizedBox(height: 6),
+            Text(
+              _after < _before ? '−${_before - _after} · noté. Micky ronronne.' : 'Pas de baisse, et c\'est OK : tu as pris soin de toi quand même.',
+              style: K.body(12, color: _after < _before ? K.lime : K.muted, w: FontWeight.w800),
+            ),
+          ],
+          if (store.cabinHeavy) ...[
+            const SizedBox(height: 8),
+            Text(
+              store.settings.contacts.isEmpty
+                  ? 'Ces derniers jours ont été lourds. Tu veux en parler à quelqu\'un de confiance ?'
+                  : 'Ces derniers jours ont été lourds. Tu veux en parler à ${store.settings.contacts.join(' ou ')} ?',
+              style: K.body(12, color: K.muted),
+            ),
+          ],
+          const SizedBox(height: 12),
+          InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () async {
+              final t = await askText(context, 'Le problème derrière, concrètement', hint: 'un fait, pas un jugement sur toi');
+              if (t == null || t.trim().isEmpty) return;
+              final p = await store.addProblem(t.trim(), intensity: _after >= 0 ? _after : (_before >= 0 ? _before : null));
+              if (!mounted) return;
+              await openScreen(context, ProblemScreen(problem: p, guided: true));
+            },
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), border: Border.all(color: K.line, width: 2)),
+              child: Text('🧩 Il y a un vrai problème derrière ? En faire un problème à suivre', style: K.body(12, color: K.muted, w: FontWeight.w800)),
+            ),
+          ),
+          const SizedBox(height: 14),
+          PrimaryButton(
+            label: 'Terminer',
+            color: _lav,
+            onPressed: () async {
+              await _save();
+              if (mounted) Navigator.pop(context);
+            },
+          ),
+        ],
+      );
 
   // ---------- 0 · Souffle ----------
 
   Widget _breathStep() {
-    if (_breath == 'alt') return _AltBreath(onDone: _next);
-    if (_breath == 'next') return _NextThought(onDone: _next);
+    if (_breath == 'alt') return _AltBreath(onDone: () => setState(() => _breathDone = true));
+    if (_breath == 'next') return _NextThought(onDone: () => setState(() => _breathDone = true));
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       children: [

@@ -790,7 +790,7 @@ class AppStore extends ChangeNotifier {
 
   /// Tâches de Planifier sans heure (ou conditionnelles), à proposer dans Aujourd'hui.
   List<Task> get toPlaceToday => tasks
-      .where((t) => !t.done && !t.removed && t.quad == Quad.plan && t.plannedAt == 0 && t.hiddenDay != todayKey && !t.inQuest)
+      .where((t) => !t.done && !t.removed && t.quad == Quad.plan && t.plannedAt == 0 && t.hiddenDay != todayKey && !t.inQuest && !inToday(t))
       .toList()
     ..sort((a, b) => a.createdDay.compareTo(b.createdDay));
 
