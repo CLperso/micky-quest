@@ -2395,9 +2395,43 @@ class AppStore extends ChangeNotifier {
     await commit();
   }
 
+  /// Frais fixes d'un type (abonnement ou charge) : (index, nom, montant).
+  List<(int, String, double)> fixedOf(String kind) => [
+        for (var i = 0; i < settings.fixedCosts.length; i++)
+          if (settings.fixedCosts[i].split('|').first == kind)
+            (
+              i,
+              settings.fixedCosts[i].split('|').elementAtOrNull(1) ?? '',
+              double.tryParse(settings.fixedCosts[i].split('|').elementAtOrNull(2) ?? '') ?? 0,
+            ),
+      ];
+
+  double fixedTotal([String? kind]) => [
+        if (kind == null) ...[...fixedOf('abonnement'), ...fixedOf('charge')] else ...fixedOf(kind),
+      ].fold(0.0, (a, f) => a + f.$3);
+
+  /// Ajoute (index null), modifie ou supprime (nom vide) un frais fixe.
+  Future<void> setFixedCost(int? index, String kind, String name, double amount) async {
+    final line = '$kind|${name.replaceAll('|', ' ')}|$amount';
+    if (index == null) {
+      if (name.trim().isNotEmpty) settings.fixedCosts.add(line);
+    } else if (name.trim().isEmpty) {
+      settings.fixedCosts.removeAt(index);
+    } else {
+      settings.fixedCosts[index] = line;
+    }
+    await commit();
+  }
+
+  Future<void> applyFixedPlan() async {
+    settings.fixedCosts = List<String>.from(Expense.fixedPlan);
+    await commit();
+  }
+
   /// Applique le plan : enveloppes par catégorie et budget du mois = leur somme.
   Future<void> applyBudgetPlan() async {
     settings.envelopes = Map<String, double>.from(Expense.plan);
+    if (settings.fixedCosts.isEmpty) settings.fixedCosts = List<String>.from(Expense.fixedPlan);
     settings.monthlyBudget = Expense.plan.values.fold(0.0, (a, v) => a + v);
     await commit();
   }

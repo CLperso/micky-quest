@@ -745,6 +745,7 @@ class Settings {
   bool stylusOnly;
   double monthlyBudget;
   Map<String, double> envelopes; // plafond mensuel par catégorie de dépense
+  List<String> fixedCosts; // frais fixes mensuels : « type|nom|montant » (type : abonnement ou charge)
   List<String> projects; // projets perso précisés dans les check-ins (« ces apps »…)
   List<String> books; // pile de philo : « Titre|pages »
   String goodDaysLetter;
@@ -775,6 +776,7 @@ class Settings {
     this.stylusOnly = true,
     this.monthlyBudget = 0,
     Map<String, double>? envelopes,
+    List<String>? fixedCosts,
     List<String>? projects,
     List<String>? books,
     this.goodDaysLetter = '',
@@ -785,6 +787,7 @@ class Settings {
     this.calendarName = '',
     this.calendarRead = true,
   })  : envelopes = envelopes ?? {},
+        fixedCosts = fixedCosts ?? [],
         projects = projects ?? [],
         books = books ?? [],
         contacts = contacts ?? [],
@@ -813,6 +816,7 @@ class Settings {
         envelopes: {
           for (final e in ((j['env'] as Map?) ?? {}).entries) e.key.toString(): (e.value as num?)?.toDouble() ?? 0,
         },
+        fixedCosts: ((j['fixed'] as List?) ?? []).map((e) => e.toString()).toList(),
         projects: ((j['projects'] as List?) ?? []).map((e) => e.toString()).toList(),
         books: ((j['books'] as List?) ?? []).map((e) => e.toString()).toList(),
         goodDaysLetter: _s(j['letter']),
@@ -844,6 +848,7 @@ class Settings {
         'stylusOnly': stylusOnly,
         'budget': monthlyBudget,
         'env': envelopes,
+        'fixed': fixedCosts,
         'projects': projects,
         'books': books,
         'letter': goodDaysLetter,
@@ -1173,10 +1178,27 @@ class Expense {
     'transport': 'Transport (Uber, tickets)',
     'voyages': 'Voyages, trains, avion',
     'santé': 'Santé, véto',
-    'loisirs': 'Loisirs, abonnements',
+    'loisirs': 'Loisirs, sorties',
     'maison': 'Maison',
     'autre': 'Autre',
   };
+
+  /// Frais fixes d'octobre 2026, prélevés chaque mois (hors enveloppes).
+  static const fixedPlan = [
+    'abonnement|Freebox|34.99',
+    'abonnement|Free mobile|19.99',
+    'abonnement|Claude Pro|21.60',
+    'abonnement|Canal+|18.99',
+    'abonnement|YouTube Premium|12.99',
+    'abonnement|Heptabase|7.80',
+    'abonnement|Amazon Prime|6.99',
+    'abonnement|Uber One|5.99',
+    'abonnement|Philomag|5.90',
+    'charge|Loyer|400',
+    'charge|Charges de l\'appart (à mettre de côté)|433',
+    'charge|Navigo|90.80',
+    'charge|Frais bancaires|7.40',
+  ];
 
   /// Plan budget d'octobre 2026 : plafonds mensuels par enveloppe (~1 200 €).
   static const plan = <String, double>{

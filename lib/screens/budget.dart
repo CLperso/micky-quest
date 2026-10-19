@@ -354,6 +354,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
             ),
           ),
           const SizedBox(height: 12),
+          const _FixedCosts(),
+          const SizedBox(height: 12),
           _Envelopes(month: _month, byCat: byCat, spent: spent),
           const SizedBox(height: 16),
           Text('Dépenses', style: K.display(18)),
@@ -505,6 +507,131 @@ class _Envelopes extends StatelessWidget {
                 style: K.body(11, color: K.dim),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Ajouter, modifier ou supprimer un frais fixe.
+Future<void> editFixedCost(BuildContext context, String kind, {int? index, String name = '', double amount = 0}) async {
+  final store = AppScope.read(context);
+  final n = TextEditingController(text: name);
+  final a = TextEditingController(text: amount > 0 ? amount.toStringAsFixed(2).replaceAll('.', ',') : '');
+  final res = await showDialog<(String, double)>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: K.card,
+      title: Text(index == null ? (kind == 'charge' ? 'Nouvelle charge' : 'Nouvel abonnement') : 'Frais fixe'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(
+          controller: n,
+          autofocus: index == null,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(hintText: 'Nom (ex. Freebox)'),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: a,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(suffixText: '€ / mois'),
+        ),
+      ]),
+      actions: [
+        if (index != null)
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ('', 0.0)),
+            child: Text('Supprimer', style: K.body(14, color: K.coral)),
+          ),
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, (n.text.trim(), double.tryParse(a.text.replaceAll(',', '.').trim()) ?? 0)),
+          child: const Text('OK'),
+        ),
+      ],
+    ),
+  );
+  n.dispose();
+  a.dispose();
+  if (res != null) await store.setFixedCost(index, kind, res.$1, res.$2);
+}
+
+/// Frais fixes du mois : abonnements et charges, prélevés automatiquement, hors enveloppes.
+class _FixedCosts extends StatelessWidget {
+  const _FixedCosts();
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final total = store.fixedTotal();
+
+    Widget group(String kind, String title, IconData icon) {
+      final items = store.fixedOf(kind);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 8),
+          Row(children: [
+            Icon(icon, color: K.muted, size: 16),
+            const SizedBox(width: 6),
+            Expanded(child: Text(title, style: K.body(13, w: FontWeight.w800))),
+            Text(euros(store.fixedTotal(kind)), style: K.body(13, color: K.gold, w: FontWeight.w800)),
+          ]),
+          for (final f in items)
+            InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => editFixedCost(context, kind, index: f.$1, name: f.$2, amount: f.$3),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(22, 4, 0, 4),
+                child: Row(children: [
+                  Expanded(child: Text(f.$2, style: K.body(13, color: K.muted))),
+                  Text(euros(f.$3), style: K.body(13, color: K.muted)),
+                ]),
+              ),
+            ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => editFixedCost(context, kind),
+              icon: const Icon(Icons.add_rounded, size: 16),
+              label: Text(kind == 'charge' ? 'Ajouter une charge' : 'Ajouter un abonnement', style: K.body(12)),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Icon(Icons.event_repeat_rounded, color: K.gold, size: 18),
+            const SizedBox(width: 8),
+            Expanded(child: Text('Frais fixes', style: K.display(15))),
+            Text('${euros(total)} / mois', style: K.body(12, color: K.muted)),
+          ]),
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text('Prélevés chaque mois, en dehors des enveloppes. Touche une ligne pour la modifier.',
+                style: K.body(11, color: K.dim)),
+          ),
+          if (store.settings.fixedCosts.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: K.ink,
+                  side: const BorderSide(color: K.gold, width: 2),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                onPressed: () => store.applyFixedPlan(),
+                icon: const Icon(Icons.auto_awesome_rounded, color: K.gold),
+                label: Text('Remplir avec mes frais fixes', style: K.body(14, w: FontWeight.w800)),
+              ),
+            ),
+          group('abonnement', 'Abonnements', Icons.subscriptions_rounded),
+          group('charge', 'Charges', Icons.home_rounded),
         ],
       ),
     );
