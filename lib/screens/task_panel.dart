@@ -16,6 +16,19 @@ Future<void> checkTask(BuildContext context, Task t, {bool askAfter = true}) asy
   final wasDone = t.done;
   await store.completeTask(t);
   if (!context.mounted || wasDone) return;
+  // faite sans session : combien de temps dessus ? (30 min si on passe)
+  final spent = store.sessions.any((x) => x.taskId == t.id && x.end > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(x.start)) == store.todayKey);
+  if (!spent && t.done) {
+    final m = await _askTimeSpent(context, t);
+    final end = DateTime.now();
+    await store.saveSlot(Slot(
+      start: end.subtract(Duration(minutes: m)).millisecondsSinceEpoch,
+      end: end.millisecondsSinceEpoch,
+      kind: t.category == 'perso' ? 'perso' : 'pro',
+      title: t.title,
+    ));
+    if (!context.mounted) return;
+  }
   final xp = store.taskXp(t);
   final messenger = ScaffoldMessenger.of(context);
   messenger.hideCurrentSnackBar();
@@ -448,4 +461,33 @@ class CheckCircle extends StatelessWidget {
           ),
         ),
       );
+}
+
+/// « Depuis combien de temps tu étais dessus ? » — 30 min par défaut.
+Future<int> _askTimeSpent(BuildContext context, Task t) async {
+  final v = await showModalBottomSheet<int>(
+    context: context,
+    builder: (ctx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Tu y as passé combien de temps ?', style: K.display(18)),
+          const SizedBox(height: 4),
+          Text('« ${t.title} » · compté dans ton temps ${t.category == 'perso' ? 'perso' : 'pro'}. Sans réponse : 30 min.', style: K.body(12, color: K.muted)),
+          const SizedBox(height: 12),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final m in [5, 15, 30, 45, 60, 90, 120, 180])
+              ActionChip(
+                label: Text(m >= 60 ? '${m ~/ 60} h${m % 60 == 0 ? '' : ' ${m % 60}'}' : '$m min'),
+                onPressed: () => Navigator.pop(ctx, m),
+                backgroundColor: m == 30 ? K.lime : K.raised,
+                labelStyle: K.body(13, color: m == 30 ? K.bg : K.ink, w: FontWeight.w800),
+                side: BorderSide.none,
+              ),
+          ]),
+        ]),
+      ),
+    ),
+  );
+  return v ?? 30;
 }

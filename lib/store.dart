@@ -132,6 +132,7 @@ class AppStore extends ChangeNotifier {
     }
     _fixLateEvenings();
     _seedBooks();
+    _seedWeek();
     _stamp(init: true);
     _rollOver();
     _checkBudgetDays();
@@ -987,6 +988,42 @@ class AppStore extends ChangeNotifier {
   // ---------- La cabane ----------
 
   /// La pile de livres inspirants, prête au premier lancement (pages approximatives, modifiables).
+  /// Semaine pro du 20 au 25 octobre, préremplie une fois (ids fixes : pas de doublon d'un appareil à l'autre).
+  void _seedWeek() {
+    const items = [
+      ('2026-10-20', 0, 'QALEM (R) : Spearman-Brown Q3n + Q5, AFE avec Q2 libre'),
+      ('2026-10-20', 1, 'SCA (R) : règle de l’épisode'),
+      ('2026-10-20', 2, 'OSF papier 1 (avec l’extension déclarée)'),
+      ('2026-10-20', 3, 'Diapos structure + fidélité en trois niveaux'),
+      ('2026-10-20', 4, 'diapos EMA + précharge'),
+      ('2026-10-20', 5, 'kappa + 4 BES'),
+      ('2026-10-20', 6, 'Message CER (5 min)'),
+      ('2026-10-21', 0, 'Relances (auteurs + Sabrina)'),
+      ('2026-10-21', 1, 'inventaire des jeux de la méta'),
+      ('2026-10-21', 2, '209 décisions (7 attributs) + 30 RES'),
+      ('2026-10-21', 3, 'Décider l’analyse méta'),
+      ('2026-10-22', 0, 'Lectures restriction'),
+      ('2026-10-22', 1, 'Décision section / papier + plan'),
+      ('2026-10-22', 2, 'Protocole précharge'),
+      ('2026-10-23', 0, 'Prompts EMA + appli'),
+      ('2026-10-23', 1, 'Screening restriction'),
+      ('2026-10-23', 2, 'Lancer l’analyse méta'),
+      ('2026-10-24', 0, 'OSF EMA'),
+      ('2026-10-24', 1, 'OSF précharge'),
+      ('2026-10-24', 2, 'Items V2 (trois niveaux)'),
+      ('2026-10-25', 0, 'Code des figures SCA'),
+      ('2026-10-25', 1, 'Lowe, Stice'),
+    ];
+    var added = false;
+    for (final (d, o, title) in items) {
+      final id = 'seed-w43-$d-$o';
+      if (tasks.any((t) => t.id == id)) continue;
+      tasks.add(Task(id: id, title: title, category: 'pro', quad: Quad.doNow, day: d, createdDay: d, order: o, inQuest: true));
+      added = true;
+    }
+    if (added) save();
+  }
+
   void _seedBooks() {
     if (_prefs.getBool('books_seeded') ?? false) return;
     if (settings.books.isEmpty) {
