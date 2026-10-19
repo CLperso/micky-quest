@@ -711,7 +711,7 @@ class AppStore extends ChangeNotifier {
   // ---------- Tâches ----------
 
   List<Task> get openTasks {
-    final t = tasks.where((t) => !t.done && !t.removed && t.day.compareTo(todayKey) <= 0).toList();
+    final t = tasks.where((t) => !t.done && !t.removed && t.parentId.isEmpty && t.day.compareTo(todayKey) <= 0).toList();
     t.sort((a, b) => a.order.compareTo(b.order));
     return t;
   }
@@ -815,7 +815,7 @@ class AppStore extends ChangeNotifier {
 
   /// Vrai si la tâche fait partie d'Aujourd'hui (quête, Faire maintenant, heure aujourd'hui, reportée, boss).
   bool inToday(Task t) =>
-      !t.done && !t.removed && t.day.compareTo(todayKey) <= 0 &&
+      !t.done && !t.removed && t.parentId.isEmpty && t.day.compareTo(todayKey) <= 0 &&
       (t.inQuest || t.quad == Quad.doNow || t.deferred || t.isBoss ||
           (t.plannedAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(t.plannedAt)) == todayKey));
 
@@ -1289,9 +1289,18 @@ class AppStore extends ChangeNotifier {
   }
 
   Future<SessionRec> startSession(String taskId, String title, int predicted,
-      {String category = '', bool silent = true, String stim = '', String target = ''}) async {
+      {String category = '', bool silent = true, String stim = '', String target = '', bool advance = false, int predProg = -1, String subStep = ''}) async {
     final tk = taskById(taskId);
+    var subId = '';
+    if (advance && tk != null && subStep.trim().isNotEmpty) {
+      final sub = Task(title: subStep.trim(), category: tk.category, quad: tk.quad, day: todayKey, parentId: tk.id, estimateMin: predicted);
+      tasks.add(sub);
+      subId = sub.id;
+    }
     final s = SessionRec(
+      advance: advance,
+      predProg: predProg,
+      subId: subId,
       target: target,
       progFrom: tk == null ? -1 : (tk.isBoss ? tk.bossProgress : tk.progress),
       taskId: taskId,
@@ -2297,6 +2306,9 @@ class AppStore extends ChangeNotifier {
     await commit();
   }
 
+  /// Sous-étapes d'une tâche générale (sessions « avancer »).
+  List<Task> subStepsOf(Task t) => tasks.where((x) => x.parentId == t.id && !x.removed).toList()..sort((a, b) => a.createdDay.compareTo(b.createdDay));
+
   /// Pendant une session : « il me faut X min de plus, parce que… », et éventuellement une sous-étape.
   Future<Task?> extendSession(SessionRec s, int minutes, String why, {String subStep = ''}) async {
     s.extraMin += minutes;
@@ -2321,7 +2333,7 @@ class AppStore extends ChangeNotifier {
 
   /// Faisait partie de la journée [day] (pour clore la journée le soir).
   bool inDay(Task t, String day) =>
-      !t.done && !t.removed && t.day.compareTo(day) <= 0 &&
+      !t.done && !t.removed && t.parentId.isEmpty && t.day.compareTo(day) <= 0 &&
       (t.inQuest || t.quad == Quad.doNow || t.deferred || t.isBoss ||
           (t.plannedAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(t.plannedAt)) == day));
 

@@ -21,6 +21,7 @@ class _RateSheetState extends State<RateSheet> {
   int _focus = -1; // -1 = pas encore initialisé
   int _prog = -1;
   int _tMet = -1;
+  String _suite = ''; // tâche en plusieurs sessions : now, plan, tomorrow
   final _helped = TextEditingController();
   final _hard = TextEditingController();
   final _worth = TextEditingController();
@@ -43,7 +44,7 @@ class _RateSheetState extends State<RateSheet> {
     final task = isBoss ? null : boss;
     if (_focus < 0) _focus = s.focus > 0 ? s.focus : s.suggestedFocus;
     final from = s.progFrom >= 0 ? s.progFrom : (task?.progress ?? 0);
-    if (_prog < 0) _prog = s.progTo >= 0 ? s.progTo : (s.finished && task != null ? 100 : from);
+    if (_prog < 0) _prog = s.progTo >= 0 ? s.progTo : (s.advance && s.predProg >= 0 ? s.predProg : (s.finished && task != null ? 100 : from));
     if (_tMet < 0 && s.targetMet >= 0) _tMet = s.targetMet;
     final pro = store.sessionCategory(s) == Act.pro;
     final ratio = s.ratio;
@@ -131,6 +132,26 @@ class _RateSheetState extends State<RateSheet> {
                     ),
                     TextButton(onPressed: () => setState(() => _prog = 100), child: const Text('Étape finie')),
                   ]),
+                  if (s.advance && s.predProg >= 0)
+                    Text('Tu visais ~${s.predProg} %.', style: K.body(11, color: K.dim)),
+                  if (_prog < 100 && (s.advance || !s.finished)) ...[
+                    const SizedBox(height: 8),
+                    Text('La suite ?', style: K.body(13, w: FontWeight.w800)),
+                    const SizedBox(height: 6),
+                    Wrap(spacing: 6, runSpacing: 6, children: [
+                      for (final o in const [('now', 'Je continue maintenant'), ('plan', 'Je la cale dans le planning'), ('tomorrow', 'Demain')])
+                        ChoiceChip(
+                          label: Text(o.$2),
+                          selected: _suite == o.$1,
+                          onSelected: (_) => setState(() => _suite = _suite == o.$1 ? '' : o.$1),
+                          selectedColor: K.gold,
+                          labelStyle: K.body(12, color: _suite == o.$1 ? K.bg : K.ink, w: FontWeight.w800),
+                          backgroundColor: K.raised,
+                          side: BorderSide.none,
+                          showCheckmark: false,
+                        ),
+                    ]),
+                  ],
                 ]),
               ),
             ],
@@ -239,6 +260,7 @@ class _RateSheetState extends State<RateSheet> {
                                 focus: _focus > 0 ? _focus : null,
                                 progTo: isBoss ? _bossP : (task != null ? _prog : null),
                                 targetMet: _tMet >= 0 ? _tMet : null);
+                            if (task != null && _prog >= 100 && !task.done) await store.completeTask(task);
                             await AppScope.read(context).rateSession(s,
                                 difficulty: _diff,
                                 feeling: _feel,
@@ -246,7 +268,7 @@ class _RateSheetState extends State<RateSheet> {
                                 interrupted: _intr,
                                 hardWhat: _hard.text.trim(),
                                 worthWhy: _worth.text.trim());
-                            if (context.mounted) Navigator.pop(context);
+                            if (context.mounted) Navigator.pop(context, _suite);
                           },
                   ),
                 ),

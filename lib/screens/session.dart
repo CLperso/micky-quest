@@ -10,6 +10,7 @@ import '../theme.dart';
 import 'dump.dart';
 import 'house.dart';
 import 'reflect.dart';
+import 'timetable.dart' show launchTask, PlanningScreen;
 
 /// Choix de la tâche et du pari de durée.
 class StartSessionSheet extends StatefulWidget {
@@ -27,6 +28,9 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
   final _target = TextEditingController();
   late bool _locked = widget.preselect != null; // lancée depuis une tâche : on ne redemande pas « sur quoi »
   final Map<String, int> _subMin = {};
+  bool _advance = false; // « avancer » : la tâche prendra plusieurs sessions
+  int _pred = -1; // avancement visé à la fin de cette session
+  final _subStep = TextEditingController();
   int _min = 25;
   String _cat = '';
   bool _silent = true;
@@ -59,6 +63,7 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
   void dispose() {
     _free.dispose();
     _target.dispose();
+    _subStep.dispose();
     super.dispose();
   }
 
@@ -99,6 +104,46 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
                         TextButton(onPressed: () => setState(() => _locked = false), child: Text('changer', style: K.body(12, color: K.muted))),
                       ]),
                     ),
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      for (final m in const [(false, 'Finir'), (true, 'Avancer')])
+                        Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.only(right: m.$1 ? 0 : 6),
+                            child: ChoiceChip(
+                              label: SizedBox(width: double.infinity, child: Text(m.$2, textAlign: TextAlign.center)),
+                              selected: _advance == m.$1,
+                              onSelected: (_) => setState(() {
+                                _advance = m.$1;
+                                if (_advance && _pred < 0) _pred = min(100, ((t.isBoss ? t.bossProgress : t.progress) + 25) ~/ 5 * 5);
+                              }),
+                              selectedColor: m.$1 ? K.gold : K.lime,
+                              labelStyle: K.body(13, color: _advance == m.$1 ? K.bg : K.ink, w: FontWeight.w800),
+                              backgroundColor: K.raised,
+                              side: BorderSide.none,
+                              showCheckmark: false,
+                            ),
+                          ),
+                        ),
+                    ]),
+                    if (_advance) ...[
+                      const SizedBox(height: 8),
+                      Text('Ça prendra plusieurs sessions. Cette fois, je fais… (devient une sous-étape)', style: K.body(12, color: K.muted)),
+                      const SizedBox(height: 4),
+                      TextField(controller: _subStep, textCapitalization: TextCapitalization.sentences, decoration: const InputDecoration(hintText: 'ex. : rédiger les limites')),
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        Expanded(child: Text('À la fin, j\'en serai à ~$_pred %', style: K.body(13, w: FontWeight.w800, color: K.gold))),
+                        Text('maintenant : ${t.isBoss ? t.bossProgress : t.progress} %', style: K.body(11, color: K.dim)),
+                      ]),
+                      Slider(
+                        value: _pred.clamp(0, 100).toDouble(),
+                        max: 100,
+                        divisions: 20,
+                        activeColor: K.gold,
+                        onChanged: (v) => setState(() => _pred = v.round()),
+                      ),
+                    ],
                     if (subs.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Text('Tes sous-étapes · un temps pour chacune (facultatif)', style: K.body(13, color: K.muted)),
@@ -334,7 +379,14 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
                           final x = store.taskById(e.key);
                           if (x != null && e.value > 0) x.estimateMin = e.value;
                         }
-                        await store.startSession(id, title, _min, category: _cat, silent: _silent, stim: _stim, target: _target.text.trim());
+                        await store.startSession(id, title, _min,
+                            category: _cat,
+                            silent: _silent,
+                            stim: _stim,
+                            target: _advance && _subStep.text.trim().isNotEmpty && _target.text.trim().isEmpty ? _subStep.text.trim() : _target.text.trim(),
+                            advance: _advance && id.isNotEmpty,
+                            predProg: _advance ? _pred : -1,
+                            subStep: _advance ? _subStep.text.trim() : '');
                         if (context.mounted) Navigator.pop(context, true);
                       },
               ),
@@ -376,10 +428,14 @@ class _SessionScreenState extends State<SessionScreen> {
     if (s == null) return;
     final perso = store.sessionCategory(s) == Act.perso;
     final chest = await store.endSession(s, finished: finished);
+    if (finished && s.subId.isNotEmpty) {
+      final sub = store.taskById(s.subId);
+      if (sub != null && !sub.done) await store.completeTask(sub);
+    }
     if (finished && s.taskId.isNotEmpty) {
       final t = store.taskById(s.taskId);
-      // le boss ne se termine pas d'un coup : c'est son avancement, au débrief, qui le vainc
-      if (t != null && !t.done && !t.isBoss) await store.completeTask(t);
+      // le boss et les tâches « avancer » ne se terminent pas d'un coup : c'est l'avancement, au débrief, qui décide
+      if (t != null && !t.done && !t.isBoss && !s.advance) await store.completeTask(t);
     }
     if (perso) {
       if (!mounted) return;
@@ -390,7 +446,7 @@ class _SessionScreenState extends State<SessionScreen> {
     }
     if (!mounted) return;
     // débrief d'abord (interruptions → Focus), puis le coffre, puis « et maintenant ? »
-    await showModalBottomSheet(
+    final suite = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       builder: (_) => AppScope(store: store, child: RateSheet(session: s)),
@@ -401,6 +457,19 @@ class _SessionScreenState extends State<SessionScreen> {
     Navigator.pop(context);
     final ctx = navKey.currentContext;
     if (ctx == null) return;
+    final task = store.taskById(s.taskId);
+    if (task != null && !task.done && suite != null && suite.isNotEmpty) {
+      if (suite == 'now') {
+        await launchTask(ctx, task);
+      } else if (suite == 'plan') {
+        await openScreen(ctx, PlanningScreen(place: task));
+      } else if (suite == 'tomorrow') {
+        await store.deferTask(task);
+        final c3 = navKey.currentContext;
+        if (c3 != null) ScaffoldMessenger.of(c3).showSnackBar(SnackBar(content: Text('« ${task.title} » continue demain')));
+      }
+      return;
+    }
     if (!finished) await openScreen(ctx, ReflectionScreen(kind: 'decroche', taskId: s.taskId, title: s.title));
     final ctx2 = navKey.currentContext;
     if (ctx2 != null) await askNext(ctx2, finished ? 'Étape finie !' : 'Session arrêtée.');
@@ -508,6 +577,16 @@ class _SessionScreenState extends State<SessionScreen> {
             if (t != null && t.isBoss)
               Text('COMBAT CONTRE LE BOSS · ${t.bossProgress} % · ${store.bossMinutes(t)} min de coups', style: K.body(12, color: K.coral, w: FontWeight.w900)),
             Text(s.title, style: K.display(24)),
+            if (s.advance) ...[
+              const SizedBox(height: 4),
+              Text(
+                [
+                  if (s.subId.isNotEmpty) 'cette session : ${store.taskById(s.subId)?.title ?? ''}',
+                  if (s.predProg >= 0) 'objectif ~${s.predProg} %',
+                ].join(' · '),
+                style: K.body(13, color: K.gold, w: FontWeight.w800),
+              ),
+            ],
             const SizedBox(height: 20),
             Center(
               child: SizedBox(
@@ -585,7 +664,7 @@ class _SessionScreenState extends State<SessionScreen> {
               children: [
                 Expanded(child: SecondaryButton(label: 'J\'ai décroché', onPressed: () => _end(false))),
                 const SizedBox(width: 10),
-                Expanded(child: PrimaryButton(label: t != null && t.isBoss ? 'Fin du coup' : 'Étape finie', onPressed: () => _end(true))),
+                Expanded(child: PrimaryButton(label: t != null && t.isBoss ? 'Fin du coup' : (s.advance ? 'Fin de la session' : 'Étape finie'), onPressed: () => _end(true))),
               ],
             ),
           ],

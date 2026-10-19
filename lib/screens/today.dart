@@ -245,6 +245,23 @@ class _QuestBlockState extends State<_QuestBlock> {
                         padding: const EdgeInsets.symmetric(vertical: 6),
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text('${current.title}${current.estimateMin > 0 ? ' · ${fmtH(current.estimateMin)}' : ''}', style: K.body(14, w: FontWeight.w800)),
+                          if (current.progress > 0) ...[
+                            const SizedBox(height: 4),
+                            Row(children: [
+                              Expanded(child: Bar(current.progress / 100, color: color, height: 5)),
+                              const SizedBox(width: 6),
+                              Text('${current.progress} %', style: K.body(11, color: color, w: FontWeight.w900)),
+                            ]),
+                          ],
+                          for (final sub in store.subStepsOf(current))
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Row(children: [
+                                Icon(sub.done ? Icons.check_rounded : Icons.subdirectory_arrow_right_rounded, size: 14, color: sub.done ? color : K.muted),
+                                const SizedBox(width: 4),
+                                Expanded(child: Text(sub.title, style: K.body(12, color: sub.done ? K.muted : K.ink).copyWith(decoration: sub.done ? TextDecoration.lineThrough : null))),
+                              ]),
+                            ),
                           if (next != null) Text('ensuite : ${next.title}', style: K.body(11, color: K.dim)),
                         ]),
                       ),
@@ -496,6 +513,8 @@ class TaskRow extends StatelessWidget {
                   Text(
                     [
                       if (t.estimateMin > 0) '${t.estimateMin} min',
+                      if (!t.isBoss && t.progress > 0 && t.progress < 100) '${t.progress} %',
+                      if (store.subStepsOf(t).isNotEmpty) '${store.subStepsOf(t).where((x) => x.done).length} sous-étape${store.subStepsOf(t).where((x) => x.done).length > 1 ? 's' : ''} faite${store.subStepsOf(t).where((x) => x.done).length > 1 ? 's' : ''}',
                       if (t.isBoss) 'boss',
                       if (t.condition.isNotEmpty) 'si ${t.condition}',
                       if (quest.isEmpty && t.category.isNotEmpty) t.category,

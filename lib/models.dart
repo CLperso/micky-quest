@@ -61,6 +61,7 @@ class Task {
   String calEventId; // événement écrit dans l'agenda du téléphone
   int bossProgress; // boss : avancement déclaré, 0 à 100
   int progress; // avancement déclaré d'une tâche ou étape, 0 à 100
+  String parentId; // sous-étape d'une session « avancer » : la tâche générale
   bool inQuest; // étape de la quête du jour (sinon simple tâche pro ou perso)
   String hiddenDay; // « pas aujourd'hui » : masquée de « À caser » ce jour-là
   int mod;
@@ -87,6 +88,7 @@ class Task {
     this.calEventId = '',
     this.bossProgress = 0,
     this.progress = 0,
+    this.parentId = '',
     this.inQuest = false,
     this.hiddenDay = '',
     this.mod = 0,
@@ -117,6 +119,7 @@ class Task {
         calEventId: _s(j['calEv']),
         bossProgress: _i(j['bossP']),
         progress: _i(j['prog']),
+        parentId: _s(j['par']),
         // avant ce champ, toute tâche pro ou perso était une étape de quête
         inQuest: j.containsKey('inQ') ? _b(j['inQ']) : _s(j['category']).isNotEmpty,
         hiddenDay: _s(j['hid']),
@@ -145,6 +148,7 @@ class Task {
         'calEv': calEventId,
         'bossP': bossProgress,
         'prog': progress,
+        'par': parentId,
         'inQ': inQuest,
         'hid': hiddenDay,
         'mod': mod,
@@ -218,6 +222,9 @@ class SessionRec {
   String boosts; // relances « ça flotte » choisies, séparées par des virgules
   String stopWhy; // arrêtée pour un impératif pro (réunion…) : pas un décrochage
   int extraMin; // minutes ajoutées en cours de session (le pari, lui, ne change pas)
+  bool advance; // session « avancer » : la tâche prend plusieurs sessions
+  int predProg; // avancement prévu à la fin (0..100), -1 = non dit
+  String subId; // sous-étape faite pendant cette session
   String extWhy; // pourquoi : « plus compliqué que prévu », etc.
   int mod;
 
@@ -258,6 +265,9 @@ class SessionRec {
     this.boosts = '',
     this.stopWhy = '',
     this.extraMin = 0,
+    this.advance = false,
+    this.predProg = -1,
+    this.subId = '',
     this.extWhy = '',
     this.mod = 0,
   }) : id = id ?? newId();
@@ -306,6 +316,9 @@ class SessionRec {
         boosts: _s(j['boosts']),
         stopWhy: _s(j['stop']),
         extraMin: _i(j['extra']),
+        advance: _b(j['adv']),
+        predProg: _i(j['pPred'], -1),
+        subId: _s(j['sub']),
         extWhy: _s(j['extWhy']),
         mod: _i(j['mod']),
       );
@@ -336,6 +349,9 @@ class SessionRec {
         'boosts': boosts,
         'stop': stopWhy,
         'extra': extraMin,
+        'adv': advance,
+        'pPred': predProg,
+        'sub': subId,
         'extWhy': extWhy,
         'mod': mod,
       };
