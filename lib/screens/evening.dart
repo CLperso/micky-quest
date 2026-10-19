@@ -10,6 +10,7 @@ import 'checkin.dart';
 import 'habits.dart';
 import 'house.dart';
 import 'notebook.dart';
+import 'direction.dart' show WeekReviewScreen;
 import 'problems.dart';
 import 'tomorrow.dart';
 import 'reflect.dart';
@@ -281,6 +282,10 @@ class _EveningScreenState extends State<EveningScreen> {
             }),
             const SizedBox(height: 12),
             SelfCompareCard(day: day),
+            if (store.reviewDue) ...[
+              const SizedBox(height: 12),
+              SecondaryButton(label: 'Bilan de la semaine · 2 min', onPressed: () => openScreen(context, const WeekReviewScreen())),
+            ],
             const SizedBox(height: 12),
             ProblemsFireCard(day: day),
             const SizedBox(height: 12),

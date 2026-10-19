@@ -40,7 +40,7 @@ class _BriefingScreenState extends State<BriefingScreen> {
     _if.text = p.planIf;
     _then.text = p.planThen;
     _sleep = p.sleepH;
-    _proGoal = p.proGoalMin;
+    _proGoal = p.proGoalMin > 0 ? p.proGoalMin : AppScope.read(context).settings.dirProDefault;
     _persoGoal.text = p.persoGoal;
   }
 

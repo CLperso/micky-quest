@@ -17,6 +17,7 @@ import 'settings.dart';
 import 'block.dart';
 import 'cabin.dart';
 import 'problems.dart';
+import 'direction.dart';
 import 'dump.dart';
 import 'boss.dart';
 import 'house.dart';
@@ -128,6 +129,8 @@ class HomeScreen extends StatelessWidget {
         const PauseSwitch(),
         const SizedBox(height: 14),
         const MissedCheckins(),
+        const DirectionCard(),
+        const SizedBox(height: 14),
 
         Panel(
           child: Column(

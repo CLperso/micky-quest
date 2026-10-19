@@ -61,6 +61,53 @@ class TomorrowScreen extends StatelessWidget {
           children: [
             Text('Pose ta journée de demain ce soir : demain matin, il n\'y aura plus qu\'à démarrer.', style: K.body(13, color: K.muted)),
             const SizedBox(height: 10),
+            Panel(
+              border: const Color(0xFFB9A7FF),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('DEMAIN · POUR « DEVENIR CONSTANTE »', style: K.body(11, color: const Color(0xFFB9A7FF), w: FontWeight.w900)),
+                const SizedBox(height: 6),
+                Text('⏰ Je démarre avant', style: K.body(13, w: FontWeight.w800)),
+                const SizedBox(height: 4),
+                Wrap(spacing: 6, children: [
+                  for (final m in <int>{540, 570, 600, 630, 660, store.settings.startTarget}.toList()..sort())
+                    ChoiceChip(
+                      label: Text('${m ~/ 60} h${m % 60 == 0 ? '' : ' ${m % 60}'}'),
+                      selected: store.settings.startTarget == m,
+                      onSelected: (_) async {
+                        store.settings.startTarget = m;
+                        await store.updateSettings();
+                      },
+                      selectedColor: K.lime,
+                      labelStyle: K.body(12, color: store.settings.startTarget == m ? K.bg : K.ink, w: FontWeight.w800),
+                      backgroundColor: K.raised,
+                      side: BorderSide.none,
+                      showCheckmark: false,
+                    ),
+                ]),
+                const SizedBox(height: 8),
+                Text('💼 Temps pro visé', style: K.body(13, w: FontWeight.w800)),
+                const SizedBox(height: 4),
+                Wrap(spacing: 6, children: [
+                  for (final m in const [60, 120, 180, 240, 300])
+                    ChoiceChip(
+                      label: Text('${m ~/ 60} h'),
+                      selected: (plan.proGoalMin > 0 ? plan.proGoalMin : store.settings.dirProDefault) == m,
+                      onSelected: (_) async {
+                        plan.proGoalMin = m;
+                        await store.commit();
+                      },
+                      selectedColor: K.lime,
+                      labelStyle: K.body(12, color: (plan.proGoalMin > 0 ? plan.proGoalMin : store.settings.dirProDefault) == m ? K.bg : K.ink, w: FontWeight.w800),
+                      backgroundColor: K.raised,
+                      side: BorderSide.none,
+                      showCheckmark: false,
+                    ),
+                ]),
+                const SizedBox(height: 4),
+                Text('Prérempli avec tes habitudes : ne change que si demain est différent.', style: K.body(11, color: K.dim)),
+              ]),
+            ),
+            const SizedBox(height: 10),
             quest('pro', plan.pro, K.lime),
             const SizedBox(height: 10),
             quest('perso', plan.perso, K.pink),

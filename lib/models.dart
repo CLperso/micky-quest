@@ -760,6 +760,8 @@ class Settings {
   int dirStartTgt, dirProTgt, dirHabTgt; // cibles de la semaine (jours sur 7)
   int dirMinPro; // jour minimum : minutes de pro qui suffisent
   int dirProDefault; // temps pro visé par défaut, si le jour n'a pas d'objectif
+  String dirReviewWeek; // lundi de la dernière semaine dont le bilan est fait
+  String dirIntention; // intention pro de la semaine (une ligne, facultatif)
   bool checkinsDuringSession;
   bool checkinNotifs; // check-ins par notification (sinon proposés à l'ouverture de l'appli)
   bool habitNotifs; // rappels d'habitudes par notification
@@ -811,6 +813,8 @@ class Settings {
     this.dirHabTgt = 5,
     this.dirMinPro = 30,
     this.dirProDefault = 180,
+    this.dirReviewWeek = '',
+    this.dirIntention = '',
     this.checkinsDuringSession = false,
     this.checkinNotifs = false,
     this.habitNotifs = false,
@@ -870,6 +874,8 @@ class Settings {
         dirHabTgt: _i(j['dirHabTgt'], 5),
         dirMinPro: _i(j['dirMinPro'], 30),
         dirProDefault: _i(j['dirProDef'], 180),
+        dirReviewWeek: _s(j['dirRev']),
+        dirIntention: _s(j['dirInt']),
         checkinsDuringSession: _b(j['duringSession']),
         checkinNotifs: _b(j['ciNotif']),
         habitNotifs: _b(j['habNotif']),
@@ -924,6 +930,8 @@ class Settings {
         'dirHabTgt': dirHabTgt,
         'dirMinPro': dirMinPro,
         'dirProDef': dirProDefault,
+        'dirRev': dirReviewWeek,
+        'dirInt': dirIntention,
         'duringSession': checkinsDuringSession,
         'ciNotif': checkinNotifs,
         'habNotif': habitNotifs,

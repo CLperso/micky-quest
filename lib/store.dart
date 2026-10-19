@@ -1107,6 +1107,28 @@ class AppStore extends ChangeNotifier {
     return weekKept(d) * 2 >= settings.dirProTgt;
   }
 
+  /// Bilan de la semaine à faire (une fois par semaine, n'importe quel jour).
+  bool get reviewDue => settings.dirReviewWeek != dayKey(weekStart(DateTime.now()));
+
+  Future<void> finishReview() async {
+    settings.dirReviewWeek = dayKey(weekStart(DateTime.now()));
+    final r = 'Bilan de la semaine · ${settings.dirReviewWeek}';
+    if (!xpEvents.any((e) => e.reason == r)) _gainXp(10, r);
+    await commit();
+  }
+
+  /// Sur les 7 derniers jours (hier compris) : (tenus, jours écoulés) pour un pilier.
+  (int, int) last7(int Function(String) f) {
+    var ok = 0, n = 0;
+    for (var i = 1; i <= 7; i++) {
+      final v = f(dayKey(DateTime.now().subtract(Duration(days: i))));
+      if (v < 0) continue;
+      n++;
+      if (v == 1 || v == 2) ok++;
+    }
+    return (ok, n);
+  }
+
   /// Raison du jour (change chaque jour).
   String get reasonOfDay {
     final r = settings.dirReasons;
@@ -1567,6 +1589,8 @@ class AppStore extends ChangeNotifier {
                       ? 'Feu de camp'
                       : e.reason.startsWith('Démarrage à l')
                           ? 'Démarrage à l\'heure'
+                          : e.reason.startsWith('Bilan de la semaine')
+                          ? 'Bilan de la semaine'
                           : e.reason.startsWith('Matinée pro')
                           ? 'Matinée pro'
                           : e.reason.startsWith('Mieux que ta médiane')
