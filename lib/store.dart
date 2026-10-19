@@ -132,6 +132,7 @@ class AppStore extends ChangeNotifier {
     }
     _fixLateEvenings();
     _seedBooks();
+    _seedDirection();
     _seedWeek();
     _stamp(init: true);
     _rollOver();
@@ -1023,6 +1024,94 @@ class AppStore extends ChangeNotifier {
       added = true;
     }
     if (added) save();
+  }
+
+  void _seedDirection() {
+    if (_prefs.getBool('dir_seeded') ?? false) return;
+    final st = settings;
+    if (st.dirPhrase.isEmpty) st.dirPhrase = 'Faire une recherche qui compte, pour la science et pour les gens.';
+    if (st.dirFrom.isEmpty) st.dirFrom = '2026-10-19';
+    if (st.dirPro.isEmpty) st.dirPro = 'QALEM soumis, SCA prêt pour les avis extérieurs';
+    if (st.dirReasons.isEmpty) {
+      st.dirReasons.addAll(const [
+        'Ne pas rire, ne pas pleurer, ne pas haïr, mais comprendre. — Spinoza',
+        'Faire une recherche qui compte, pour la science et pour les gens.',
+      ]);
+    }
+    _prefs.setBool('dir_seeded', true);
+    save();
+  }
+
+  // ---------- Ma direction : constance de la semaine ----------
+
+  /// Lundi de la semaine de [d].
+  DateTime weekStart(DateTime d) => DateTime(d.year, d.month, d.day).subtract(Duration(days: d.weekday - 1));
+
+  /// Jour d'un pilier : 1 tenu, 2 jour minimum, 0 raté, -1 à venir.
+  int pillarStart(String day) {
+    if (day.compareTo(todayKey) > 0) return -1;
+    final st = workStart(day);
+    if (st == null) return day == todayKey ? -1 : 0;
+    return st.hour * 60 + st.minute <= settings.startTarget ? 1 : 0;
+  }
+
+  int pillarPro(String day) {
+    if (day.compareTo(todayKey) > 0) return -1;
+    final m = proMinutesOn(day);
+    final goal = plan(day).proGoalMin > 0 ? plan(day).proGoalMin : settings.dirProDefault;
+    if (m >= goal) return 1;
+    if (m >= settings.dirMinPro) return 2;
+    return day == todayKey ? -1 : 0;
+  }
+
+  int pillarHabit(Habit h, String day) {
+    if (day.compareTo(todayKey) > 0) return -1;
+    final l = habitLevel(h, day);
+    if (l >= 2) return 1;
+    if (l == 1) return 2;
+    return day == todayKey ? -1 : 0;
+  }
+
+  /// Un jour « tenu » : pro atteint ou jour minimum.
+  int dayKept(String day) {
+    final p = pillarPro(day);
+    return p == 1 || p == 2 ? 1 : (p == -1 ? -1 : 0);
+  }
+
+  List<String> weekDays(DateTime d) {
+    final m = weekStart(d);
+    return [for (var i = 0; i < 7; i++) dayKey(m.add(Duration(days: i)))];
+  }
+
+  int weekKept(DateTime d) => weekDays(d).where((x) => dayKept(x) == 1).length;
+
+  /// Deux jours ratés de suite (hier et avant-hier) : on le dit doucement.
+  bool twoMissed() {
+    final y = dayKey(DateTime.now().subtract(const Duration(days: 1)));
+    final y2 = dayKey(DateTime.now().subtract(const Duration(days: 2)));
+    return dayKept(y) == 0 && dayKept(y2) == 0;
+  }
+
+  /// Semaine n° (0..12) depuis le début de Ma direction.
+  int dirWeek([DateTime? d]) {
+    final from = DateTime.tryParse(settings.dirFrom);
+    if (from == null) return 0;
+    return (weekStart(d ?? DateTime.now()).difference(weekStart(from)).inDays ~/ 7).clamp(0, 12);
+  }
+
+  /// Une semaine passée est « tenue » si au moins la moitié de la cible est atteinte.
+  bool weekHeld(int w) {
+    final from = DateTime.tryParse(settings.dirFrom);
+    if (from == null) return false;
+    final d = weekStart(from).add(Duration(days: 7 * w));
+    return weekKept(d) * 2 >= settings.dirProTgt;
+  }
+
+  /// Raison du jour (change chaque jour).
+  String get reasonOfDay {
+    final r = settings.dirReasons;
+    if (r.isEmpty) return settings.dirPhrase;
+    return r[DateTime.now().difference(DateTime(2026)).inDays % r.length];
   }
 
   void _seedBooks() {

@@ -754,6 +754,12 @@ class Settings {
   int endHour;
   int intervalMin;
   int startTarget; // heure visée pour commencer le pro, en minutes depuis minuit
+  String dirPhrase; // Ma direction : la phrase qui donne le sens
+  String dirFrom; // début des 13 semaines (lundi, aaaa-mm-jj)
+  String dirPro, dirPerso; // objectifs sur 3 mois, en une phrase
+  int dirStartTgt, dirProTgt, dirHabTgt; // cibles de la semaine (jours sur 7)
+  int dirMinPro; // jour minimum : minutes de pro qui suffisent
+  int dirProDefault; // temps pro visé par défaut, si le jour n'a pas d'objectif
   bool checkinsDuringSession;
   bool checkinNotifs; // check-ins par notification (sinon proposés à l'ouverture de l'appli)
   bool habitNotifs; // rappels d'habitudes par notification
@@ -786,6 +792,7 @@ class Settings {
   List<String> contacts; // personnes à qui en parler
   List<String> library; // phrases gardées dans la cabane
   List<String> favAngles;
+  List<String> dirReasons; // cartes « Mes raisons »
   String calendarId; // agenda du téléphone où écrire les blocs ('' = pas connecté)
   String calendarName;
   bool calendarRead; // afficher les événements de tous les agendas dans « Ma journée »
@@ -795,6 +802,15 @@ class Settings {
     this.endHour = 21,
     this.intervalMin = 30,
     this.startTarget = 600,
+    this.dirPhrase = '',
+    this.dirFrom = '',
+    this.dirPro = '',
+    this.dirPerso = '',
+    this.dirStartTgt = 4,
+    this.dirProTgt = 4,
+    this.dirHabTgt = 5,
+    this.dirMinPro = 30,
+    this.dirProDefault = 180,
     this.checkinsDuringSession = false,
     this.checkinNotifs = false,
     this.habitNotifs = false,
@@ -827,6 +843,7 @@ class Settings {
     List<String>? contacts,
     List<String>? library,
     List<String>? favAngles,
+    List<String>? dirReasons,
     this.calendarId = '',
     this.calendarName = '',
     this.calendarRead = true,
@@ -836,13 +853,23 @@ class Settings {
         books = books ?? [],
         contacts = contacts ?? [],
         library = library ?? [],
-        favAngles = favAngles ?? [];
+        favAngles = favAngles ?? [],
+        dirReasons = dirReasons ?? [];
 
   factory Settings.fromJson(Map<String, dynamic> j) => Settings(
         startHour: _i(j['start'], 9),
         endHour: _i(j['end'], 21),
         intervalMin: _i(j['interval'], 30),
         startTarget: _i(j['startT'], 600),
+        dirPhrase: _s(j['dirPhrase']),
+        dirFrom: _s(j['dirFrom']),
+        dirPro: _s(j['dirPro']),
+        dirPerso: _s(j['dirPerso']),
+        dirStartTgt: _i(j['dirStartTgt'], 4),
+        dirProTgt: _i(j['dirProTgt'], 4),
+        dirHabTgt: _i(j['dirHabTgt'], 5),
+        dirMinPro: _i(j['dirMinPro'], 30),
+        dirProDefault: _i(j['dirProDef'], 180),
         checkinsDuringSession: _b(j['duringSession']),
         checkinNotifs: _b(j['ciNotif']),
         habitNotifs: _b(j['habNotif']),
@@ -877,6 +904,7 @@ class Settings {
         contacts: ((j['contacts'] as List?) ?? []).map((e) => e.toString()).toList(),
         library: ((j['library'] as List?) ?? []).map((e) => e.toString()).toList(),
         favAngles: ((j['favAngles'] as List?) ?? []).map((e) => e.toString()).toList(),
+        dirReasons: ((j['dirReasons'] as List?) ?? []).map((e) => e.toString()).toList(),
         calendarId: _s(j['calId']),
         calendarName: _s(j['calName']),
         calendarRead: j['calRead'] != false,
@@ -887,6 +915,15 @@ class Settings {
         'end': endHour,
         'interval': intervalMin,
         'startT': startTarget,
+        'dirPhrase': dirPhrase,
+        'dirFrom': dirFrom,
+        'dirPro': dirPro,
+        'dirPerso': dirPerso,
+        'dirStartTgt': dirStartTgt,
+        'dirProTgt': dirProTgt,
+        'dirHabTgt': dirHabTgt,
+        'dirMinPro': dirMinPro,
+        'dirProDef': dirProDefault,
         'duringSession': checkinsDuringSession,
         'ciNotif': checkinNotifs,
         'habNotif': habitNotifs,
@@ -919,6 +956,7 @@ class Settings {
         'contacts': contacts,
         'library': library,
         'favAngles': favAngles,
+        'dirReasons': dirReasons,
         'calId': calendarId,
         'calName': calendarName,
         'calRead': calendarRead,
