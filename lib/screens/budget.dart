@@ -33,6 +33,32 @@ Future<void> editBudget(BuildContext context) async {
   if (v != null) await store.setMonthlyBudget(v);
 }
 
+/// Modifier le plafond d'une enveloppe (vide ou 0 = la retirer).
+Future<void> editEnvelope(BuildContext context, String cat) async {
+  final store = AppScope.read(context);
+  final cur = store.envelopeFor(cat);
+  final c = TextEditingController(text: cur > 0 ? cur.toStringAsFixed(0) : '');
+  final v = await showDialog<double>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: K.card,
+      title: Text(Expense.labels[cat] ?? cat),
+      content: TextField(
+        controller: c,
+        autofocus: true,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: const InputDecoration(suffixText: '€ / mois', helperText: 'Vide ou 0 : pas d\'enveloppe'),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+        TextButton(onPressed: () => Navigator.pop(ctx, double.tryParse(c.text.replaceAll(',', '.')) ?? 0), child: const Text('OK')),
+      ],
+    ),
+  );
+  c.dispose();
+  if (v != null) await store.setEnvelope(cat, v);
+}
+
 class BudgetCard extends StatelessWidget {
   const BudgetCard({super.key});
 
@@ -198,6 +224,18 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
                   ),
               ],
             ),
+            if (store.envelopeFor(_cat) > 0) ...[
+              const SizedBox(height: 10),
+              Builder(builder: (context) {
+                final left = store.envelopeLeft(_cat) - (value ?? 0);
+                return Text(
+                  left >= 0
+                      ? 'Enveloppe ${Expense.labels[_cat]} : il restera ${euros(left)} ce mois-ci'
+                      : 'Enveloppe ${Expense.labels[_cat]} : dépassée de ${euros(-left)} après cet achat',
+                  style: K.body(13, color: left >= 0 ? K.lime : K.coral, w: FontWeight.w700),
+                );
+              }),
+            ],
             const SizedBox(height: 16),
             PrimaryButton(
               label: value == null ? 'Montant ?' : 'Ajouter ${euros(value)}',
@@ -214,10 +252,13 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
                       if (!context.mounted) return;
                       Navigator.pop(context);
                       final left = store.remainingThisMonth();
+                      final env = store.envelopeFor(_cat) > 0
+                          ? ' ${Expense.labels[_cat]} : ${store.envelopeLeft(_cat) >= 0 ? 'reste ${euros(store.envelopeLeft(_cat))}' : 'dépassé de ${euros(-store.envelopeLeft(_cat))}'}.'
+                          : '';
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                         content: Text(store.settings.monthlyBudget > 0
-                            ? 'Noté. Il reste ${euros(left)} ce mois-ci.'
-                            : 'Dépense notée.'),
+                            ? 'Noté. Il reste ${euros(left)} ce mois-ci.$env'
+                            : 'Dépense notée.$env'),
                       ));
                     },
             ),
@@ -312,33 +353,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
               ],
             ),
           ),
-          if (byCat.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Panel(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Par catégorie', style: K.display(15)),
-                  const SizedBox(height: 6),
-                  for (final e in byCat)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 3),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(children: [
-                            Expanded(child: Text(Expense.labels[e.key] ?? e.key, style: K.body(13))),
-                            Text(euros(e.value), style: K.body(13, color: K.gold, w: FontWeight.w800)),
-                          ]),
-                          const SizedBox(height: 3),
-                          Bar(spent == 0 ? 0 : e.value / spent, color: K.gold, height: 5),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
+          const SizedBox(height: 12),
+          _Envelopes(month: _month, byCat: byCat, spent: spent),
           const SizedBox(height: 16),
           Text('Dépenses', style: K.display(18)),
           const SizedBox(height: 8),
@@ -378,6 +394,117 @@ class _BudgetScreenState extends State<BudgetScreen> {
               ),
             ),
           if (list.isNotEmpty) Text('Glisse une ligne vers la gauche pour la supprimer.', style: K.body(11, color: K.dim)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Enveloppes du mois : dépensé / plafond par catégorie. Touche une ligne pour changer son plafond.
+class _Envelopes extends StatelessWidget {
+  const _Envelopes({required this.month, required this.byCat, required this.spent});
+
+  final DateTime month;
+  final List<MapEntry<String, double>> byCat;
+  final double spent;
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final env = store.settings.envelopes;
+    final spentMap = {for (final e in byCat) e.key: e.value};
+    final cats = [
+      for (final c in Expense.categories)
+        if ((env[c] ?? 0) > 0 || (spentMap[c] ?? 0) > 0) c,
+      for (final c in spentMap.keys)
+        if (!Expense.categories.contains(c)) c,
+    ];
+    final totalCap = env.values.fold(0.0, (a, v) => a + v);
+    final d = DateTime.now();
+    final isCurrent = store.monthKey(month) == store.monthKey(d);
+    // Part du mois écoulée, pour repérer une enveloppe qui part trop vite.
+    final pace = isCurrent ? d.day / DateTime(d.year, d.month + 1, 0).day : 1.0;
+
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Icon(Icons.mail_rounded, color: K.gold, size: 18),
+            const SizedBox(width: 8),
+            Expanded(child: Text('Enveloppes', style: K.display(15))),
+            if (totalCap > 0) Text('${euros(totalCap)} / mois', style: K.body(12, color: K.muted)),
+          ]),
+          const SizedBox(height: 6),
+          if (env.isEmpty) ...[
+            Text(
+              'Une enveloppe par poste (courses, livraison, Amazon, tabac…) pour voir tout de suite où ça part. '
+              'Le plan prévoit ~${euros(Expense.plan.values.fold(0.0, (a, v) => a + v))} par mois.',
+              style: K.body(13, color: K.muted),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 44,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: K.ink,
+                  side: const BorderSide(color: K.gold, width: 2),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                onPressed: () => store.applyBudgetPlan(),
+                icon: const Icon(Icons.auto_awesome_rounded, color: K.gold),
+                label: Text('Appliquer le plan', style: K.body(14, w: FontWeight.w800)),
+              ),
+            ),
+          ],
+          for (final c in cats)
+            InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () => editEnvelope(context, c),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: Builder(builder: (context) {
+                  final cap = env[c] ?? 0;
+                  final used = spentMap[c] ?? 0;
+                  final frac = cap > 0 ? used / cap : (spent == 0 ? 0.0 : used / spent);
+                  final color = cap <= 0
+                      ? K.muted
+                      : used > cap
+                          ? K.coral
+                          : (frac > pace + 0.1 ? K.gold : K.lime);
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Expanded(child: Text(Expense.labels[c] ?? c, style: K.body(13))),
+                        Text(
+                          cap > 0 ? '${euros(used)} / ${euros(cap)}' : euros(used),
+                          style: K.body(13, color: color, w: FontWeight.w800),
+                        ),
+                      ]),
+                      const SizedBox(height: 3),
+                      Bar(frac.clamp(0.0, 1.0), color: color, height: 5),
+                      if (cap > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            used > cap ? 'dépassé de ${euros(used - cap)}' : 'reste ${euros(cap - used)}',
+                            style: K.body(11, color: used > cap ? K.coral : K.dim),
+                          ),
+                        ),
+                    ],
+                  );
+                }),
+              ),
+            ),
+          if (env.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Touche une enveloppe pour changer son plafond. Jaune : elle part plus vite que le mois.',
+                style: K.body(11, color: K.dim),
+              ),
+            ),
         ],
       ),
     );

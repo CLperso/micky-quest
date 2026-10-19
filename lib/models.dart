@@ -744,6 +744,7 @@ class Settings {
   int lastSync;
   bool stylusOnly;
   double monthlyBudget;
+  Map<String, double> envelopes; // plafond mensuel par catégorie de dépense
   List<String> projects; // projets perso précisés dans les check-ins (« ces apps »…)
   List<String> books; // pile de philo : « Titre|pages »
   String goodDaysLetter;
@@ -773,6 +774,7 @@ class Settings {
     this.lastSync = 0,
     this.stylusOnly = true,
     this.monthlyBudget = 0,
+    Map<String, double>? envelopes,
     List<String>? projects,
     List<String>? books,
     this.goodDaysLetter = '',
@@ -782,7 +784,8 @@ class Settings {
     this.calendarId = '',
     this.calendarName = '',
     this.calendarRead = true,
-  })  : projects = projects ?? [],
+  })  : envelopes = envelopes ?? {},
+        projects = projects ?? [],
         books = books ?? [],
         contacts = contacts ?? [],
         library = library ?? [],
@@ -807,6 +810,9 @@ class Settings {
         lastSync: _i(j['lastSync']),
         stylusOnly: j['stylusOnly'] != false,
         monthlyBudget: (j['budget'] as num?)?.toDouble() ?? 0,
+        envelopes: {
+          for (final e in ((j['env'] as Map?) ?? {}).entries) e.key.toString(): (e.value as num?)?.toDouble() ?? 0,
+        },
         projects: ((j['projects'] as List?) ?? []).map((e) => e.toString()).toList(),
         books: ((j['books'] as List?) ?? []).map((e) => e.toString()).toList(),
         goodDaysLetter: _s(j['letter']),
@@ -837,6 +843,7 @@ class Settings {
         'lastSync': lastSync,
         'stylusOnly': stylusOnly,
         'budget': monthlyBudget,
+        'env': envelopes,
         'projects': projects,
         'books': books,
         'letter': goodDaysLetter,
@@ -1152,16 +1159,39 @@ class Expense {
   Expense({String? id, required this.ts, required this.amount, this.why = '', this.category = 'autre', this.removed = false, this.mod = 0})
       : id = id ?? newId();
 
-  static const categories = ['courses', 'resto', 'transport', 'loisirs', 'santé', 'maison', 'vêtements', 'autre'];
+  static const categories = [
+    'courses', 'livraison', 'resto', 'shopping', 'vêtements', 'tabac',
+    'transport', 'voyages', 'santé', 'loisirs', 'maison', 'autre',
+  ];
   static const labels = {
-    'courses': 'Courses',
-    'resto': 'Resto, café',
-    'transport': 'Transport',
-    'loisirs': 'Loisirs',
-    'santé': 'Santé',
+    'courses': 'Courses, boissons',
+    'livraison': 'Livraison (Uber Eats)',
+    'resto': 'Resto, café, boulangerie',
+    'shopping': 'Amazon, shopping',
+    'vêtements': 'Vêtements, beauté',
+    'tabac': 'Tabac',
+    'transport': 'Transport (Uber, tickets)',
+    'voyages': 'Voyages, trains, avion',
+    'santé': 'Santé, véto',
+    'loisirs': 'Loisirs, abonnements',
     'maison': 'Maison',
-    'vêtements': 'Vêtements, soin',
     'autre': 'Autre',
+  };
+
+  /// Plan budget d'octobre 2026 : plafonds mensuels par enveloppe (~1 200 €).
+  static const plan = <String, double>{
+    'courses': 400,
+    'livraison': 90,
+    'resto': 60,
+    'shopping': 110,
+    'vêtements': 50,
+    'tabac': 100,
+    'transport': 60,
+    'voyages': 70,
+    'santé': 150,
+    'loisirs': 40,
+    'maison': 30,
+    'autre': 40,
   };
 
   factory Expense.fromJson(Map<String, dynamic> j) => Expense(

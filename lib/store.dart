@@ -2380,6 +2380,28 @@ class AppStore extends ChangeNotifier {
     await commit();
   }
 
+  /// Plafond mensuel d'une enveloppe (0 = pas d'enveloppe).
+  double envelopeFor(String cat) => settings.envelopes[cat] ?? 0;
+
+  /// Reste dans l'enveloppe ce mois-ci.
+  double envelopeLeft(String cat, [DateTime? d]) => envelopeFor(cat) - (spentByCategory(d ?? DateTime.now())[cat] ?? 0);
+
+  Future<void> setEnvelope(String cat, double v) async {
+    if (v <= 0) {
+      settings.envelopes.remove(cat);
+    } else {
+      settings.envelopes[cat] = v;
+    }
+    await commit();
+  }
+
+  /// Applique le plan : enveloppes par catégorie et budget du mois = leur somme.
+  Future<void> applyBudgetPlan() async {
+    settings.envelopes = Map<String, double>.from(Expense.plan);
+    settings.monthlyBudget = Expense.plan.values.fold(0.0, (a, v) => a + v);
+    await commit();
+  }
+
   Future<void> addExpense(Expense e) async {
     expenses.add(e);
     await commit();
