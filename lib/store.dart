@@ -998,6 +998,7 @@ class AppStore extends ChangeNotifier {
       ('2026-10-20', 4, 'diapos EMA + précharge'),
       ('2026-10-20', 5, 'kappa + 4 BES'),
       ('2026-10-20', 6, 'Message CER (5 min)'),
+      ('2026-10-20', 7, 'OSF QALEM'),
       ('2026-10-21', 0, 'Relances (auteurs + Sabrina)'),
       ('2026-10-21', 1, 'inventaire des jeux de la méta'),
       ('2026-10-21', 2, '209 décisions (7 attributs) + 30 RES'),

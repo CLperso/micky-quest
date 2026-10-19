@@ -247,6 +247,39 @@ class _EveningScreenState extends State<EveningScreen> {
             const SizedBox(height: 12),
             _GainsRecap(day: day),
             const SizedBox(height: 12),
+            Builder(builder: (context) {
+              final wins = store.tasks.where((t) => t.done && t.doneAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(t.doneAt)) == day).toList()
+                ..sort((a, b) => a.doneAt.compareTo(b.doneAt));
+              final sess = store.sessionsOn(day).where((x) => !x.running && x.actualMin >= 10).toList();
+              return Panel(
+                border: K.lime,
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    const Icon(Icons.emoji_events_rounded, color: K.lime),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text('Tes victoires du jour', style: K.display(16))),
+                    Text('${wins.length} faite${wins.length > 1 ? 's' : ''}', style: K.body(12, color: K.lime, w: FontWeight.w900)),
+                  ]),
+                  const SizedBox(height: 6),
+                  if (wins.isEmpty && sess.isEmpty) Text('Pas de tâche cochée aujourd\'hui. Te lever, tenir, revenir : ça compte aussi.', style: K.body(13, color: K.muted)),
+                  for (final t in wins)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(children: [
+                        Icon(Icons.check_circle_rounded, size: 16, color: t.category == 'perso' ? K.pink : K.lime),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(t.title, style: K.body(13))),
+                        Text(hm(DateTime.fromMillisecondsSinceEpoch(t.doneAt)), style: K.body(11, color: K.dim)),
+                      ]),
+                    ),
+                  if (sess.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text('${sess.length} session${sess.length > 1 ? 's' : ''} · ${sess.fold(0.0, (a, x) => a + x.actualMin).round()} min de concentration', style: K.body(12, color: K.muted)),
+                  ],
+                ]),
+              );
+            }),
+            const SizedBox(height: 12),
             SelfCompareCard(day: day),
             const SizedBox(height: 12),
             ProblemsFireCard(day: day),

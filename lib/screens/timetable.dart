@@ -714,6 +714,13 @@ class _PlanningViewState extends State<PlanningView> {
             ],
           ),
         ),
+        if (t != null && !t.done && t.plannedAt > 0)
+          IconButton(
+            tooltip: 'Déplacer',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => openScreen(context, PlanningScreen(day: _key, place: t)),
+            icon: const Icon(Icons.open_with_rounded, color: K.muted, size: 20),
+          ),
         if (t != null && !t.done)
           InkWell(
             borderRadius: BorderRadius.circular(999),

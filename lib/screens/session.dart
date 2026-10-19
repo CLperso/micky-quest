@@ -25,6 +25,8 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
   String? _taskId;
   final _free = TextEditingController();
   final _target = TextEditingController();
+  late bool _locked = widget.preselect != null; // lancée depuis une tâche : on ne redemande pas « sur quoi »
+  final Map<String, int> _subMin = {};
   int _min = 25;
   String _cat = '';
   bool _silent = true;
@@ -80,6 +82,58 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
             children: [
               Text('Nouvelle session', style: K.display(22)),
               const SizedBox(height: 4),
+              if (_locked && _taskId != null && store.taskById(_taskId!) != null) ...[
+                Builder(builder: (context) {
+                  final t = store.taskById(_taskId!)!;
+                  final prefix = '${t.title} › ';
+                  final subs = store.openTasks.where((x) => x.title.startsWith(prefix)).toList();
+                  for (final x in subs) {
+                    _subMin.putIfAbsent(x.id, () => x.estimateMin);
+                  }
+                  int sum() => subs.fold(0, (a, x) => a + (_subMin[x.id] ?? 0));
+                  return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Panel(
+                      border: t.category == 'perso' ? K.pink : K.lime,
+                      child: Row(children: [
+                        Expanded(child: Text(t.title, style: K.body(16, w: FontWeight.w800))),
+                        TextButton(onPressed: () => setState(() => _locked = false), child: Text('changer', style: K.body(12, color: K.muted))),
+                      ]),
+                    ),
+                    if (subs.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text('Tes sous-étapes · un temps pour chacune (facultatif)', style: K.body(13, color: K.muted)),
+                      const SizedBox(height: 4),
+                      for (final x in subs)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Row(children: [
+                            const Icon(Icons.subdirectory_arrow_right_rounded, size: 16, color: K.muted),
+                            const SizedBox(width: 6),
+                            Expanded(child: Text(x.title.substring(prefix.length), style: K.body(14))),
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () => setState(() {
+                                _subMin[x.id] = max(0, (_subMin[x.id] ?? 0) - 5);
+                                if (sum() > 0) _min = sum();
+                              }),
+                              icon: const Icon(Icons.remove_rounded, color: K.muted, size: 18),
+                            ),
+                            SizedBox(width: 44, child: Text((_subMin[x.id] ?? 0) == 0 ? '—' : '${_subMin[x.id]} min', textAlign: TextAlign.center, style: K.body(12, w: FontWeight.w800))),
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () => setState(() {
+                                _subMin[x.id] = (_subMin[x.id] ?? 0) + 5;
+                                _min = sum();
+                              }),
+                              icon: const Icon(Icons.add_rounded, color: K.cyan, size: 18),
+                            ),
+                          ]),
+                        ),
+                      if (sum() > 0) Text('Total des sous-étapes : ${sum()} min · c\'est ton pari, tu peux le changer en dessous.', style: K.body(12, color: K.muted)),
+                    ],
+                  ]);
+                }),
+              ] else ...[
               Text('Sur quoi tu pars ?', style: K.body(14, color: K.muted)),
               const SizedBox(height: 8),
               if (store.switchingToday.length >= 3) ...[
@@ -147,6 +201,7 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
                     ),
                 ],
               ),
+              ],
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -275,6 +330,10 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
                     : () async {
                         final id = _taskId ?? '';
                         final title = id.isEmpty ? _free.text.trim() : (store.taskById(id)?.title ?? '');
+                        for (final e in _subMin.entries) {
+                          final x = store.taskById(e.key);
+                          if (x != null && e.value > 0) x.estimateMin = e.value;
+                        }
                         await store.startSession(id, title, _min, category: _cat, silent: _silent, stim: _stim, target: _target.text.trim());
                         if (context.mounted) Navigator.pop(context, true);
                       },
