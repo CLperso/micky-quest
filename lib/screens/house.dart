@@ -611,6 +611,18 @@ class _HouseScreenState extends State<HouseScreen> {
         ),
       );
 
+  static const _scale = {
+    'lit': 1.0,
+    'canape': 1.0,
+    'arbre': 1.0,
+    'chateau': 0.9,
+    'aquarium': 0.75,
+    'panier': 0.75,
+    'disco': 0.6,
+    'lampe': 0.6,
+    'lampe_etoile': 0.45,
+  };
+
   /// [at] = sommet arrière de la case. Les objets au sol posent leur bas sur la pointe avant de la case.
   Widget _objectAt(GameObject o, Offset at) {
     if (o.wall) {
@@ -631,7 +643,9 @@ class _HouseScreenState extends State<HouseScreen> {
         child: IgnorePointer(child: Image.asset(o.asset, fit: BoxFit.fill)),
       );
     }
-    const w = cw + 6, h = 86.0;
+    // taille relative au lit (1.0) : une lampe ou une étoile restent petites
+    final k = _scale[o.id] ?? 0.85;
+    final w = (cw + 6) * k, h = 86.0 * k;
     return Positioned(
       left: at.dx - w / 2,
       top: at.dy + ch - 3 - h,
