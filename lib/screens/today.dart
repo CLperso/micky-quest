@@ -158,13 +158,82 @@ class TodayScreen extends StatelessWidget {
   }
 }
 
-class _QuestBlock extends StatelessWidget {
+class _QuestBlock extends StatefulWidget {
   final String cat, tag, goal;
   final Color color;
   const _QuestBlock({required this.cat, required this.tag, required this.goal, required this.color});
 
   @override
+  State<_QuestBlock> createState() => _QuestBlockState();
+}
+
+class _QuestBlockState extends State<_QuestBlock> {
+  bool _open = false;
+
+  Widget _stones(List<Task> steps, int cur, Color color) {
+    final n = steps.length;
+    return SizedBox(
+      height: 58,
+      child: LayoutBuilder(builder: (context, c) {
+        const flag = 26.0, gap = 8.0;
+        final w = (c.maxWidth - flag - gap * n) / n;
+        final children = <Widget>[];
+        for (var i = 0; i < n; i++) {
+          final x = i * (w + gap);
+          final done = i < cur || steps[i].done;
+          final here = i == cur;
+          if (i < n) {
+            children.add(Positioned(
+              left: x + w,
+              top: 44,
+              width: gap,
+              height: 3,
+              child: Container(color: done ? color : K.line),
+            ));
+          }
+          children.add(Positioned(
+            left: x,
+            top: 37,
+            width: w,
+            height: 17,
+            child: GestureDetector(
+              onTap: () => showTaskPanel(context, steps[i]),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: done ? color : (here ? K.bg : K.raised),
+                  borderRadius: BorderRadius.circular(20),
+                  border: here ? Border.all(color: color, width: 3) : null,
+                ),
+              ),
+            ),
+          ));
+        }
+        // Micky sur l'étape en cours (ou au drapeau si tout est fait)
+        final mx = cur >= n ? c.maxWidth - flag / 2 - 15 : cur * (w + gap) + w / 2 - 15;
+        children.add(AnimatedPositioned(
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeOutBack,
+          left: mx,
+          top: 0,
+          child: Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: color, width: 2),
+              image: DecorationImage(image: AssetImage(K.micky['face']!), fit: BoxFit.cover),
+            ),
+          ),
+        ));
+        children.add(Positioned(right: 0, top: 30, child: Text('🏁', style: TextStyle(fontSize: 20, color: cur >= n ? color : null))));
+        return Stack(clipBehavior: Clip.none, children: children);
+      }),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final cat = widget.cat, goal = widget.goal, color = widget.color;
     final store = AppScope.of(context);
     final steps = store.questSteps(cat);
     final done = steps.where((s) => s.done).length;
@@ -174,65 +243,109 @@ class _QuestBlock extends StatelessWidget {
     final goalMin = cat == 'pro' ? store.today.proGoalMin : 0;
     final proTotal = cat == 'pro' ? store.proMinutesOn(store.todayKey).round() : 0;
     final closed = store.xpEvents.any((e) => e.reason == 'Quête ${cat == 'pro' ? 'pro' : 'perso'} close' && dayKey(DateTime.fromMillisecondsSinceEpoch(e.ts)) == store.todayKey);
-    return Panel(
-      border: complete ? color : null,
+    var cur = steps.indexWhere((s) => !s.done);
+    if (cur < 0) cur = steps.length;
+    final current = cur < steps.length ? steps[cur] : null;
+    final next = cur + 1 < steps.length ? steps.skip(cur + 1).firstWhere((s) => !s.done, orElse: () => steps[cur + 1]) : null;
+    final meter = cat == 'pro' && (proTotal > 0 || goalMin > 0)
+        ? (goalMin > 0 ? '${fmtH(proTotal)} / ${fmtH(goalMin)}' : fmtH(proTotal))
+        : (minutes > 0 ? fmtH(minutes) : (steps.isEmpty ? '' : '$done / ${steps.length}'));
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: K.card,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: complete ? color : color.withValues(alpha: 0.35), width: 2),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            Pill(tag, color: K.bg, fill: color),
-            const SizedBox(width: 8),
-            Expanded(child: Text(steps.isEmpty ? '' : '$done / ${steps.length} étapes', style: K.body(12, color: K.muted))),
-            if (cat == 'pro' && (proTotal > 0 || goalMin > 0))
-              Pill(goalMin > 0 ? '${fmtH(proTotal)} / ${fmtH(goalMin)}' : fmtH(proTotal), color: proTotal >= goalMin && goalMin > 0 ? K.gold : color)
-            else if (minutes > 0)
-              Pill(fmtH(minutes), color: color),
-          ]),
-          const SizedBox(height: 6),
-          InkWell(
-            borderRadius: BorderRadius.circular(8),
-            onTap: () async {
-              final v = await askText(context, cat == 'pro' ? 'Ta quête pro aujourd\'hui' : 'Ta quête perso aujourd\'hui',
-                  hint: cat == 'pro' ? 'finir la section méthode' : 'ranger la chambre', initial: goal);
-              if (v == null) return;
-              await store.setQuestTitle(cat, v);
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Row(children: [
-                Expanded(
-                  child: Text(goal.isEmpty ? 'Touche pour nommer ta quête ${cat == 'pro' ? 'pro' : 'perso'}…' : goal,
-                      style: K.body(17, w: FontWeight.w800, color: goal.isEmpty ? K.dim : K.ink)),
-                ),
-                const Icon(Icons.edit_rounded, color: K.muted, size: 16),
-              ]),
-            ),
-          ),
-          if (steps.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Bar(done / steps.length, color: color),
-            const SizedBox(height: 6),
-            ReorderableListView(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              buildDefaultDragHandles: false,
-              onReorder: (a, b) => store.reorderSteps(cat, a, b > a ? b - 1 : b),
-              children: [
-                for (var i = 0; i < steps.length; i++)
-                  ReorderableDelayedDragStartListener(
-                    key: ValueKey(steps[i].id),
-                    index: i,
-                    child: TaskRow(task: steps[i], color: color, quest: cat),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () async {
+                  final v = await askText(context, cat == 'pro' ? 'Ta quête pro aujourd\'hui' : 'Ta quête perso aujourd\'hui',
+                      hint: cat == 'pro' ? 'finir la section méthode' : 'ranger la chambre', initial: goal);
+                  if (v == null) return;
+                  await store.setQuestTitle(cat, v);
+                },
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(
+                    steps.isEmpty ? 'QUÊTE ${widget.tag}' : (complete ? 'QUÊTE ${widget.tag} · TOUT EST FAIT' : 'QUÊTE ${widget.tag} · ÉTAPE ${cur + 1} / ${steps.length}'),
+                    style: K.body(10, color: color, w: FontWeight.w900),
                   ),
-              ],
+                  Text(goal.isEmpty ? 'Touche pour nommer ta quête…' : goal, style: K.display(18, color: goal.isEmpty ? K.dim : K.ink)),
+                ]),
+              ),
             ),
+            if (meter.isNotEmpty) Text(meter, style: K.body(12, color: proTotal >= goalMin && goalMin > 0 ? K.gold : K.muted, w: FontWeight.w800)),
+          ]),
+          if (steps.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            _stones(steps, cur, color),
+            const SizedBox(height: 6),
+            if (current != null)
+              Container(
+                padding: const EdgeInsets.fromLTRB(4, 4, 6, 4),
+                decoration: BoxDecoration(color: K.bg, borderRadius: BorderRadius.circular(14)),
+                child: Row(children: [
+                  CheckCircle(task: current, color: color),
+                  Expanded(
+                    child: InkWell(
+                      onTap: () => showTaskPanel(context, current),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text('${current.title}${current.estimateMin > 0 ? ' · ${fmtH(current.estimateMin)}' : ''}', style: K.body(14, w: FontWeight.w800)),
+                          if (next != null) Text('ensuite : ${next.title}', style: K.body(11, color: K.dim)),
+                        ]),
+                      ),
+                    ),
+                  ),
+                  Material(
+                    color: color,
+                    borderRadius: BorderRadius.circular(12),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () => launchTask(context, current),
+                      child: const SizedBox(width: 44, height: 40, child: Icon(Icons.play_arrow_rounded, color: K.bg)),
+                    ),
+                  ),
+                ]),
+              )
+            else
+              Text(closed ? 'Quête close. Micky ronronne.' : 'Toutes les étapes sont faites : tu peux clore la quête.', style: K.body(13, color: color, w: FontWeight.w800)),
+            if (_open) ...[
+              const SizedBox(height: 8),
+              ReorderableListView(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                buildDefaultDragHandles: false,
+                onReorder: (a, b) => store.reorderSteps(cat, a, b > a ? b - 1 : b),
+                children: [
+                  for (var i = 0; i < steps.length; i++)
+                    ReorderableDelayedDragStartListener(
+                      key: ValueKey(steps[i].id),
+                      index: i,
+                      child: TaskRow(task: steps[i], color: color, quest: cat),
+                    ),
+                ],
+              ),
+              Text('Appui long pour changer l\'ordre.', style: K.body(11, color: K.dim)),
+            ],
           ],
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Row(children: [
+            if (steps.isNotEmpty)
+              TextButton(
+                onPressed: () => setState(() => _open = !_open),
+                child: Text(_open ? 'Replier' : 'Toutes les étapes (${steps.length})', style: K.body(13, color: K.muted)),
+              ),
             TextButton.icon(
               onPressed: () => addStepSheet(context, cat),
               icon: Icon(Icons.add_rounded, color: color, size: 18),
-              label: Text('Ajouter une étape', style: K.body(13, color: color)),
+              label: Text('Étape', style: K.body(13, color: color)),
             ),
             const Spacer(),
             if (complete && !closed)
@@ -244,9 +357,9 @@ class _QuestBlock extends StatelessWidget {
                   }
                 },
                 icon: Icon(Icons.flag_rounded, color: color, size: 18),
-                label: Text('Clore la quête', style: K.body(13, color: color, w: FontWeight.w800)),
+                label: Text('Clore', style: K.body(13, color: color, w: FontWeight.w800)),
               ),
-            if (closed) Pill('QUÊTE CLOSE', color: color),
+            if (closed) Pill('CLOSE', color: color),
           ]),
         ],
       ),
@@ -484,11 +597,21 @@ class QuestsTab extends StatefulWidget {
 
 class _QuestsTabState extends State<QuestsTab> {
   int? _mode; // 0 = Trier, 1 = Aujourd'hui
+  int _lastToSort = -1;
 
   @override
   Widget build(BuildContext context) {
     final store = AppScope.of(context);
     final toSort = store.tasksIn(Quad.inbox).length;
+    // le bandeau « à trier » vient de se vider : on passe à Aujourd'hui
+    if (_lastToSort > 0 && toSort == 0 && (_mode ?? 0) == 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => _mode = 1);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tout est trié · place à Aujourd\'hui')));
+      });
+    }
+    _lastToSort = toSort;
     final mode = _mode ?? (toSort > 0 ? 0 : 1);
     return Column(
       children: [

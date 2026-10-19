@@ -84,44 +84,38 @@ class _MatrixScreenState extends State<MatrixScreen> {
           const SizedBox(height: 8),
           _target(
             Quad.inbox,
-            ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 64, maxHeight: 150),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(10),
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _header(Quad.inbox, '${Quad.titles[Quad.inbox]!.toUpperCase()} · ${inbox.length}', K.muted),
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [for (final t in inbox) _chip(t, Quad.inbox)],
-                      ),
-                    ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(inbox.isEmpty ? 'RIEN À TRIER ✓' : 'À TRIER · ${inbox.length} · GLISSE DANS UNE CASE',
+                    style: K.body(11, color: inbox.isEmpty ? K.lime : K.cyan, w: FontWeight.w900)),
+                if (inbox.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  SizedBox(
+                    height: 46,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: inbox.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 6),
+                      itemBuilder: (_, i) => Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 220), child: _chip(inbox[i], Quad.inbox))),
+                    ),
                   ),
-                ),
-              ),
+                ],
+              ]),
             ),
           ),
           const SizedBox(height: 8),
-          Row(children: [
-            const SizedBox(width: 22),
-            Expanded(child: Center(child: Text('URGENT', style: K.body(11, color: K.muted, w: FontWeight.w900)))),
-            Expanded(child: Center(child: Text('PAS URGENT', style: K.body(11, color: K.muted, w: FontWeight.w900)))),
-          ]),
-          const SizedBox(height: 4),
           Expanded(
             child: Column(
               children: [
-                Expanded(child: _row('IMPORTANT', Quad.doNow, Quad.plan)),
-                const SizedBox(height: 6),
-                Expanded(child: _row('PAS IMPORTANT', Quad.light, Quad.drop)),
+                Expanded(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Expanded(child: _quad(Quad.doNow)), const SizedBox(width: 8), Expanded(child: _quad(Quad.plan))])),
+                const SizedBox(height: 8),
+                Expanded(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Expanded(child: _quad(Quad.light)), const SizedBox(width: 8), Expanded(child: _quad(Quad.drop))])),
               ],
             ),
           ),
+          const SizedBox(height: 6),
+          Text('Point vert = pro · rose = perso · ☀ = déjà dans Aujourd\'hui', style: K.body(11, color: K.dim)),
         ],
       ),
     );
@@ -132,24 +126,6 @@ class _MatrixScreenState extends State<MatrixScreen> {
       body: SafeArea(top: false, child: content),
     );
   }
-
-  Widget _row(String label, String a, String b) => Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            width: 22,
-            child: Center(
-              child: RotatedBox(
-                quarterTurns: 3,
-                child: Text(label, style: K.body(11, color: K.muted, w: FontWeight.w900)),
-              ),
-            ),
-          ),
-          Expanded(child: _quad(a)),
-          const SizedBox(width: 6),
-          Expanded(child: _quad(b)),
-        ],
-      );
 
   Widget _quad(String q) {
     final store = AppScope.of(context);
@@ -179,7 +155,13 @@ class _MatrixScreenState extends State<MatrixScreen> {
     );
   }
 
+  static const _icons = {Quad.doNow: '⚡', Quad.plan: '📅', Quad.light: '🤝', Quad.drop: '🌙', Quad.inbox: ''};
+
   Widget _header(String q, String title, Color c) => Row(children: [
+        if ((_icons[q] ?? '').isNotEmpty) ...[
+          Text(_icons[q]!, style: const TextStyle(fontSize: 15)),
+          const SizedBox(width: 4),
+        ],
         Expanded(
           child: InkWell(
             onTap: _selected == null ? null : () => _move(_selected!, q),
@@ -234,9 +216,9 @@ class _MatrixScreenState extends State<MatrixScreen> {
             constraints: const BoxConstraints(minHeight: 40),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: sel ? c : K.raised,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: dragging ? K.ink : c, width: 2),
+              color: sel ? c : K.bg,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: dragging ? K.ink : (q == Quad.inbox ? K.cyan : Colors.transparent), width: 2),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -250,17 +232,13 @@ class _MatrixScreenState extends State<MatrixScreen> {
                   const SizedBox(width: 3),
                 ],
                 if (t.category.isNotEmpty) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                    decoration: BoxDecoration(color: t.category == 'pro' ? K.lime : K.pink, borderRadius: BorderRadius.circular(6)),
-                    child: Text(t.category == 'pro' ? 'PRO' : 'PERSO', style: K.body(9, color: K.bg, w: FontWeight.w900)),
-                  ),
-                  const SizedBox(width: 4),
+                  Container(width: 8, height: 8, decoration: BoxDecoration(color: t.category == 'pro' ? K.lime : K.pink, shape: BoxShape.circle)),
+                  const SizedBox(width: 6),
                 ],
                 Flexible(
                   child: Text(quest.isNotEmpty ? '$quest / ${t.title}' : t.title,
                       style: K.body(12, color: sel ? K.bg : K.ink, w: FontWeight.w800),
-                      maxLines: 3,
+                      maxLines: q == Quad.inbox ? 1 : 3,
                       overflow: TextOverflow.ellipsis),
                 ),
                 if (t.deferred) ...[
