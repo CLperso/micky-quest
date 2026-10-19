@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'calendar.dart';
 import 'crash.dart';
 import 'notifications.dart';
+import 'screens/next_sheet.dart';
 import 'screens/briefing.dart';
 import 'screens/checkin.dart';
 import 'screens/discoveries.dart';
@@ -87,7 +88,7 @@ Future<void> askNext(BuildContext context, String message) async {
   final store = AppScope.read(context);
   store.skipCheckins();
   await rescheduleAll(store);
-  if (context.mounted) await openScreen(context, CheckinScreen(nextAfter: message));
+  if (context.mounted) await showNextSheet(context, message);
 }
 
 /// Lance le choix de la tâche et du pari, puis la session.

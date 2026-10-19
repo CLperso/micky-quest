@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../main.dart';
 import '../models.dart';
+import '../notifications.dart' show rescheduleAll;
 import '../theme.dart';
 import 'dump.dart';
 import 'house.dart';
@@ -358,7 +359,7 @@ class _SessionScreenState extends State<SessionScreen> {
     }
     final t = store.taskById(s.taskId);
     final elapsed = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(s.start));
-    final frac = elapsed.inSeconds / (s.predictedMin * 60);
+    final frac = elapsed.inSeconds / ((s.predictedMin + s.extraMin) * 60);
     final over = frac > 1;
     final mm = elapsed.inMinutes.toString().padLeft(2, '0');
     final ss = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
@@ -412,6 +413,12 @@ class _SessionScreenState extends State<SessionScreen> {
                 ),
               ),
               const SizedBox(height: 24),
+              Row(children: [
+                Expanded(child: SecondaryButton(label: '+ du temps', onPressed: () => extendSheet(context, s))),
+                const SizedBox(width: 8),
+                Expanded(child: SecondaryButton(label: '+ sous-étape', onPressed: () => extendSheet(context, s, sub: true))),
+              ]),
+              const SizedBox(height: 10),
               PrimaryButton(label: 'Terminé', color: K.pink, onPressed: () => _end(true)),
               const SizedBox(height: 10),
               SecondaryButton(label: 'Arrêter sans finir', onPressed: () => _end(false)),
@@ -454,7 +461,7 @@ class _SessionScreenState extends State<SessionScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text('$mm:$ss', style: K.display(52, w: FontWeight.w700)),
-                        Text('ton pari : ${s.predictedMin} min', style: K.body(14, color: K.muted)),
+                        Text(s.extraMin > 0 ? 'pari ${s.predictedMin} min · +${s.extraMin}' : 'ton pari : ${s.predictedMin} min', style: K.body(14, color: K.muted)),
                       ],
                     ),
                   ),
@@ -509,6 +516,12 @@ class _SessionScreenState extends State<SessionScreen> {
               ),
             ],
             const SizedBox(height: 24),
+            Row(children: [
+              Expanded(child: SecondaryButton(label: '+ du temps', onPressed: () => extendSheet(context, s))),
+              const SizedBox(width: 10),
+              Expanded(child: SecondaryButton(label: '+ sous-étape', onPressed: () => extendSheet(context, s, sub: true))),
+            ]),
+            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(child: SecondaryButton(label: 'J\'ai décroché', onPressed: () => _end(false))),
@@ -556,4 +569,102 @@ class _Ring extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _Ring old) => old.value != value || old.color != color || old.overflow != overflow;
+}
+
+/// Pendant une session : ajouter du temps (et dire pourquoi), ajouter une sous-étape.
+Future<void> extendSheet(BuildContext context, SessionRec s, {bool sub = false}) async {
+  final store = AppScope.read(context);
+  var minutes = sub ? 0 : 10;
+  var why = sub ? 'une sous-tâche en plus' : '';
+  var asStep = sub;
+  final title = TextEditingController();
+  const whys = ['plus compliqué que prévu', 'une sous-tâche en plus', 'j\'ai été interrompue', 'je me suis dispersée', 'ça avance bien, je continue'];
+  final ok = await showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(sub ? 'Une sous-étape' : 'Un peu plus de temps', style: K.display(20)),
+              const SizedBox(height: 4),
+              Text('Ton pari de départ ne change pas : on voit juste ce qui s\'est ajouté.', style: K.body(12, color: K.muted)),
+              const SizedBox(height: 12),
+              Text(sub ? 'Combien de temps pour elle ? (facultatif)' : 'Combien ?', style: K.body(13, w: FontWeight.w800)),
+              const SizedBox(height: 6),
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                for (final m in [if (sub) 0, 5, 10, 15, 30, 45])
+                  ChoiceChip(
+                    label: Text(m == 0 ? 'aucun' : '+$m min'),
+                    selected: minutes == m,
+                    onSelected: (_) => setState(() => minutes = m),
+                    selectedColor: K.cyan,
+                    labelStyle: K.body(13, color: minutes == m ? K.bg : K.ink, w: FontWeight.w800),
+                    backgroundColor: K.raised,
+                    side: BorderSide.none,
+                    showCheckmark: false,
+                  ),
+              ]),
+              if (!sub) ...[
+                const SizedBox(height: 12),
+                Text('Parce que…', style: K.body(13, w: FontWeight.w800)),
+                const SizedBox(height: 6),
+                Wrap(spacing: 6, runSpacing: 6, children: [
+                  for (final w in whys)
+                    ChoiceChip(
+                      label: Text(w),
+                      selected: why == w,
+                      onSelected: (_) => setState(() {
+                        why = why == w ? '' : w;
+                        if (why == 'une sous-tâche en plus') asStep = true;
+                      }),
+                      selectedColor: K.gold,
+                      labelStyle: K.body(12, color: why == w ? K.bg : K.ink, w: FontWeight.w800),
+                      backgroundColor: K.raised,
+                      side: BorderSide.none,
+                      showCheckmark: false,
+                    ),
+                ]),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text('En faire une sous-étape', style: K.body(14)),
+                  subtitle: Text('Elle apparaît juste après l\'étape en cours.', style: K.body(11, color: K.muted)),
+                  value: asStep,
+                  onChanged: (v) => setState(() => asStep = v),
+                ),
+              ],
+              if (asStep) ...[
+                const SizedBox(height: 6),
+                TextField(
+                  controller: title,
+                  autofocus: sub,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(hintText: 'ex. : vérifier les références'),
+                ),
+              ],
+              const SizedBox(height: 14),
+              PrimaryButton(label: 'Ajouter', onPressed: () => Navigator.pop(ctx, true)),
+            ]),
+          ),
+        ),
+      ),
+    ),
+  );
+  if (ok != true) return;
+  final created = await store.extendSession(s, minutes, why, subStep: asStep ? title.text : '');
+  await rescheduleAll(store);
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    content: Text([
+      if (minutes > 0) '+$minutes min',
+      if (created != null) 'sous-étape « ${title.text.trim()} » ajoutée',
+    ].join(' · ').ifEmpty('Noté')),
+  ));
+}
+
+extension on String {
+  String ifEmpty(String other) => isEmpty ? other : this;
 }

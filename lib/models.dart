@@ -217,6 +217,8 @@ class SessionRec {
   int targetMet; // -1 = non dit, 0 non, 1 en partie, 2 oui
   String boosts; // relances « ça flotte » choisies, séparées par des virgules
   String stopWhy; // arrêtée pour un impératif pro (réunion…) : pas un décrochage
+  int extraMin; // minutes ajoutées en cours de session (le pari, lui, ne change pas)
+  String extWhy; // pourquoi : « plus compliqué que prévu », etc.
   int mod;
 
   static const attLabels = ['à fond', 'ça va', 'ça flotte', 'ailleurs'];
@@ -255,6 +257,8 @@ class SessionRec {
     this.targetMet = -1,
     this.boosts = '',
     this.stopWhy = '',
+    this.extraMin = 0,
+    this.extWhy = '',
     this.mod = 0,
   }) : id = id ?? newId();
 
@@ -301,6 +305,8 @@ class SessionRec {
         targetMet: _i(j['tMet'], -1),
         boosts: _s(j['boosts']),
         stopWhy: _s(j['stop']),
+        extraMin: _i(j['extra']),
+        extWhy: _s(j['extWhy']),
         mod: _i(j['mod']),
       );
 
@@ -329,6 +335,8 @@ class SessionRec {
         'tMet': targetMet,
         'boosts': boosts,
         'stop': stopWhy,
+        'extra': extraMin,
+        'extWhy': extWhy,
         'mod': mod,
       };
 }

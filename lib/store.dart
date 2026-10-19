@@ -2259,6 +2259,55 @@ class AppStore extends ChangeNotifier {
     await commit();
   }
 
+  /// Pendant une session : « il me faut X min de plus, parce que… », et éventuellement une sous-étape.
+  Future<Task?> extendSession(SessionRec s, int minutes, String why, {String subStep = ''}) async {
+    s.extraMin += minutes;
+    if (why.isNotEmpty) s.extWhy = s.extWhy.isEmpty ? why : '${s.extWhy} · $why';
+    Task? created;
+    if (subStep.trim().isNotEmpty) {
+      final parent = taskById(s.taskId);
+      if (parent != null && parent.inQuest && parent.category.isNotEmpty) {
+        created = await addTask(subStep.trim(), category: parent.category, estimate: minutes, inQuest: true);
+        final steps = questSteps(parent.category);
+        final from = steps.indexWhere((x) => x.id == created!.id);
+        final to = steps.indexWhere((x) => x.id == parent.id) + 1;
+        if (from >= 0 && to > 0 && from != to) await reorderSteps(parent.category, from, to);
+      } else {
+        final base = parent?.title ?? s.title;
+        created = await addTask('$base › ${subStep.trim()}', category: parent?.category ?? '', estimate: minutes, quad: Quad.doNow, inQuest: false);
+      }
+    }
+    await commit();
+    return created;
+  }
+
+  /// Faisait partie de la journée [day] (pour clore la journée le soir).
+  bool inDay(Task t, String day) =>
+      !t.done && !t.removed && t.day.compareTo(day) <= 0 &&
+      (t.inQuest || t.quad == Quad.doNow || t.deferred || t.isBoss ||
+          (t.plannedAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(t.plannedAt)) == day));
+
+  /// « Plus tard » : retour dans Planifier, hors de la journée.
+  Future<void> laterTask(Task t) async {
+    t.quad = Quad.plan;
+    t.inQuest = false;
+    t.deferred = false;
+    t.plannedAt = 0;
+    t.day = todayKey;
+    t.hiddenDay = todayKey;
+    await commit();
+    await _planChanged();
+  }
+
+  /// Ajoute une tâche pour demain (étape de quête si [category] et [inQuest]).
+  Future<Task> addTomorrow(String title, {String category = '', bool inQuest = false, int estimate = 0}) async {
+    final t = await addTask(title, category: category, estimate: estimate, quad: Quad.doNow, inQuest: inQuest);
+    t.day = tomorrowKey;
+    if (inQuest) t.order = tasks.where((x) => x.inQuest && x.category == category && x.day == tomorrowKey).length;
+    await commit();
+    return t;
+  }
+
   /// Session arrêtée pour un impératif pro (réunion, appel…) : le temps compte, ce n'est pas un décrochage.
   Future<void> stopForImperative(SessionRec s, String what) async {
     s.stopWhy = what;

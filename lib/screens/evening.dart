@@ -11,6 +11,7 @@ import 'habits.dart';
 import 'house.dart';
 import 'notebook.dart';
 import 'problems.dart';
+import 'tomorrow.dart';
 import 'reflect.dart';
 
 /// Onglet « Soir » : accès au feu de camp et aux replays.
@@ -141,6 +142,14 @@ class _EveningScreenState extends State<EveningScreen> {
   Future<void> _triage(Task t, String choice) async {
     final store = AppScope.read(context);
     switch (choice) {
+      case 'done':
+        await store.completeTask(t);
+        setState(() => _done[t.id] = 'Faite');
+        break;
+      case 'later':
+        await store.laterTask(t);
+        setState(() => _done[t.id] = 'Plus tard (Planifier)');
+        break;
       case 'tomorrow':
         await store.deferTask(t);
         setState(() => _done[t.id] = 'Reportée à demain');
@@ -184,7 +193,8 @@ class _EveningScreenState extends State<EveningScreen> {
     final sess = store.sessionsOn(day).where((s) => !s.running).toList();
     final bets = sess.where((s) => s.finished && s.predictedMin > 0).toList();
     final won = bets.where((s) => s.onTarget).length;
-    final pending = store.tasks.where((t) => t.day == day && !t.done && !t.removed && !_done.containsKey(t.id)).toList();
+    final pending = store.tasks.where((t) => store.inDay(t, day) && !_done.containsKey(t.id)).toList()
+      ..sort((a, b) => (a.inQuest ? 0 : 1).compareTo(b.inQuest ? 0 : 1));
     final handled = _done.entries.toList();
 
     return PopScope(
@@ -250,32 +260,51 @@ class _EveningScreenState extends State<EveningScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(children: [
-                    Text('Tâches pas faites', style: K.display(16)),
+                    Text('Clore la journée', style: K.display(16)),
                     const Spacer(),
                     Text(pending.isEmpty ? 'tout est rangé' : '${pending.length} à ranger', style: K.body(12, color: K.muted)),
                   ]),
+                  const SizedBox(height: 2),
+                  Text('Pour chaque chose prévue aujourd\'hui : faite, demain, plus tard ou on lâche.', style: K.body(12, color: K.muted)),
                   const SizedBox(height: 8),
                   for (final t in pending) ...[
                     Row(children: [
+                      Container(width: 8, height: 8, decoration: BoxDecoration(color: t.category == 'perso' ? K.pink : (t.category == 'pro' ? K.lime : K.gold), shape: BoxShape.circle)),
+                      const SizedBox(width: 8),
                       Expanded(child: Text(t.title, style: K.body(14, w: FontWeight.w800))),
-                      if (!store.reflections.any((r) => r.taskId == t.id && r.kind == 'pasfaite' && dayKey(DateTime.fromMillisecondsSinceEpoch(r.ts)) == day))
-                        TextButton(
-                          onPressed: () => openScreen(context, ReflectionScreen(kind: 'pasfaite', taskId: t.id, title: t.title)),
-                          child: const Text('Pourquoi ?'),
-                        )
-                      else
-                        const Icon(Icons.check_circle_rounded, color: K.coral, size: 20),
+                      PopupMenuButton<String>(
+                        color: K.card,
+                        icon: const Icon(Icons.more_horiz_rounded, color: K.muted),
+                        onSelected: (v) {
+                          if (v == 'agenda') _triage(t, 'agenda');
+                          if (v == 'why') openScreen(context, ReflectionScreen(kind: 'pasfaite', taskId: t.id, title: t.title));
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(value: 'agenda', child: Text('Un jour précis (agenda)')),
+                          PopupMenuItem(value: 'why', child: Text('Pourquoi pas faite ?')),
+                        ],
+                      ),
                     ]),
-                    const SizedBox(height: 6),
                     Row(children: [
-                      Expanded(child: _triageBtn('Demain', K.lime, () => _triage(t, 'tomorrow'))),
+                      Expanded(child: _triageBtn('✓ Faite', K.lime, () => _triage(t, 'done'))),
                       const SizedBox(width: 6),
-                      Expanded(child: _triageBtn('Agenda', K.cyan, () => _triage(t, 'agenda'))),
+                      Expanded(child: _triageBtn('Demain', K.cyan, () => _triage(t, 'tomorrow'))),
                       const SizedBox(width: 6),
-                      Expanded(child: _triageBtn('Effacer', K.dim, () => _triage(t, 'delete'))),
+                      Expanded(child: _triageBtn('Plus tard', K.gold, () => _triage(t, 'later'))),
+                      const SizedBox(width: 6),
+                      Expanded(child: _triageBtn('Lâcher', K.dim, () => _triage(t, 'delete'))),
                     ]),
                     const SizedBox(height: 12),
                   ],
+                  if (pending.length > 1)
+                    TextButton(
+                      onPressed: () async {
+                        for (final t in [...pending]) {
+                          await _triage(t, 'tomorrow');
+                        }
+                      },
+                      child: Text('Tout le reste à demain', style: K.body(13, color: K.cyan, w: FontWeight.w800)),
+                    ),
                   for (final e in handled)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 4),
@@ -283,6 +312,30 @@ class _EveningScreenState extends State<EveningScreen> {
                     ),
                   if (pending.isEmpty && handled.isEmpty) Text('Rien en suspens. Bravo !', style: K.body(13, color: K.muted)),
                 ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Material(
+              color: K.card,
+              borderRadius: BorderRadius.circular(18),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(18),
+                onTap: () => openScreen(context, const TomorrowScreen()),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: K.cyan, width: 2)),
+                  child: Row(children: [
+                    const Icon(Icons.wb_twilight_rounded, color: K.cyan),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('Préparer demain', style: K.display(16)),
+                        Text('quêtes, étapes et planning de demain', style: K.body(12, color: K.muted)),
+                      ]),
+                    ),
+                    const Icon(Icons.chevron_right_rounded, color: K.cyan),
+                  ]),
+                ),
               ),
             ),
             const SizedBox(height: 12),

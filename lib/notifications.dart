@@ -271,7 +271,7 @@ Future<void> rescheduleAll(AppStore store) async {
 
   // fin du pari
   if (run != null) {
-    final due = DateTime.fromMillisecondsSinceEpoch(run.start).add(Duration(minutes: run.predictedMin));
+    final due = DateTime.fromMillisecondsSinceEpoch(run.start).add(Duration(minutes: run.predictedMin + run.extraMin));
     if (due.isAfter(now)) {
       await _schedule(
         id: 30,

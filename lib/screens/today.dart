@@ -8,6 +8,7 @@ import 'boss.dart';
 import 'briefing.dart';
 import 'task_panel.dart';
 import 'timetable.dart';
+import 'tomorrow.dart';
 
 String fmtH(int m) => m >= 60 ? '${m ~/ 60} h${m % 60 == 0 ? '' : ' ${(m % 60).toString().padLeft(2, '0')}'}' : '$m min';
 
@@ -32,6 +33,7 @@ class TodayScreen extends StatelessWidget {
         if (!standalone)
           Row(children: [
             Expanded(child: Text('Aujourd\'hui', style: K.display(24))),
+            TextButton(onPressed: () => openScreen(context, const TomorrowScreen()), child: const Text('Demain ›')),
             TextButton(onPressed: () => openScreen(context, const BriefingScreen()), child: const Text('Briefing')),
           ]),
         if (!plan.briefingDone)
