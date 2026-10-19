@@ -145,6 +145,52 @@ class _CabinScreenState extends State<CabinScreen> {
 
   void _next() => setState(() => _step = min(5, _step + 1));
 
+  /// Revenir d'un cran : sous-écran d'abord (exercice, regard, tri), puis l'étape précédente.
+  /// Renvoie false s'il n'y a plus rien avant (on peut quitter la cabane).
+  bool _back() {
+    if (_step == 3) {
+      if (_angle != null) {
+        setState(() => _angle = null);
+        return true;
+      }
+      if (_for != null) {
+        setState(() => _for = null);
+        return true;
+      }
+      if (_triaged) {
+        setState(() {
+          // les problèmes déjà créés reviennent dans le tri, sans doublon
+          _cands
+            ..clear()
+            ..addAll([for (final p in _queue) (title: p.title, kind: p.kind, existing: p)]);
+          _queue.clear();
+          _triaged = false;
+        });
+        return true;
+      }
+    }
+    if (_step == 0 && _breath.isNotEmpty) {
+      setState(() => _breath = '');
+      return true;
+    }
+    if (_step > 0) {
+      setState(() => _step--);
+      return true;
+    }
+    return false;
+  }
+
+  void _goTo(int i) {
+    if (i >= _step) return;
+    setState(() {
+      _step = i;
+      if (i < 3) {
+        _angle = null;
+        _for = null;
+      }
+    });
+  }
+
   List<String> get _weightList => [
         for (final e in _weightsSel.entries)
           if (e.value.isEmpty) e.key else for (final s in e.value) '${e.key}:$s'
@@ -205,9 +251,20 @@ class _CabinScreenState extends State<CabinScreen> {
   @override
   Widget build(BuildContext context) {
     final store = AppScope.of(context);
-    return Scaffold(
+    return PopScope(
+      canPop: _step == 0 && _breath.isEmpty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _back();
+      },
+      child: Scaffold(
       backgroundColor: K.bg,
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () {
+            if (!_back()) Navigator.of(context).maybePop();
+          },
+        ),
         title: Text(_step == 0 ? 'La cabane de Micky' : _stepNames[_step]),
         actions: [
           if (_step < 5) TextButton(onPressed: _next, child: Text('passer ›', style: K.body(13, color: K.muted))),
@@ -240,13 +297,17 @@ class _CabinScreenState extends State<CabinScreen> {
                 child: Row(children: [
                   for (var i = 0; i < 6; i++)
                     Expanded(
-                      child: Padding(
-                        padding: EdgeInsets.only(right: i < 5 ? 4 : 0),
-                        child: Column(children: [
-                          Container(height: 4, decoration: BoxDecoration(color: i <= _step ? _lav : K.line, borderRadius: BorderRadius.circular(2))),
-                          const SizedBox(height: 3),
-                          Text(_stepNames[i], style: K.body(9, color: i == _step ? _lav : K.muted, w: FontWeight.w800)),
-                        ]),
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => _goTo(i),
+                        child: Padding(
+                          padding: EdgeInsets.only(right: i < 5 ? 4 : 0, top: 4, bottom: 4),
+                          child: Column(children: [
+                            Container(height: 4, decoration: BoxDecoration(color: i <= _step ? _lav : K.line, borderRadius: BorderRadius.circular(2))),
+                            const SizedBox(height: 3),
+                            Text(_stepNames[i], style: K.body(9, color: i == _step ? _lav : (i < _step ? K.ink : K.muted), w: FontWeight.w800)),
+                          ]),
+                        ),
                       ),
                     ),
                 ]),
@@ -256,6 +317,7 @@ class _CabinScreenState extends State<CabinScreen> {
           ),
         ),
       ),
+    ),
     );
   }
 
