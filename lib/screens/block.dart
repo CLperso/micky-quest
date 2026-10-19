@@ -2,12 +2,15 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:android_intent_plus/android_intent.dart';
 import 'package:flutter/services.dart';
 
 import '../main.dart';
 import '../models.dart';
+import '../store.dart';
 import '../theme.dart';
 import 'cabin.dart';
+import 'problems.dart' show ProblemScreen;
 import 'dump.dart';
 import 'reflect.dart';
 import 'session.dart';
@@ -75,37 +78,54 @@ class _BlockScreenState extends State<BlockScreen> {
               ),
             ),
 
-            if (t != null)
-              Panel(
-                border: K.cyan,
-                child: InkWell(
-                  onTap: () async {
-                    final first = await Navigator.of(context).push<Task?>(MaterialPageRoute(builder: (_) => DumpScreen(cut: t)));
-                    if (first != null && context.mounted) {
-                      Navigator.pop(context);
-                      final ctx = navKey.currentContext;
-                      if (ctx != null) launchTask(ctx, first);
-                    }
-                  },
-                  child: Row(children: [
-                    const Icon(Icons.content_cut_rounded, color: K.cyan),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text('Découper « ${t.title} » en petits morceaux', style: K.body(14, w: FontWeight.w800))),
-                  ]),
-                ),
-              )
-            else
-              Panel(
-                border: K.cyan,
-                child: InkWell(
-                  onTap: () => openScreen(context, const DumpScreen()),
-                  child: Row(children: [
-                    const Icon(Icons.psychology_alt_rounded, color: K.cyan),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text('Se ranger la tête : tout écrire, trier après', style: K.body(14, w: FontWeight.w800))),
-                  ]),
-                ),
-              ),
+            _big(
+              context,
+              Icons.content_cut_rounded,
+              t != null ? 'Découper « ${t.title} »' : 'Se ranger la tête',
+              t != null ? 'en petits morceaux, le premier se lance tout de suite' : 'tout écrire, trier après',
+              K.cyan,
+              () async {
+                if (t == null) {
+                  openScreen(context, const DumpScreen());
+                  return;
+                }
+                final first = await Navigator.of(context).push<Task?>(MaterialPageRoute(builder: (_) => DumpScreen(cut: t)));
+                if (first != null && context.mounted) {
+                  Navigator.pop(context);
+                  final ctx = navKey.currentContext;
+                  if (ctx != null) launchTask(ctx, first);
+                }
+              },
+            ),
+            _big(
+              context,
+              Icons.fitness_center_rounded,
+              'Relancer la machine · 5 min',
+              '40 s d\'effort, 20 s de pause : le corps d\'abord, la tête suit',
+              K.coral,
+              () => _run(context, const ExerciseTimer()),
+            ),
+            _big(
+              context,
+              Icons.extension_rounded,
+              'Définir le problème',
+              'le dire concrètement, puis résoudre ou traverser',
+              K.lime,
+              () async {
+                final v = await askText(context, 'Le problème, concrètement', hint: 'un fait, pas un jugement sur toi', initial: t == null ? '' : 'Je bloque sur « ${t.title} » parce que ');
+                if (v == null || v.trim().isEmpty || !context.mounted) return;
+                final p = await store.addProblem(v.trim());
+                if (context.mounted) openScreen(context, ProblemScreen(problem: p, guided: true));
+              },
+            ),
+            _big(
+              context,
+              Icons.forum_rounded,
+              'En parler à quelqu\'un, ou à l\'IA',
+              'dire le blocage à voix haute le rend plus petit',
+              const Color(0xFFB9A7FF),
+              () => _talk(context, store, t),
+            ),
             const SectionLabel('Jusqu\'où je PEUX aller ?'),
             Text(
               'Pas « ce que je devrais », mais le maximum honnête avant de décrocher. Plus efficace que « juste commence 5 minutes ».',
@@ -120,31 +140,7 @@ class _BlockScreenState extends State<BlockScreen> {
               Expanded(child: _goBtn(context, 'À fond', '60 min', 60)),
             ]),
 
-            const SectionLabel('Relancer la machine'),
-            _tool(
-              context,
-              Icons.fitness_center_rounded,
-              'Relancer la machine · 5 min',
-              '40 s d\'effort, 20 s de pause : squats, jumping jacks, montées de genoux…',
-              K.coral,
-              () => _run(context, const ExerciseTimer()),
-            ),
-            _tool(
-              context,
-              Icons.door_front_door_rounded,
-              'L\'effet porte · 5 min',
-              'Franchis deux portes, fais le tour du pâté de maisons, reviens. Ça redémarre la mémoire de travail.',
-              K.gold,
-              () => _run(context, const SimpleTimer(title: 'L\'effet porte', minutes: 5, hint: 'Lève-toi, passe deux portes, marche. Reviens quand ça sonne.', what: 'porte')),
-            ),
-            _tool(
-              context,
-              Icons.air_rounded,
-              'Respiration alternée · 2 min',
-              'Nadi shuddhi : une narine, puis l\'autre. Pour réguler avant d\'agir, pas pour attendre d\'être calme.',
-              K.cyan,
-              () => _run(context, const BreathTimer()),
-            ),
+            const SectionLabel('Autres coups de pouce'),
             _tool(
               context,
               Icons.directions_walk_rounded,
@@ -287,6 +283,89 @@ class _BlockScreenState extends State<BlockScreen> {
           ),
         ),
       );
+}
+
+/// Grande option de « Je bloque ».
+Widget _big(BuildContext context, IconData icon, String title, String sub, Color c, VoidCallback onTap) => Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: K.card,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: c, width: 2)),
+            child: Row(children: [
+              Icon(icon, color: c, size: 26),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(title, style: K.display(16)),
+                  Text(sub, style: K.body(12, color: K.muted)),
+                ]),
+              ),
+              Icon(Icons.chevron_right_rounded, color: c),
+            ]),
+          ),
+        ),
+      ),
+    );
+
+/// En parler : à une de tes personnes (SMS prérempli) ou à l'IA (message copié, à coller).
+Future<void> _talk(BuildContext context, AppStore store, Task? t) async {
+  final what = t == null ? 'Je bloque en ce moment' : 'Je bloque sur « ${t.title} »';
+  final ai = '$what. Aide-moi à comprendre ce qui coince et à trouver la toute première action, faisable en 10 minutes. Pose-moi des questions courtes, une à la fois.';
+  await showModalBottomSheet(
+    context: context,
+    builder: (ctx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('En parler', style: K.display(20)),
+          const SizedBox(height: 10),
+          Text('À QUELQU\'UN', style: K.body(11, color: K.muted, w: FontWeight.w900)),
+          const SizedBox(height: 6),
+          if (store.settings.contacts.isEmpty)
+            Text('Ajoute tes personnes dans la cabane (menu ⋮ › Mes personnes).', style: K.body(13, color: K.muted))
+          else
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final c in store.settings.contacts)
+                ActionChip(
+                  label: Text(c),
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    try {
+                      await AndroidIntent(action: 'android.intent.action.SENDTO', data: 'smsto:', arguments: {'sms_body': '$what, tu as 5 min ?'}).launch();
+                    } catch (_) {
+                      await Clipboard.setData(ClipboardData(text: '$what, tu as 5 min ?'));
+                    }
+                  },
+                  backgroundColor: K.raised,
+                  labelStyle: K.body(13, w: FontWeight.w800),
+                  side: BorderSide.none,
+                ),
+            ]),
+          const SizedBox(height: 14),
+          Text('À L\'IA', style: K.body(11, color: K.muted, w: FontWeight.w900)),
+          const SizedBox(height: 6),
+          Text(ai, style: K.body(13, color: K.muted)),
+          const SizedBox(height: 8),
+          PrimaryButton(
+            label: 'Copier, puis coller dans Claude ou ChatGPT',
+            color: const Color(0xFFB9A7FF),
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: ai));
+              await store.noteSerenity('je bloque · en parler');
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Message copié : ouvre ton IA et colle-le.')));
+            },
+          ),
+        ]),
+      ),
+    ),
+  );
 }
 
 /// Grand chrono rond réutilisé par les coups de pouce.

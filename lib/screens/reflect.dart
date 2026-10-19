@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 import '../main.dart';
 import '../models.dart';
 import '../theme.dart';
+import 'cabin.dart' show CabinScreen;
+import 'dump.dart' show DumpScreen;
+import 'timetable.dart' show askText, whenSheet;
+import 'today.dart' show editTaskSheet;
 
 /// Évaluation en un tap après une session.
 class RateSheet extends StatefulWidget {
@@ -401,6 +405,26 @@ class _ReflectionScreenState extends State<ReflectionScreen> {
                   ),
               ],
             ),
+            if (_emotion.isNotEmpty && _emotion != 'Rien de spécial') ...[
+              const SizedBox(height: 8),
+              Material(
+                color: const Color(0xFFB9A7FF).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(14),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () => openScreen(context, const CabinScreen()),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(children: [
+                      const Text('🏕', style: TextStyle(fontSize: 20)),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text('$_emotion : tu veux y travailler dans la cabane ?', style: K.body(13, w: FontWeight.w800))),
+                      const Icon(Icons.chevron_right_rounded, color: Color(0xFFB9A7FF)),
+                    ]),
+                  ),
+                ),
+              ),
+            ],
             const SectionLabel('Ce qui a joué (plusieurs possibles)'),
             Wrap(
               spacing: 8,
@@ -441,6 +465,38 @@ class _ReflectionScreenState extends State<ReflectionScreen> {
             const SizedBox(height: 4),
             Text('La pression et la honte « marchent » mais demandent toujours plus. Un objectif d\'action qui vient de toi tient mieux.',
                 style: K.body(12, color: K.muted)),
+            if (widget.taskId.isNotEmpty && store.taskById(widget.taskId) != null && (_reasonable > 0 || _origin > 0)) ...[
+              const SizedBox(height: 10),
+              Text(
+                _reasonable == 2 ? 'Trop gros : on la redécoupe ?' : (_reasonable == 3 ? 'Pas clair : on la redit concrètement ?' : 'Et maintenant, cette tâche ?'),
+                style: K.body(13, w: FontWeight.w800),
+              ),
+              const SizedBox(height: 6),
+              Row(children: [
+                Expanded(
+                  child: SecondaryButton(
+                    label: 'Redéfinir',
+                    onPressed: () async {
+                      final t = store.taskById(widget.taskId)!;
+                      final v = await askText(context, 'Dis-la autrement, concrètement', hint: 'la toute première action visible', initial: t.title);
+                      if (v == null || v.trim().isEmpty) return;
+                      await store.editTask(t, title: v.trim());
+                      if (context.mounted) setState(() {});
+                    },
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(child: SecondaryButton(label: 'Modifier', onPressed: () => editTaskSheet(context, store.taskById(widget.taskId)!))),
+                const SizedBox(width: 6),
+                Expanded(child: SecondaryButton(label: 'Replanifier', onPressed: () => whenSheet(context, store.taskById(widget.taskId)!))),
+              ]),
+              if (_reasonable == 2)
+                TextButton.icon(
+                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DumpScreen(cut: store.taskById(widget.taskId)!))),
+                  icon: const Icon(Icons.content_cut_rounded, color: K.cyan, size: 18),
+                  label: Text('Découper en étapes', style: K.body(13, color: K.cyan, w: FontWeight.w800)),
+                ),
+            ],
             const SectionLabel('La prochaine fois'),
             Panel(
               child: Column(
