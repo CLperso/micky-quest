@@ -653,7 +653,7 @@ class AppStore extends ChangeNotifier {
   Future<void> finishBriefing() async {
     if (!today.briefingDone) {
       today.briefingDone = true;
-      _gainXp(10, 'Briefing du matin');
+      _gainXp(10, 'Briefing du jour');
     }
     await commit();
   }

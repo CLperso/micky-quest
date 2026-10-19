@@ -129,7 +129,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Panel(
               child: Column(
                 children: [
-                  _stepper('Briefing du matin', '${s.briefingHour}h${s.briefingMinute.toString().padLeft(2, '0')}', () {
+                  _stepper('Briefing du jour', '${s.briefingHour}h${s.briefingMinute.toString().padLeft(2, '0')}', () {
                     final m = s.briefingHour * 60 + s.briefingMinute - 15;
                     if (m >= 300) {
                       s.briefingHour = m ~/ 60;

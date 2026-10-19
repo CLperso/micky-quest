@@ -77,7 +77,7 @@ class _BriefingScreenState extends State<BriefingScreen> {
     return PopScope(
       onPopInvokedWithResult: (_, __) => _saveFields(),
       child: Scaffold(
-        appBar: AppBar(title: const Text('Briefing du matin')),
+        appBar: AppBar(title: const Text('Briefing du jour')),
         body: ListView(
           padding: const EdgeInsets.fromLTRB(18, 4, 18, 28),
           children: [
