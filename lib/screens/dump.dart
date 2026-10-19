@@ -80,6 +80,7 @@ class _DumpScreenState extends State<DumpScreen> {
     if (_cut) {
       final parent = widget.cut!;
       Task? first;
+      final made = <String>{};
       for (final l in lines.where((l) => l.choice == 'step')) {
         final t = await store.addTask(
           parent.inQuest ? l.text : '${parent.title} › ${l.text}',
@@ -88,8 +89,20 @@ class _DumpScreenState extends State<DumpScreen> {
           quad: Quad.doNow,
           inQuest: parent.inQuest,
         );
+        // les morceaux restent le même jour que la tâche découpée (demain si elle était pour demain)
+        t.day = parent.day;
+        if (parent.inQuest) t.order = parent.order + 1 + made.length;
+        made.add(t.id);
         first ??= t;
       }
+      if (parent.inQuest) {
+        // décale les étapes suivantes de la quête pour garder l'ordre
+        final n = lines.where((l) => l.choice == 'step').length;
+        for (final x in store.tasks) {
+          if (x.inQuest && x.category == parent.category && x.day == parent.day && x.order > parent.order && !made.contains(x.id)) x.order += n;
+        }
+      }
+      await store.commit();
       // la tâche d'origine devient le chapeau : elle ne réclame plus de pari
       if (first != null && !parent.inQuest) {
         parent.quad = parent.quad == Quad.inbox ? Quad.plan : parent.quad;
