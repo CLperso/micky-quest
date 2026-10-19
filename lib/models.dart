@@ -731,6 +731,8 @@ class Settings {
   int intervalMin;
   int startTarget; // heure visée pour commencer le pro, en minutes depuis minuit
   bool checkinsDuringSession;
+  bool checkinNotifs; // check-ins par notification (sinon proposés à l'ouverture de l'appli)
+  bool habitNotifs; // rappels d'habitudes par notification
   int briefingHour;
   int briefingMinute;
   int eveningHour;
@@ -770,6 +772,8 @@ class Settings {
     this.intervalMin = 30,
     this.startTarget = 600,
     this.checkinsDuringSession = false,
+    this.checkinNotifs = false,
+    this.habitNotifs = false,
     this.briefingHour = 8,
     this.briefingMinute = 30,
     this.eveningHour = 21,
@@ -816,6 +820,8 @@ class Settings {
         intervalMin: _i(j['interval'], 30),
         startTarget: _i(j['startT'], 600),
         checkinsDuringSession: _b(j['duringSession']),
+        checkinNotifs: _b(j['ciNotif']),
+        habitNotifs: _b(j['habNotif']),
         briefingHour: _i(j['briefH'], 8),
         briefingMinute: _i(j['briefM'], 30),
         eveningHour: _i(j['eveH'], 21),
@@ -858,6 +864,8 @@ class Settings {
         'interval': intervalMin,
         'startT': startTarget,
         'duringSession': checkinsDuringSession,
+        'ciNotif': checkinNotifs,
+        'habNotif': habitNotifs,
         'briefH': briefingHour,
         'briefM': briefingMinute,
         'eveH': eveningHour,

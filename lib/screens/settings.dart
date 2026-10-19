@@ -94,6 +94,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   }),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
+                    title: Text('Check-ins par notification', style: K.body(15)),
+                    subtitle: Text('Désactivé : le check-in t\'est proposé en ouvrant l\'appli, sans te déranger.', style: K.body(12, color: K.muted)),
+                    value: s.checkinNotifs,
+                    onChanged: (v) async {
+                      s.checkinNotifs = v;
+                      await _apply();
+                    },
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('Rappels d\'habitudes par notification', style: K.body(15)),
+                    subtitle: Text('Désactivé : tes habitudes restent dans le briefing et le QG.', style: K.body(12, color: K.muted)),
+                    value: s.habitNotifs,
+                    onChanged: (v) async {
+                      s.habitNotifs = v;
+                      await _apply();
+                    },
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
                     title: Text('Pendant les sessions aussi', style: K.body(15)),
                     subtitle: Text('Sinon, Micky te laisse tranquille pendant une session.', style: K.body(12, color: K.muted)),
                     value: s.checkinsDuringSession,

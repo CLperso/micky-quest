@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 import '../main.dart';
@@ -41,6 +43,7 @@ class HomeScreen extends StatelessWidget {
           await clearCrash();
           store.refresh();
         }),
+        const OpenCheckinCard(),
         Row(
           children: [
             SizedBox(
@@ -677,6 +680,82 @@ class MissedCheckins extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Check-in proposé à l'ouverture de l'appli, à la place des notifications toutes les 30 min.
+class OpenCheckinCard extends StatefulWidget {
+  const OpenCheckinCard({super.key});
+
+  static DateTime? hiddenUntil;
+
+  @override
+  State<OpenCheckinCard> createState() => _OpenCheckinCardState();
+}
+
+class _OpenCheckinCardState extends State<OpenCheckinCard> {
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final s = store.settings;
+    final now = DateTime.now();
+    if (now.hour < s.startHour || now.hour >= s.endHour || store.runningSession != null) return const SizedBox.shrink();
+    final h = OpenCheckinCard.hiddenUntil;
+    if (h != null && now.isBefore(h)) return const SizedBox.shrink();
+    var last = DateTime(now.year, now.month, now.day, s.startHour).millisecondsSinceEpoch;
+    final cs = store.checkinsOn(store.todayKey);
+    if (cs.isNotEmpty) last = max(last, cs.last.ts);
+    for (final x in store.sessionsOn(store.todayKey)) {
+      if (x.end > last) last = x.end;
+    }
+    final since = now.difference(DateTime.fromMillisecondsSinceEpoch(last)).inMinutes;
+    if (since < 90) return const SizedBox.shrink();
+    final lastLabel = cs.isEmpty
+        ? 'Pas encore de check-in aujourd\'hui.'
+        : 'Dernier check-in à ${DateTime.fromMillisecondsSinceEpoch(cs.last.ts).hour} h ${DateTime.fromMillisecondsSinceEpoch(cs.last.ts).minute.toString().padLeft(2, '0')}.';
+    Widget quick(String label, String act) => Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(3),
+            child: SizedBox(
+              height: 42,
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: K.line, width: 2),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: EdgeInsets.zero,
+                ),
+                onPressed: () async {
+                  await store.addCheckIn(CheckIn(ts: DateTime.now().millisecondsSinceEpoch, activity: act));
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Noté · +1 XP')));
+                },
+                child: Text(label, style: K.body(13, w: FontWeight.w800)),
+              ),
+            ),
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Panel(
+        border: K.cyan,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Petit point ? $lastLabel', style: K.body(14, w: FontWeight.w800)),
+          const SizedBox(height: 6),
+          Row(children: [quick('Pro', Act.pro), quick('Perso', Act.perso)]),
+          Row(children: [quick('Pause', Act.pause), quick('Rien de spécial', Act.nothing)]),
+          Row(children: [
+            TextButton(
+              onPressed: () => openScreen(context, const CheckinScreen()),
+              child: Text('Check-in complet ›', style: K.body(13, color: K.cyan, w: FontWeight.w800)),
+            ),
+            const Spacer(),
+            TextButton(
+              onPressed: () => setState(() => OpenCheckinCard.hiddenUntil = DateTime.now().add(const Duration(minutes: 45))),
+              child: Text('plus tard', style: K.body(13, color: K.muted)),
+            ),
+          ]),
+        ]),
       ),
     );
   }

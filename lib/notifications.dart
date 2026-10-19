@@ -133,10 +133,10 @@ Future<void> rescheduleAll(AppStore store) async {
   for (var d = 0; d < 2; d++) {
     final day = DateTime(now.year, now.month, now.day).add(Duration(days: d));
 
-    // check-ins
+    // check-ins : seulement si activés (sinon proposés à l'ouverture de l'appli)
     final interval = max(15, s.intervalMin);
     var i = 0;
-    for (var m = s.startHour * 60 + interval; m <= s.endHour * 60; m += interval) {
+    for (var m = s.startHour * 60 + interval; s.checkinNotifs && m <= s.endHour * 60; m += interval) {
       final t = day.add(Duration(minutes: m));
       i++;
       if (!t.isAfter(now.add(const Duration(minutes: 1)))) continue;
@@ -156,6 +156,21 @@ Future<void> rescheduleAll(AppStore store) async {
         payload: jsonEncode({'type': 'checkin', 'ts': t.millisecondsSinceEpoch, 'task': inSession ? run.taskId : ''}),
       );
       scheduledCheckins.add(t);
+    }
+
+    // sans check-ins réguliers : une seule question au milieu d'une session non silencieuse
+    if (!s.checkinNotifs && d == 0 && run != null && !run.silent) {
+      final mid = DateTime.fromMillisecondsSinceEpoch(run.start).add(Duration(minutes: max(10, run.predictedMin ~/ 2)));
+      if (mid.isAfter(now.add(const Duration(minutes: 1)))) {
+        await _schedule(
+          id: 2190,
+          when: mid,
+          title: 'Toujours sur « ${run.title} » ?',
+          body: 'Un tap pour confirmer, ou dis ce qui s\'est passé.',
+          details: _checkDetails(session: true, timeoutMin: interval),
+          payload: jsonEncode({'type': 'checkin', 'ts': mid.millisecondsSinceEpoch, 'task': run.taskId}),
+        );
+      }
     }
 
     // briefing
@@ -187,8 +202,8 @@ Future<void> rescheduleAll(AppStore store) async {
     }
   }
 
-  // rappels d'habitudes
-  for (final h in store.activeHabits.where((h) => h.reminderMin >= 0)) {
+  // rappels d'habitudes (désactivés par défaut)
+  for (final h in store.activeHabits.where((h) => s.habitNotifs && h.reminderMin >= 0)) {
     for (var d = 0; d < 2; d++) {
       final day = DateTime(now.year, now.month, now.day).add(Duration(days: d));
       final when = day.add(Duration(minutes: h.reminderMin));
