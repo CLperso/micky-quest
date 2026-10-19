@@ -396,9 +396,9 @@ class _PlanningViewState extends State<PlanningView> {
     if (chosen == null || !mounted) return;
     Task x = chosen;
     if (x.title.isEmpty) {
-      final title = await askText(context, 'Nouvelle tâche', hint: 'relire l\'intro');
-      if (title == null || title.isEmpty) return;
-      x = await store.addTask(title, quad: Quad.plan);
+      final n = await askNewTask(context);
+      if (n == null) return;
+      x = await store.addTask(n.title, category: n.category, estimate: n.minutes, quad: Quad.plan, inQuest: false);
     }
     await store.planTask(x, at);
     await rescheduleAll(store);
@@ -904,9 +904,9 @@ class _TimetableViewState extends State<TimetableView> {
     if (chosen == null || !mounted) return;
     Task t = chosen;
     if (t.title.isEmpty) {
-      final title = await askText(context, 'Nouvelle tâche', hint: 'relire l\'intro');
-      if (title == null || title.isEmpty) return;
-      t = await store.addTask(title, quad: Quad.plan);
+      final n = await askNewTask(context);
+      if (n == null) return;
+      t = await store.addTask(n.title, category: n.category, estimate: n.minutes, quad: Quad.plan, inQuest: false);
     }
     await store.planTask(t, at);
     await rescheduleAll(store);
@@ -1501,4 +1501,69 @@ Future<void> showSplitSuggestion(BuildContext context, Task t) async {
   );
   if (go != true || !context.mounted) return;
   await Navigator.of(context).push<Task?>(MaterialPageRoute(builder: (_) => DumpScreen(cut: t)));
+}
+
+/// Nouvelle tâche depuis le planning : titre, pro / perso / autre, durée.
+Future<({String title, String category, int minutes})?> askNewTask(BuildContext context) async {
+  final c = TextEditingController();
+  var cat = 'pro';
+  var min = 25;
+  final ok = await showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Nouvelle tâche', style: K.display(20)),
+              const SizedBox(height: 8),
+              TextField(controller: c, autofocus: true, textCapitalization: TextCapitalization.sentences, decoration: const InputDecoration(hintText: 'relire l\'intro')),
+              const SizedBox(height: 12),
+              Row(children: [
+                for (final e in const [('pro', 'Pro'), ('perso', 'Perso'), ('', 'Autre')])
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      label: Text(e.$2),
+                      selected: cat == e.$1,
+                      onSelected: (_) => setState(() => cat = e.$1),
+                      selectedColor: e.$1 == 'pro' ? K.lime : (e.$1 == 'perso' ? K.pink : K.gold),
+                      labelStyle: K.body(13, color: cat == e.$1 ? K.bg : K.ink, w: FontWeight.w800),
+                      backgroundColor: K.raised,
+                      side: BorderSide.none,
+                      showCheckmark: false,
+                    ),
+                  ),
+              ]),
+              const SizedBox(height: 10),
+              Text('Durée', style: K.body(13, color: K.muted)),
+              const SizedBox(height: 6),
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                for (final m in [15, 25, 45, 60, 90, 120])
+                  ChoiceChip(
+                    label: Text(m >= 60 ? '${m ~/ 60} h${m % 60 == 0 ? '' : ' ${m % 60}'}' : '$m min'),
+                    selected: min == m,
+                    onSelected: (_) => setState(() => min = m),
+                    selectedColor: K.cyan,
+                    labelStyle: K.body(13, color: min == m ? K.bg : K.ink),
+                    backgroundColor: K.raised,
+                    side: BorderSide.none,
+                    showCheckmark: false,
+                  ),
+              ]),
+              const SizedBox(height: 14),
+              PrimaryButton(label: 'Placer dans le planning', onPressed: () => Navigator.pop(ctx, c.text.trim().isNotEmpty)),
+            ]),
+          ),
+        ),
+      ),
+    ),
+  );
+  final title = c.text.trim();
+  c.dispose();
+  if (ok != true || title.isEmpty) return null;
+  return (title: title, category: cat, minutes: min);
 }
