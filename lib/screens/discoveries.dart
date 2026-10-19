@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 
 import '../main.dart';
@@ -364,7 +365,7 @@ class _TimeStatsState extends State<TimeStats> {
 }
 
 
-/// Dépenses : mois en cours, rythme, comparaison avec les mois précédents, catégories.
+/// Dépenses de la période de paie : dépensé, par jour, restant, et où va l'argent par enveloppe.
 class BudgetStats extends StatelessWidget {
   const BudgetStats({super.key});
 
@@ -372,18 +373,13 @@ class BudgetStats extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = AppScope.of(context);
     final now = DateTime.now();
-    final budget = store.settings.monthlyBudget;
-    final spent = store.spentInMonth(now);
-    final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
-    final perDay = spent / now.day;
-    final projected = perDay * daysInMonth;
-    final left = budget - spent;
-    final daysLeft = daysInMonth - now.day;
-    final months = [for (var i = 5; i >= 0; i--) DateTime(now.year, now.month - i)];
-    final totals = [for (final m in months) store.spentInMonth(m)];
-    final maxT = totals.fold(0.0, (a, b) => a > b ? a : b);
-    final byCat = store.spentByCategory(now).entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-    const short = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'août', 'sep', 'oct', 'nov', 'déc'];
+    final start = DateTime.fromMillisecondsSinceEpoch(store.periodStartMs);
+    final daysGone = max(1, DateTime(now.year, now.month, now.day).difference(DateTime(start.year, start.month, start.day)).inDays + 1);
+    final spent = store.spentInPeriod();
+    final left = store.periodLeft();
+    final days = store.daysLeftInPeriod();
+    final perDay = spent / daysGone;
+    final spentMap = store.spentByEnvelope();
 
     return Panel(
       child: Column(
@@ -393,83 +389,45 @@ class BudgetStats extends StatelessWidget {
             Expanded(child: Text('Tes dépenses', style: K.display(16))),
             TextButton(onPressed: () => openScreen(context, const BudgetScreen()), child: const Text('Détail')),
           ]),
-          if (spent == 0 && budget <= 0)
-            Text('Note tes dépenses depuis le QG pour voir les stats ici.', style: K.body(13, color: K.muted))
-          else ...[
-            Row(children: [
-              Expanded(child: _tile(euros(spent), 'ce mois', K.gold)),
-              const SizedBox(width: 8),
-              Expanded(child: _tile(euros(perDay), 'par jour', K.cyan)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _tile(
-                  budget > 0 ? euros(left) : euros(projected),
-                  budget > 0 ? (left < 0 ? 'dépassé' : 'restants') : 'projeté',
-                  budget > 0 ? (left < 0 ? K.coral : K.lime) : K.pink,
-                ),
-              ),
-            ]),
-            if (budget > 0) ...[
-              const SizedBox(height: 8),
-              Text(
-                daysLeft <= 0
-                    ? 'Dernier jour du mois.'
-                    : left <= 0
-                        ? 'Budget dépassé : il reste $daysLeft jour${daysLeft > 1 ? 's' : ''}.'
-                        : 'À ce rythme, tu finirais le mois à ${euros(projected)}${projected > budget ? ', au-dessus du budget' : ', dans le budget'}. '
-                            'Pour tenir : ${euros(left / daysLeft)} par jour max.',
-                style: K.body(12, color: K.muted),
-              ),
-            ],
-            const SizedBox(height: 14),
-            Text('6 derniers mois', style: K.display(15)),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 80,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  for (var i = 0; i < 6; i++)
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            Text(totals[i] > 0 ? euros(totals[i]) : '', style: K.body(9, color: K.muted), maxLines: 1, overflow: TextOverflow.ellipsis),
-                            const SizedBox(height: 2),
-                            Container(
-                              height: maxT == 0 ? 2 : 2 + 44 * totals[i] / maxT,
-                              decoration: BoxDecoration(
-                                color: i == 5 ? K.gold : (budget > 0 && totals[i] > budget ? K.coral : K.raised),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(short[months[i].month - 1], style: K.body(10, color: K.muted)),
-                          ],
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            if (byCat.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text('Où va l\'argent ce mois-ci', style: K.display(15)),
-              const SizedBox(height: 6),
-              for (final e in byCat.take(5))
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Row(children: [
-                    SizedBox(width: 110, child: Text(Expense.labels[e.key] ?? e.key, style: K.body(12))),
-                    Expanded(child: Bar(spent == 0 ? 0 : e.value / spent, color: K.gold, height: 8)),
-                    const SizedBox(width: 8),
-                    SizedBox(width: 60, child: Text(euros(e.value), textAlign: TextAlign.right, style: K.body(12, color: K.gold, w: FontWeight.w800))),
-                  ]),
-                ),
-            ],
-          ],
+          Row(children: [
+            Expanded(child: _tile(euros(spent), 'dépensés', K.gold)),
+            const SizedBox(width: 8),
+            Expanded(child: _tile(euros(perDay.roundToDouble()), 'par jour', K.cyan)),
+            const SizedBox(width: 8),
+            Expanded(child: _tile(euros(left.roundToDouble()), left < 0 ? 'dépassé' : 'restants', left < 0 ? K.coral : K.lime)),
+          ]),
+          const SizedBox(height: 8),
+          Text(
+            left <= 0
+                ? 'Budget dépassé : encore $days jour${days > 1 ? 's' : ''} avant la paie.'
+                : 'Pour tenir jusqu\'à la paie : ${euros((left / days).roundToDouble())} par jour max, pendant $days jour${days > 1 ? 's' : ''}.',
+            style: K.body(12, color: K.muted),
+          ),
+          const SizedBox(height: 14),
+          Text('Enveloppes', style: K.display(15)),
+          const SizedBox(height: 6),
+          for (final c in Expense.categories)
+            Builder(builder: (context) {
+              final alloc = store.envelopeAlloc(c);
+              final rest = store.envelopeLeft(c);
+              final frac = alloc <= 0 ? 0.0 : rest / alloc;
+              final color = rest < 0 ? K.coral : leftColor(frac);
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(children: [
+                  Icon(Icons.mail_rounded, color: color, size: 18),
+                  const SizedBox(width: 6),
+                  SizedBox(width: 104, child: Text(Expense.labels[c]!, style: K.body(12))),
+                  Expanded(child: Bar(frac.clamp(0.0, 1.0), color: color, height: 8)),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 74,
+                    child: Text('${euros((spentMap[c] ?? 0).roundToDouble())} / ${euros(alloc.roundToDouble())}',
+                        textAlign: TextAlign.right, style: K.body(11, color: color, w: FontWeight.w800)),
+                  ),
+                ]),
+              );
+            }),
         ],
       ),
     );

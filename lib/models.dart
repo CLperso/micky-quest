@@ -745,6 +745,9 @@ class Settings {
   bool stylusOnly;
   double monthlyBudget;
   Map<String, double> envelopes; // plafond mensuel par catégorie de dépense
+  int payday; // jour de paie : la période de budget va de ce jour à la veille du suivant
+  int periodStart; // ms : dernière saisie du montant disponible (0 = jamais)
+  double periodAmount; // montant disponible saisi à ce moment-là
   List<String> fixedCosts; // frais fixes mensuels : « type|nom|montant » (type : abonnement ou charge)
   List<String> projects; // projets perso précisés dans les check-ins (« ces apps »…)
   List<String> books; // pile de philo : « Titre|pages »
@@ -777,6 +780,9 @@ class Settings {
     this.monthlyBudget = 0,
     Map<String, double>? envelopes,
     List<String>? fixedCosts,
+    this.payday = 27,
+    this.periodStart = 0,
+    this.periodAmount = 0,
     List<String>? projects,
     List<String>? books,
     this.goodDaysLetter = '',
@@ -816,6 +822,9 @@ class Settings {
         envelopes: {
           for (final e in ((j['env'] as Map?) ?? {}).entries) e.key.toString(): (e.value as num?)?.toDouble() ?? 0,
         },
+        payday: _i(j['payday'], 27),
+        periodStart: _i(j['pStart']),
+        periodAmount: (j['pAmount'] as num?)?.toDouble() ?? 0,
         fixedCosts: ((j['fixed'] as List?) ?? []).map((e) => e.toString()).toList(),
         projects: ((j['projects'] as List?) ?? []).map((e) => e.toString()).toList(),
         books: ((j['books'] as List?) ?? []).map((e) => e.toString()).toList(),
@@ -849,6 +858,9 @@ class Settings {
         'budget': monthlyBudget,
         'env': envelopes,
         'fixed': fixedCosts,
+        'payday': payday,
+        'pStart': periodStart,
+        'pAmount': periodAmount,
         'projects': projects,
         'books': books,
         'letter': goodDaysLetter,
@@ -1161,27 +1173,45 @@ class Expense {
   bool removed;
   int mod;
 
-  Expense({String? id, required this.ts, required this.amount, this.why = '', this.category = 'autre', this.removed = false, this.mod = 0})
+  Expense({String? id, required this.ts, required this.amount, this.why = '', this.category = 'plaisirs', this.removed = false, this.mod = 0})
       : id = id ?? newId();
 
-  static const categories = [
-    'courses', 'livraison', 'resto', 'shopping', 'vêtements', 'tabac',
-    'transport', 'voyages', 'santé', 'loisirs', 'maison', 'autre',
-  ];
+  /// Les 6 enveloppes.
+  static const categories = ['courses', 'repas', 'shopping', 'santé', 'transport', 'plaisirs'];
   static const labels = {
-    'courses': 'Courses, boissons',
-    'livraison': 'Livraison (Uber Eats)',
-    'resto': 'Resto, café, boulangerie',
-    'shopping': 'Amazon, shopping',
-    'vêtements': 'Vêtements, beauté',
-    'tabac': 'Tabac',
-    'transport': 'Transport (Uber, tickets)',
-    'voyages': 'Voyages, trains, avion',
+    'courses': 'Courses',
+    'repas': 'Repas dehors',
+    'shopping': 'Shopping, beauté',
     'santé': 'Santé, véto',
-    'loisirs': 'Loisirs, sorties',
-    'maison': 'Maison',
-    'autre': 'Autre',
+    'transport': 'Transport',
+    'plaisirs': 'Sorties, plaisirs',
+    // anciennes catégories, pour les dépenses déjà notées
+    'resto': 'Repas dehors',
+    'livraison': 'Repas dehors',
+    'vêtements': 'Shopping, beauté',
+    'voyages': 'Transport',
+    'loisirs': 'Sorties, plaisirs',
+    'tabac': 'Sorties, plaisirs',
+    'maison': 'Sorties, plaisirs',
+    'autre': 'Sorties, plaisirs',
   };
+  static const hints = {
+    'courses': 'supermarché, boissons, boulangerie',
+    'repas': 'Uber Eats, restos, cafés',
+    'shopping': 'Amazon, vêtements, beauté',
+    'santé': 'pharmacie, véto',
+    'transport': 'Uber, trains, avion, tickets',
+    'plaisirs': 'sorties, loisirs, petits achats, imprévus',
+  };
+
+  /// Enveloppe d'une catégorie, y compris les anciennes.
+  static String group(String c) => switch (c) {
+        'courses' || 'repas' || 'shopping' || 'santé' || 'transport' || 'plaisirs' => c,
+        'resto' || 'livraison' => 'repas',
+        'vêtements' => 'shopping',
+        'voyages' => 'transport',
+        _ => 'plaisirs',
+      };
 
   /// Frais fixes d'octobre 2026, prélevés chaque mois (hors enveloppes).
   static const fixedPlan = [
@@ -1198,20 +1228,14 @@ class Expense {
     'charge|Frais bancaires|7.40',
   ];
 
-  /// Plan budget d'octobre 2026 : plafonds mensuels par enveloppe (~1 200 €).
+  /// Plan mensuel des 6 enveloppes (1 200 €).
   static const plan = <String, double>{
     'courses': 400,
-    'livraison': 90,
-    'resto': 60,
-    'shopping': 110,
-    'vêtements': 50,
-    'tabac': 100,
-    'transport': 60,
-    'voyages': 70,
+    'repas': 150,
+    'shopping': 160,
     'santé': 150,
-    'loisirs': 40,
-    'maison': 30,
-    'autre': 40,
+    'transport': 120,
+    'plaisirs': 220,
   };
 
   factory Expense.fromJson(Map<String, dynamic> j) => Expense(
@@ -1219,7 +1243,7 @@ class Expense {
         ts: _i(j['ts']),
         amount: (j['amount'] as num?)?.toDouble() ?? 0,
         why: _s(j['why']),
-        category: _s(j['cat'], 'autre'),
+        category: _s(j['cat'], 'plaisirs'),
         removed: _b(j['removed']),
         mod: _i(j['mod']),
       );

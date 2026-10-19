@@ -2328,46 +2328,117 @@ class AppStore extends ChangeNotifier {
   }
 
   double spentInMonth(DateTime d) => expensesInMonth(d).fold(0.0, (a, e) => a + e.amount);
-  double remainingThisMonth() => settings.monthlyBudget - spentInMonth(DateTime.now());
-
-  Map<String, double> spentByCategory(DateTime d) {
-    final m = <String, double>{};
-    for (final e in expensesInMonth(d)) {
-      m[e.category] = (m[e.category] ?? 0) + e.amount;
-    }
-    return m;
-  }
 
   double spentOn(String day) => expenses
       .where((e) => !e.removed && dayKey(DateTime.fromMillisecondsSinceEpoch(e.ts)) == day)
       .fold(0.0, (a, e) => a + e.amount);
 
-  /// Ce que tu peux dépenser au maximum ce jour-là pour tenir le budget du mois :
-  /// (budget − dépensé avant ce jour) ÷ jours restants, ce jour compris.
-  double dailyAllowance(String day) {
-    final b = settings.monthlyBudget;
-    if (b <= 0) return 0;
-    final d = parseDay(day);
-    final before = expenses
-        .where((e) => !e.removed)
-        .where((e) {
-          final t = DateTime.fromMillisecondsSinceEpoch(e.ts);
-          return t.year == d.year && t.month == d.month && t.day < d.day;
-        })
-        .fold(0.0, (a, e) => a + e.amount);
-    final daysInMonth = DateTime(d.year, d.month + 1, 0).day;
-    final left = daysInMonth - d.day + 1;
-    return max(0, (b - before) / left);
+  // ---------- Budget : période de paie (du jour de paie à la veille du suivant) ----------
+
+  DateTime _payDate(int year, int month) => DateTime(year, month, min(settings.payday, DateTime(year, month + 1, 0).day));
+
+  /// Dernier jour de paie, aujourd'hui compris.
+  DateTime lastPayday([DateTime? from]) {
+    final d = from ?? DateTime.now();
+    final day = DateTime(d.year, d.month, d.day);
+    final cand = _payDate(d.year, d.month);
+    return day.isBefore(cand) ? _payDate(d.year, d.month - 1) : cand;
   }
 
-  /// +10 XP pour chaque jour passé (3 derniers) sous la limite du jour. Une fois par jour.
+  /// Prochain jour de paie, strictement après ce jour.
+  DateTime nextPayday([DateTime? from]) {
+    final l = lastPayday(from);
+    return _payDate(l.year, l.month + 1);
+  }
+
+  /// Total du plan (somme des enveloppes), utilisé pour repartir à zéro le jour de paie.
+  double get planTotal {
+    if (settings.monthlyBudget > 0) return settings.monthlyBudget;
+    return Expense.categories.fold(0.0, (a, c) => a + envelopeWeight(c));
+  }
+
+  /// Début de la période en cours : la dernière saisie du montant, sinon le dernier jour de paie.
+  int get periodStartMs {
+    final pay = lastPayday().millisecondsSinceEpoch;
+    return settings.periodStart > pay ? settings.periodStart : pay;
+  }
+
+  /// Le jour de paie est passé depuis la dernière saisie : il faut repartir sur un nouveau mois.
+  bool get paydayPassed => settings.periodStart > 0 && settings.periodStart < lastPayday().millisecondsSinceEpoch;
+
+  /// Montant dont tu disposais au début de la période.
+  double get periodAmount => !paydayPassed && settings.periodStart > 0 ? settings.periodAmount : planTotal;
+
+  List<Expense> expensesInPeriod() =>
+      expenses.where((e) => !e.removed && e.ts >= periodStartMs).toList()..sort((a, b) => b.ts.compareTo(a.ts));
+
+  double spentInPeriod() => expensesInPeriod().fold(0.0, (a, e) => a + e.amount);
+
+  /// Ce qu'il te reste vraiment jusqu'à la prochaine paie.
+  double periodLeft() => periodAmount - spentInPeriod();
+
+  /// Jours restants, aujourd'hui compris, jusqu'à la veille de la paie.
+  int daysLeftInPeriod([DateTime? from]) {
+    final d = from ?? DateTime.now();
+    final day = DateTime(d.year, d.month, d.day);
+    return max(1, nextPayday(d).difference(day).inDays);
+  }
+
+  /// Dépensé par enveloppe depuis le début de la période.
+  Map<String, double> spentByEnvelope() {
+    final m = <String, double>{};
+    for (final e in expensesInPeriod()) {
+      final g = Expense.group(e.category);
+      m[g] = (m[g] ?? 0) + e.amount;
+    }
+    return m;
+  }
+
+  /// Dépensé par enveloppe sur un mois civil (anciennes stats).
+  Map<String, double> spentByCategory(DateTime d) {
+    final m = <String, double>{};
+    for (final e in expensesInMonth(d)) {
+      final g = Expense.group(e.category);
+      m[g] = (m[g] ?? 0) + e.amount;
+    }
+    return m;
+  }
+
+  /// Poids de l'enveloppe dans le plan mensuel (en €).
+  double envelopeWeight(String cat) {
+    final valid = settings.envelopes.keys.where(Expense.categories.contains);
+    if (valid.isEmpty) return Expense.plan[cat] ?? 0;
+    return settings.envelopes[cat] ?? 0;
+  }
+
+  /// Part de la période en cours attribuée à l'enveloppe.
+  double envelopeAlloc(String cat) {
+    final total = Expense.categories.fold(0.0, (a, c) => a + envelopeWeight(c));
+    return total <= 0 ? 0 : periodAmount * envelopeWeight(cat) / total;
+  }
+
+  double envelopeLeft(String cat) => envelopeAlloc(cat) - (spentByEnvelope()[cat] ?? 0);
+
+  /// Ce que tu peux dépenser au maximum ce jour-là pour tenir jusqu'à la paie :
+  /// (montant − dépensé avant ce jour dans la période) ÷ jours restants, ce jour compris.
+  double dailyAllowance(String day) {
+    final d = parseDay(day);
+    final start = periodStartMs;
+    final dayStart = DateTime(d.year, d.month, d.day).millisecondsSinceEpoch;
+    if (dayStart + 86400000 <= start) return 0;
+    final before = expenses
+        .where((e) => !e.removed && e.ts >= start && e.ts < dayStart)
+        .fold(0.0, (a, e) => a + e.amount);
+    return max(0, (periodAmount - before) / daysLeftInPeriod(d));
+  }
+
+  /// +10 XP pour chaque jour passé (3 derniers) de la période sous la limite du jour. Une fois par jour.
   void _checkBudgetDays() {
-    if (settings.monthlyBudget <= 0 || expenses.isEmpty) return;
-    final first = expenses.map((e) => e.ts).reduce(min);
+    if (periodAmount <= 0 || expenses.isEmpty) return;
     for (var i = 1; i <= 3; i++) {
       final d = DateTime.now().subtract(Duration(days: i));
+      if (DateTime(d.year, d.month, d.day).millisecondsSinceEpoch < periodStartMs) continue;
       final k = dayKey(d);
-      if (DateTime(d.year, d.month, d.day).millisecondsSinceEpoch + 86400000 < first) continue;
       final reason = 'Budget tenu · ${d.day}/${d.month}';
       if (xpEvents.any((e) => e.reason == reason)) continue;
       final allow = dailyAllowance(k);
@@ -2375,64 +2446,33 @@ class AppStore extends ChangeNotifier {
     }
   }
 
-  Future<void> setMonthlyBudget(double v) async {
-    settings.monthlyBudget = v;
+  /// « J'ai X € » : la période repart maintenant avec ce montant.
+  Future<void> setAvailable(double v) async {
+    settings.periodStart = DateTime.now().millisecondsSinceEpoch;
+    settings.periodAmount = v;
     await commit();
   }
 
-  /// Plafond mensuel d'une enveloppe (0 = pas d'enveloppe).
-  double envelopeFor(String cat) => settings.envelopes[cat] ?? 0;
+  /// Repartir au budget total depuis le dernier jour de paie.
+  Future<void> resetToPlan() async {
+    settings.periodStart = lastPayday().millisecondsSinceEpoch;
+    settings.periodAmount = planTotal;
+    await commit();
+  }
 
-  /// Reste dans l'enveloppe ce mois-ci.
-  double envelopeLeft(String cat, [DateTime? d]) => envelopeFor(cat) - (spentByCategory(d ?? DateTime.now())[cat] ?? 0);
+  Future<void> setPayday(int day) async {
+    settings.payday = day.clamp(1, 31);
+    await commit();
+  }
 
+  /// Change le montant mensuel d'une enveloppe ; le total du plan suit.
   Future<void> setEnvelope(String cat, double v) async {
-    if (v <= 0) {
-      settings.envelopes.remove(cat);
-    } else {
-      settings.envelopes[cat] = v;
+    if (!settings.envelopes.keys.any(Expense.categories.contains)) {
+      settings.envelopes = Map<String, double>.from(Expense.plan);
     }
-    await commit();
-  }
-
-  /// Frais fixes d'un type (abonnement ou charge) : (index, nom, montant).
-  List<(int, String, double)> fixedOf(String kind) => [
-        for (var i = 0; i < settings.fixedCosts.length; i++)
-          if (settings.fixedCosts[i].split('|').first == kind)
-            (
-              i,
-              settings.fixedCosts[i].split('|').elementAtOrNull(1) ?? '',
-              double.tryParse(settings.fixedCosts[i].split('|').elementAtOrNull(2) ?? '') ?? 0,
-            ),
-      ];
-
-  double fixedTotal([String? kind]) => [
-        if (kind == null) ...[...fixedOf('abonnement'), ...fixedOf('charge')] else ...fixedOf(kind),
-      ].fold(0.0, (a, f) => a + f.$3);
-
-  /// Ajoute (index null), modifie ou supprime (nom vide) un frais fixe.
-  Future<void> setFixedCost(int? index, String kind, String name, double amount) async {
-    final line = '$kind|${name.replaceAll('|', ' ')}|$amount';
-    if (index == null) {
-      if (name.trim().isNotEmpty) settings.fixedCosts.add(line);
-    } else if (name.trim().isEmpty) {
-      settings.fixedCosts.removeAt(index);
-    } else {
-      settings.fixedCosts[index] = line;
-    }
-    await commit();
-  }
-
-  Future<void> applyFixedPlan() async {
-    settings.fixedCosts = List<String>.from(Expense.fixedPlan);
-    await commit();
-  }
-
-  /// Applique le plan : enveloppes par catégorie et budget du mois = leur somme.
-  Future<void> applyBudgetPlan() async {
-    settings.envelopes = Map<String, double>.from(Expense.plan);
-    if (settings.fixedCosts.isEmpty) settings.fixedCosts = List<String>.from(Expense.fixedPlan);
-    settings.monthlyBudget = Expense.plan.values.fold(0.0, (a, v) => a + v);
+    settings.envelopes.removeWhere((k, _) => !Expense.categories.contains(k));
+    settings.envelopes[cat] = max(0, v);
+    settings.monthlyBudget = Expense.categories.fold(0.0, (a, c) => a + (settings.envelopes[c] ?? 0));
     await commit();
   }
 
@@ -2443,6 +2483,38 @@ class AppStore extends ChangeNotifier {
 
   Future<void> removeExpense(Expense e) async {
     e.removed = true;
+    await commit();
+  }
+
+  /// Frais fixes d'un type (abonnement ou charge) : (index, nom, montant).
+  List<(int, String, double)> fixedOf(String kind) => [
+        for (var i = 0; i < fixedCosts.length; i++)
+          if (fixedCosts[i].split('|').first == kind)
+            (
+              i,
+              fixedCosts[i].split('|').elementAtOrNull(1) ?? '',
+              double.tryParse(fixedCosts[i].split('|').elementAtOrNull(2) ?? '') ?? 0,
+            ),
+      ];
+
+  /// Les frais fixes enregistrés, ou ceux du plan s'il n'y en a pas encore.
+  List<String> get fixedCosts => settings.fixedCosts.isEmpty ? Expense.fixedPlan : settings.fixedCosts;
+
+  double fixedTotal([String? kind]) => [
+        if (kind == null) ...[...fixedOf('abonnement'), ...fixedOf('charge')] else ...fixedOf(kind),
+      ].fold(0.0, (a, f) => a + f.$3);
+
+  /// Ajoute (index null), modifie ou supprime (nom vide) un frais fixe.
+  Future<void> setFixedCost(int? index, String kind, String name, double amount) async {
+    if (settings.fixedCosts.isEmpty) settings.fixedCosts = List<String>.from(Expense.fixedPlan);
+    final line = '$kind|${name.replaceAll('|', ' ')}|$amount';
+    if (index == null) {
+      if (name.trim().isNotEmpty) settings.fixedCosts.add(line);
+    } else if (name.trim().isEmpty) {
+      settings.fixedCosts.removeAt(index);
+    } else {
+      settings.fixedCosts[index] = line;
+    }
     await commit();
   }
 
