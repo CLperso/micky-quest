@@ -326,18 +326,17 @@ class _QuestBlockState extends State<_QuestBlock> {
             ],
           ],
           const SizedBox(height: 2),
-          Row(children: [
+          Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 2, children: [
             if (steps.isNotEmpty)
               TextButton(
                 onPressed: () => setState(() => _open = !_open),
-                child: Text(_open ? 'Replier' : 'Toutes les étapes (${steps.length})', style: K.body(13, color: K.muted)),
+                child: Text(_open ? 'Replier' : 'Étapes (${steps.length})', style: K.body(13, color: K.muted)),
               ),
             TextButton.icon(
               onPressed: () => addStepSheet(context, cat),
               icon: Icon(Icons.add_rounded, color: color, size: 18),
               label: Text('Étape', style: K.body(13, color: color)),
             ),
-            const Spacer(),
             if (complete && !closed)
               TextButton.icon(
                 onPressed: () async {
