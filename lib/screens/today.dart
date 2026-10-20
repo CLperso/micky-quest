@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 import '../main.dart';
@@ -266,7 +268,15 @@ class _DayList extends StatelessWidget {
     final done = seq.where((t) => t.done).toList();
     final todo = seq.where((t) => !t.done).toList();
     final sched = store.schedule(seq);
-    final fin = sched.end;
+    final now = DateTime.now();
+    final endMs = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch + store.settings.workEnd * 60000;
+    // ce qui commencerait après la fin de journée : du bonus, pas une dette
+    final bonus = todo.where((t) => (sched.times[t.id]?.$1 ?? 0) >= endMs && !(t.plannedAt > 0)).toList();
+    final main = todo.where((t) => !bonus.contains(t)).toList();
+    var fin = now.millisecondsSinceEpoch;
+    for (final t in main) {
+      fin = max(fin, sched.times[t.id]?.$2 ?? 0);
+    }
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
       decoration: BoxDecoration(color: K.card, borderRadius: BorderRadius.circular(20)),
@@ -283,18 +293,27 @@ class _DayList extends StatelessWidget {
           buildDefaultDragHandles: false,
           onReorder: (a, b) => store.reorderDay(a, b > a ? b - 1 : b),
           children: [
-            for (var i = 0; i < todo.length; i++)
+            for (var i = 0; i < main.length; i++)
               _SeqRow(
-                key: ValueKey(todo[i].id),
-                task: todo[i],
+                key: ValueKey(main[i].id),
+                task: main[i],
                 n: '${done.length + i + 1}',
                 index: i,
-                start: sched.times[todo[i].id]?.$1,
-                late: sched.late.contains(todo[i].id),
+                start: sched.times[main[i].id]?.$1,
+                late: sched.late.contains(main[i].id),
                 current: i == 0,
               ),
           ],
         ),
+        if (main.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, left: 4),
+            child: Text.rich(TextSpan(children: [
+              TextSpan(text: 'Si tu suis l\'ordre : fini vers ', style: K.body(12, color: K.dim)),
+              TextSpan(text: hm(DateTime.fromMillisecondsSinceEpoch(fin)), style: K.body(13, color: K.gold, w: FontWeight.w900)),
+            ])),
+          ),
+        if (bonus.isNotEmpty) _BonusBlock(tasks: bonus, firstN: done.length + main.length + 1),
         Row(children: [
           TextButton.icon(
             onPressed: () => newTaskSheet(context, quad: Quad.doNow),
@@ -307,12 +326,6 @@ class _DayList extends StatelessWidget {
               icon: const Icon(Icons.repeat_rounded, color: K.cyan, size: 18),
               label: Text('Habitude', style: K.body(13, color: K.cyan, w: FontWeight.w800)),
             ),
-          const Spacer(),
-          if (todo.isNotEmpty)
-            Text.rich(TextSpan(children: [
-              TextSpan(text: 'si tu suis l\'ordre : fini vers ', style: K.body(11, color: K.dim)),
-              TextSpan(text: hm(DateTime.fromMillisecondsSinceEpoch(fin)), style: K.body(12, color: K.gold, w: FontWeight.w900)),
-            ])),
         ]),
       ]),
     );
@@ -347,6 +360,62 @@ Future<void> _pickHabit(BuildContext context, AppStore store) async {
   );
   if (h == null) return;
   await store.habitToToday(h);
+}
+
+/// Après la fin de journée (19 h par défaut) : bonus, repliés, à reporter en un geste.
+class _BonusBlock extends StatefulWidget {
+  final List<Task> tasks;
+  final int firstN;
+  const _BonusBlock({required this.tasks, required this.firstN});
+
+  @override
+  State<_BonusBlock> createState() => _BonusBlockState();
+}
+
+class _BonusBlockState extends State<_BonusBlock> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final h = store.settings.workEnd;
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), border: Border.all(color: K.line, width: 2)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        InkWell(
+          onTap: () => setState(() => _open = !_open),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(children: [
+              const Text('✨', style: TextStyle(fontSize: 16)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text('Bonus après ${h ~/ 60} h${h % 60 == 0 ? '' : (h % 60).toString().padLeft(2, '0')} (${widget.tasks.length}) · si tu as encore de l\'énergie',
+                    style: K.body(13, color: K.muted, w: FontWeight.w800)),
+              ),
+              Icon(_open ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: K.muted),
+            ]),
+          ),
+        ),
+        if (_open)
+          for (var i = 0; i < widget.tasks.length; i++) _SeqRow(task: widget.tasks[i], n: '${widget.firstN + i}', key: ValueKey('b${widget.tasks[i].id}')),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: () async {
+              for (final t in widget.tasks) {
+                await store.deferTask(t);
+              }
+              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${widget.tasks.length} tâche${widget.tasks.length > 1 ? 's' : ''} pour demain')));
+            },
+            child: Text('Tout reporter à demain', style: K.body(12, color: K.cyan, w: FontWeight.w800)),
+          ),
+        ),
+      ]),
+    );
+  }
 }
 
 class _SeqRow extends StatelessWidget {

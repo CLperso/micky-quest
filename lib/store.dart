@@ -1451,10 +1451,18 @@ class AppStore extends ChangeNotifier {
   }
 
   /// Un jour « tenu » : pro atteint ou jour minimum.
+  /// 1 = jour tenu en entier (démarré à l'heure ET objectif pro), 2 = jour minimum (un des deux, ou le minimum pro),
+  /// 0 = rien, -1 = aujourd'hui encore en cours.
   int dayKept(String day) {
-    final p = pillarPro(day);
-    return p == 1 || p == 2 ? 1 : (p == -1 ? -1 : 0);
+    final p = pillarPro(day), st = pillarStart(day);
+    if (p == 1 && st == 1) return 1;
+    if (p >= 1 || st == 1) return 2;
+    return (p == -1 || st == -1) && day == todayKey ? -1 : 0;
   }
+
+  int weekMinDays(DateTime d) => weekDays(d).where((x) => dayKept(x) == 2).length;
+  int weekStarts(DateTime d) => weekDays(d).where((x) => pillarStart(x) == 1).length;
+  int weekProFull(DateTime d) => weekDays(d).where((x) => pillarPro(x) == 1).length;
 
   List<String> weekDays(DateTime d) {
     final m = weekStart(d);

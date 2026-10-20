@@ -107,7 +107,19 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
                     Panel(
                       border: t.category == 'perso' ? K.pink : K.lime,
                       child: Row(children: [
-                        Expanded(child: Text(t.title, style: K.body(16, w: FontWeight.w800))),
+                        Expanded(
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            if (t.parentId.isNotEmpty && store.taskById(t.parentId) != null)
+                              Text('${store.taskById(t.parentId)!.title} ›', style: K.body(12, color: K.muted, w: FontWeight.w800)),
+                            Text(t.title, style: K.body(16, w: FontWeight.w800)),
+                            if (t.parentId.isNotEmpty)
+                              Builder(builder: (_) {
+                                final all = store.subStepsOf(store.taskById(t.parentId)!);
+                                final i = all.indexWhere((x) => x.id == t.id);
+                                return Text('sous-étape ${i + 1} / ${all.length}', style: K.body(11, color: K.cyan, w: FontWeight.w800));
+                              }),
+                          ]),
+                        ),
                         TextButton(onPressed: () => setState(() => _locked = false), child: Text('changer', style: K.body(12, color: K.muted))),
                       ]),
                     ),

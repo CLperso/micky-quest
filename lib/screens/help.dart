@@ -130,6 +130,27 @@ class HelpCard extends StatelessWidget {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('Un coup de main ?', style: K.display(16)),
                   Text('je n\'y arrive pas · je me sens mal · un problème', style: K.body(11, color: K.muted)),
+                  for (final p in AppScope.of(context).openProblems.take(2))
+                    InkWell(
+                      onTap: () => openScreen(context, ProblemScreen(problem: p)),
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Row(children: [
+                          Container(width: 4, height: 16, decoration: BoxDecoration(color: problemColor(p), borderRadius: BorderRadius.circular(2))),
+                          const SizedBox(width: 6),
+                          Expanded(child: Text(p.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: K.body(12, w: FontWeight.w700))),
+                          if (p.current != null) Text(' ${p.current}/10', style: K.body(11, color: K.muted, w: FontWeight.w800)),
+                        ]),
+                      ),
+                    ),
+                  if (AppScope.of(context).openProblems.isNotEmpty)
+                    InkWell(
+                      onTap: () => openScreen(context, const ProblemsScreen()),
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text('Mes problèmes en cours (${AppScope.of(context).openProblems.length}) ›', style: K.body(12, color: K.lime, w: FontWeight.w800)),
+                      ),
+                    ),
                 ]),
               ),
               const Icon(Icons.chevron_right_rounded, color: HelpScreen._lav),

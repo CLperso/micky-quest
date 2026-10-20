@@ -87,8 +87,11 @@ class DirectionCard extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                s.dirIntention.isNotEmpty ? 'jours tenus cette semaine\nCette semaine : ${s.dirIntention}' : 'jours tenus cette semaine\nDémarrer avant ${_hm(s.startTarget)} · ${_dur(s.dirProDefault)} de pro',
-                maxLines: 3,
+                'jours tenus en entier (départ + heures)\n'
+                '⏰ ${store.weekStarts(DateTime.now())}/${s.dirStartTgt} avant ${_hm(s.startTarget)} · 💼 ${store.weekProFull(DateTime.now())}/${s.dirProTgt} à ${_dur(s.dirProDefault)}'
+                '${store.weekMinDays(DateTime.now()) > 0 ? ' · +${store.weekMinDays(DateTime.now())} j. minimum' : ''}'
+                '${s.dirIntention.isNotEmpty ? '\nCette semaine : ${s.dirIntention}' : ''}',
+                maxLines: 4,
                 overflow: TextOverflow.ellipsis,
                 style: K.body(12, color: K.muted),
               ),

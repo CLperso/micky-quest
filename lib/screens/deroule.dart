@@ -111,6 +111,15 @@ class _DerouleViewState extends State<DerouleView> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           if (lines.isEmpty) Text('Rien de prévu. Ajoute des tâches dans la liste.', style: K.body(13, color: K.muted)),
           for (var i = 0; i < lines.length; i++) ...[
+            if (lines[i].start >= dayMs + store.settings.workEnd * 60000 && (i == 0 || lines[i - 1].start < dayMs + store.settings.workEnd * 60000))
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(children: [
+                  const Expanded(child: Divider(color: K.line)),
+                  Text('  ✨ fin de journée · après, c\'est du bonus  ', style: K.body(11, color: K.muted, w: FontWeight.w800)),
+                  const Expanded(child: Divider(color: K.line)),
+                ]),
+              ),
             if (i > 0 && lines[i].start - lines[i - 1].end >= 10 * 60000 && lines[i].kind == 'task')
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),

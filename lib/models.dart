@@ -778,6 +778,7 @@ class Settings {
   int dirStartTgt, dirProTgt, dirHabTgt; // cibles de la semaine (jours sur 7)
   int dirPersoTgt; // geste perso : jours par semaine
   int dirMinPro; // jour minimum : minutes de pro qui suffisent
+  int workEnd; // fin de journée de travail (minutes) : après, c'est du bonus
   int dirProDefault; // temps pro visé par défaut, si le jour n'a pas d'objectif
   String dirReviewWeek; // lundi de la dernière semaine dont le bilan est fait
   String dirIntention; // intention pro de la semaine (une ligne, facultatif)
@@ -832,6 +833,7 @@ class Settings {
     this.dirHabTgt = 5,
     this.dirPersoTgt = 3,
     this.dirMinPro = 30,
+    this.workEnd = 19 * 60,
     this.dirProDefault = 180,
     this.dirReviewWeek = '',
     this.dirIntention = '',
@@ -894,6 +896,7 @@ class Settings {
         dirHabTgt: _i(j['dirHabTgt'], 5),
         dirPersoTgt: _i(j['dirPersoTgt'], 3),
         dirMinPro: _i(j['dirMinPro'], 30),
+        workEnd: _i(j['wEnd'], 19 * 60),
         dirProDefault: _i(j['dirProDef'], 180),
         dirReviewWeek: _s(j['dirRev']),
         dirIntention: _s(j['dirInt']),
@@ -951,6 +954,7 @@ class Settings {
         'dirHabTgt': dirHabTgt,
         'dirPersoTgt': dirPersoTgt,
         'dirMinPro': dirMinPro,
+        'wEnd': workEnd,
         'dirProDef': dirProDefault,
         'dirRev': dirReviewWeek,
         'dirInt': dirIntention,

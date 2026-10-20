@@ -209,7 +209,7 @@ class HomeScreen extends StatelessWidget {
                     () => openScreen(context, const CheckinScreen(focusLog: LogKind.energy)))),
             const SizedBox(width: 8),
             Expanded(
-                child: _quick(context, Icons.psychology_alt_rounded, 'Ranger la tête', K.cyan,
+                child: _quick(context, Icons.psychology_alt_rounded, 'Organiser mes idées', K.cyan,
                     () => openScreen(context, const DumpScreen()))),
           ],
         ),
@@ -326,13 +326,16 @@ class HomeScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         onTap: onTap,
         child: SizedBox(
-          height: 70,
+          height: 76,
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(icon, color: c),
               const SizedBox(height: 4),
-              Text(label, style: K.body(12, w: FontWeight.w800)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: Text(label, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: K.body(label.length > 10 ? 10 : 12, w: FontWeight.w800).copyWith(height: 1.1)),
+              ),
             ],
           ),
         ),

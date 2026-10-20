@@ -1397,6 +1397,9 @@ Future<void> launchTask(BuildContext context, Task t) async {
     await openScreen(context, const SessionScreen());
     return;
   }
+  // une tâche découpée se lance une sous-étape à la fois
+  final subs = store.subStepsOf(t).where((x) => !x.done).toList();
+  if (subs.isNotEmpty) t = subs.first;
   final ok = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
