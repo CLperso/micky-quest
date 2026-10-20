@@ -15,6 +15,10 @@ Future<void> checkTask(BuildContext context, Task t, {bool askAfter = true}) asy
   final store = AppScope.read(context);
   final wasDone = t.done;
   await store.completeTask(t);
+  if (store.isHabitTask(t)) {
+    if (context.mounted && t.done) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Habitude « ${t.title} » faite ✓')));
+    return;
+  }
   if (!context.mounted || wasDone) return;
   // faite sans session : combien de temps dessus ? (30 min si on passe)
   final spent = store.sessions.any((x) => x.taskId == t.id && x.end > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(x.start)) == store.todayKey);

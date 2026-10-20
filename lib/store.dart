@@ -358,6 +358,7 @@ class AppStore extends ChangeNotifier {
 
   Future<void> commit() async {
     _syncProblemSteps();
+    _syncHabitTasks();
     _checkMorning();
     await save();
     notifyListeners();
@@ -712,7 +713,7 @@ class AppStore extends ChangeNotifier {
   // ---------- Tâches ----------
 
   List<Task> get openTasks {
-    final t = tasks.where((t) => !t.done && !t.removed && t.parentId.isEmpty && t.day.compareTo(todayKey) <= 0).toList();
+    final t = tasks.where((t) => !t.done && !t.removed && t.parentId.isEmpty && t.day.compareTo(todayKey) <= 0 && (!t.link.startsWith('habit:') || t.day == todayKey)).toList();
     t.sort((a, b) => a.order.compareTo(b.order));
     return t;
   }
@@ -1015,7 +1016,7 @@ class AppStore extends ChangeNotifier {
 
   /// Vrai si la tâche fait partie d'Aujourd'hui (quête, Faire maintenant, heure aujourd'hui, reportée, boss).
   bool inToday(Task t) =>
-      !t.done && !t.removed && t.parentId.isEmpty && t.day.compareTo(todayKey) <= 0 &&
+      !t.done && !t.removed && t.parentId.isEmpty && t.day.compareTo(todayKey) <= 0 && (!t.link.startsWith('habit:') || t.day == todayKey) &&
       (t.inQuest || t.quad == Quad.doNow || t.deferred || t.isBoss ||
           (t.plannedAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(t.plannedAt)) == todayKey));
 
@@ -1027,9 +1028,71 @@ class AppStore extends ChangeNotifier {
   static const _quadXp = {Quad.doNow: 20, Quad.plan: 20, Quad.light: 5, Quad.drop: 2, Quad.inbox: 5};
 
   /// XP d'une tâche faite : le pro rapporte, le perso très peu.
-  int taskXp(Task t) => t.category == 'perso' ? 2 : (_quadXp[t.quad] ?? 5);
+  int taskXp(Task t) => t.link.startsWith('habit:') ? 0 : (t.category == 'perso' ? 2 : (_quadXp[t.quad] ?? 5));
+
+  /// Habitude posée dans la liste du jour (tâche liée « habit:id »).
+  Habit? habitOf(Task t) {
+    if (!t.link.startsWith('habit:')) return null;
+    final id = t.link.substring(6);
+    for (final h in habits) {
+      if (h.id == id) return h;
+    }
+    return null;
+  }
+
+  bool isHabitTask(Task t) => t.link.startsWith('habit:');
+
+  /// Met une habitude dans la liste du jour (une seule fois par jour), en fin de liste.
+  Future<Task?> habitToToday(Habit h) async {
+    for (final t in tasks) {
+      if (t.link == 'habit:${h.id}' && !t.removed && t.day == todayKey) return null;
+    }
+    final seq = daySequence().where((x) => !x.done).toList();
+    final t = Task(
+      title: h.name,
+      quad: Quad.doNow,
+      day: todayKey,
+      link: 'habit:${h.id}',
+      estimateMin: 15,
+      order: seq.isEmpty ? 0 : seq.map((x) => x.order).reduce(max) + 1,
+    );
+    if (habitLevel(h, todayKey) == 1 || habitLevel(h, todayKey) == 2) {
+      t.done = true;
+      t.doneAt = DateTime.now().millisecondsSinceEpoch;
+    }
+    tasks.add(t);
+    await commit();
+    return t;
+  }
+
+  /// Cochée ici ou dans Habitudes : les deux restent d'accord.
+  void _syncHabitTasks() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final t in tasks) {
+      if (t.removed || !t.link.startsWith('habit:') || t.day != todayKey) continue;
+      final h = habitOf(t);
+      if (h == null) continue;
+      final lvl = habitLevel(h, todayKey);
+      final done = lvl == 1 || lvl == 2;
+      if (done && !t.done) {
+        t.done = true;
+        t.doneAt = now;
+      } else if (!done && t.done) {
+        t.done = false;
+        t.doneAt = 0;
+      }
+    }
+  }
 
   Future<void> completeTask(Task t) async {
+    final hab = habitOf(t);
+    if (hab != null) {
+      final was = t.done;
+      t.done = !was;
+      t.doneAt = was ? 0 : DateTime.now().millisecondsSinceEpoch;
+      await cycleHabit(hab, to: was ? 0 : 2);
+      return;
+    }
     if (t.done) {
       // décocher (ou « Annuler ») reprend l'XP gagnée aujourd'hui
       if (t.doneAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(t.doneAt)) == todayKey) _gainXp(-taskXp(t), 'Tâche décochée');

@@ -4,7 +4,7 @@ import '../main.dart';
 import '../models.dart';
 import '../theme.dart';
 import 'block.dart' show SimpleTimer;
-import 'checkin.dart';
+import 'today.dart' show TodayScreen;
 import 'timetable.dart' show launchTask;
 
 /// Après une tâche ou une session : un petit mot, et la suite proposée en un tap.
@@ -15,15 +15,8 @@ Future<void> showNextSheet(BuildContext context, String message) async {
     if (t != null && !t.done && !cands.any((c) => c.id == t.id)) cands.add(t);
   }
 
-  final now = DateTime.now().millisecondsSinceEpoch;
-  // ce qui est prévu bientôt, puis les quêtes, puis Faire maintenant
-  final soon = store.openTasks.where((t) => t.plannedAt > now && t.plannedAt - now < 90 * 60000).toList()..sort((a, b) => a.plannedAt.compareTo(b.plannedAt));
-  if (soon.isNotEmpty) add(soon.first);
-  for (final c in ['pro', 'perso']) {
-    final steps = store.questSteps(c).where((t) => !t.done);
-    if (steps.isNotEmpty) add(steps.first);
-  }
-  for (final t in store.tasksIn(Quad.doNow)) {
+  // la suite, dans l'ordre de la liste du jour
+  for (final t in store.daySequence()) {
     if (cands.length >= 3) break;
     add(t);
   }
@@ -57,8 +50,8 @@ Future<void> showNextSheet(BuildContext context, String message) async {
                       Text(t.title, style: K.body(14, w: FontWeight.w800), maxLines: 2, overflow: TextOverflow.ellipsis),
                       Text(
                         [
-                          if (t.plannedAt > 0) 'à ${hm(DateTime.fromMillisecondsSinceEpoch(t.plannedAt))}',
-                          if (t.inQuest) 'quête ${t.category}',
+                          if (t.plannedAt > 0) '📌 ${hm(DateTime.fromMillisecondsSinceEpoch(t.plannedAt))}',
+                          if (t.category.isNotEmpty) t.category,
                           if (t.estimateMin > 0) '${t.estimateMin} min',
                         ].join(' · '),
                         style: K.body(11, color: K.muted),
@@ -94,10 +87,10 @@ Future<void> showNextSheet(BuildContext context, String message) async {
             const SizedBox(width: 8),
             Expanded(
               child: SecondaryButton(
-                label: 'Autre chose',
+                label: 'Voir ma liste',
                 onPressed: () {
                   Navigator.pop(ctx);
-                  openScreen(context, const CheckinScreen());
+                  openScreen(context, const TodayScreen(standalone: true));
                 },
               ),
             ),

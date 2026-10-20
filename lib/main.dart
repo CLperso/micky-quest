@@ -132,7 +132,12 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
       if (!ctx.mounted) return;
       switch (type) {
         case 'checkin':
-          openScreen(ctx, const CheckinScreen());
+          // juste après une tâche ou une session : pas de « tu fais quoi ? », la suite directement
+          if (store.skippedAt(DateTime.now())) {
+            showNextSheet(ctx, 'Et maintenant ?');
+          } else {
+            openScreen(ctx, const CheckinScreen());
+          }
           break;
         case 'briefing':
           openScreen(ctx, const BriefingScreen());

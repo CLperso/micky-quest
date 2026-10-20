@@ -301,6 +301,12 @@ class _DayList extends StatelessWidget {
             icon: const Icon(Icons.add_rounded, color: K.lime, size: 18),
             label: Text('Tâche', style: K.body(13, color: K.lime, w: FontWeight.w800)),
           ),
+          if (store.habits.any((h) => !h.archived))
+            TextButton.icon(
+              onPressed: () => _pickHabit(context, store),
+              icon: const Icon(Icons.repeat_rounded, color: K.cyan, size: 18),
+              label: Text('Habitude', style: K.body(13, color: K.cyan, w: FontWeight.w800)),
+            ),
           const Spacer(),
           if (todo.isNotEmpty)
             Text.rich(TextSpan(children: [
@@ -311,6 +317,36 @@ class _DayList extends StatelessWidget {
       ]),
     );
   }
+}
+
+Future<void> _pickHabit(BuildContext context, AppStore store) async {
+  final inList = store.tasks.where((t) => !t.removed && t.day == store.todayKey && t.link.startsWith('habit:')).map((t) => t.link.substring(6)).toSet();
+  final hs = store.habits.where((h) => !h.archived && !inList.contains(h.id)).toList();
+  if (hs.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Toutes tes habitudes sont déjà dans la liste.')));
+    return;
+  }
+  final h = await showModalBottomSheet<Habit>(
+    context: context,
+    builder: (ctx) => SafeArea(
+      child: ListView(shrinkWrap: true, padding: const EdgeInsets.fromLTRB(18, 16, 18, 10), children: [
+        Text('Quelle habitude dans la liste ?', style: K.display(18)),
+        Text('Elle se place en fin de liste ; glisse-la où tu veux. La cocher la coche aussi dans Habitudes.', style: K.body(12, color: K.muted)),
+        const SizedBox(height: 6),
+        for (final x in hs)
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.repeat_rounded, color: K.cyan, size: 18),
+            title: Text(x.name, style: K.body(14, w: FontWeight.w700)),
+            subtitle: x.mini.isNotEmpty ? Text('mini : ${x.mini}', style: K.body(11, color: K.muted)) : null,
+            onTap: () => Navigator.pop(ctx, x),
+          ),
+      ]),
+    ),
+  );
+  if (h == null) return;
+  await store.habitToToday(h);
 }
 
 class _SeqRow extends StatelessWidget {
@@ -325,10 +361,12 @@ class _SeqRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = AppScope.of(context);
     final t = task;
-    final color = t.category == 'pro' ? K.lime : t.category == 'perso' ? K.pink : K.gold;
+    final habit = store.isHabitTask(t);
+    final color = habit ? K.cyan : t.category == 'pro' ? K.lime : t.category == 'perso' ? K.pink : K.gold;
     final anchor = t.plannedAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(t.plannedAt)) == store.todayKey;
     final running = store.runningSession?.taskId == t.id;
     final sub = <String>[
+      if (habit) 'habitude',
       if (t.estimateMin > 0) fmtMin(t.estimateMin),
       if (running) 'en cours',
       if (!t.isBoss && t.progress > 0 && t.progress < 100) '${t.progress} %',
