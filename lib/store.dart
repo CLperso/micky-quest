@@ -358,6 +358,7 @@ class AppStore extends ChangeNotifier {
 
   Future<void> commit() async {
     _syncProblemSteps();
+    _closeSlots();
     _bossOnParent();
     _syncHabitTasks();
     _checkMorning();
@@ -731,6 +732,7 @@ class AppStore extends ChangeNotifier {
   /// La séquence du jour : les tâches faites (dans l'ordre où elles ont été faites), puis celles à faire dans l'ordre choisi.
   /// Pour un autre jour que today : les tâches posées sur ce jour, dans l'ordre.
   List<Task> daySequence({String? day}) {
+    _closeSlots();
     final d = day ?? todayKey;
     List<Task> l;
     if (d == todayKey) {
@@ -833,8 +835,12 @@ class AppStore extends ChangeNotifier {
       if (running != null && running.taskId == t.id) {
         start = now.millisecondsSinceEpoch;
       } else if (d == todayKey && start < cursor) {
-        start = cursor;
-        if (cursor > t.plannedAt + 5 * 60000) late.add(t.id);
+        if (t.plannedAt + t.blockMin * 60000 > cursor) {
+          // commencée à l'heure et pas encore finie : en cours, pas en retard
+        } else {
+          start = cursor;
+          if (cursor > t.plannedAt + 5 * 60000) late.add(t.id);
+        }
       }
       final end = start + t.blockMin * 60000;
       times[t.id] = (start, end);
@@ -1025,7 +1031,7 @@ class AppStore extends ChangeNotifier {
   static const _quadXp = {Quad.doNow: 20, Quad.plan: 20, Quad.light: 5, Quad.drop: 2, Quad.inbox: 5};
 
   /// XP d'une tâche faite : le pro rapporte, le perso très peu.
-  int taskXp(Task t) => t.link.startsWith('habit:') ? 0 : (t.category == 'perso' ? 2 : (_quadXp[t.quad] ?? 5));
+  int taskXp(Task t) => t.link.startsWith('habit:') || t.link == 'slot' ? 0 : (t.category == 'perso' ? 2 : (_quadXp[t.quad] ?? 5));
 
   /// Habitude posée dans la liste du jour (tâche liée « habit:id »).
   Habit? habitOf(Task t) {
@@ -1072,6 +1078,36 @@ class AppStore extends ChangeNotifier {
       p.isBoss = true;
       if (p.bossHp <= 0) p.bossHp = bossTotal(p);
       p.bossProgress = max(p.bossProgress, t.bossProgress);
+    }
+  }
+
+  /// « Je fais ça pour 45 min » (check-in) : un créneau qui entre en tête de liste, ancré maintenant.
+  /// Sur une tâche du jour, c'est elle qui passe en tête ; sinon un créneau (lien « slot ») qui se ferme tout seul à la fin.
+  Future<void> planNow({required String title, String category = '', String taskId = '', required int minutes}) async {
+    final now = DateTime.now();
+    Task? t = taskId.isNotEmpty ? taskById(taskId) : null;
+    if (t == null) {
+      t = Task(title: title, category: category, quad: Quad.doNow, day: todayKey, link: 'slot', estimateMin: minutes);
+      tasks.add(t);
+    }
+    t.parentId = '';
+    t.day = todayKey;
+    t.plannedAt = now.millisecondsSinceEpoch;
+    t.plannedMin = minutes;
+    await toHead(t);
+    await _planChanged();
+  }
+
+  /// Les créneaux « slot » se cochent seuls une fois leur temps passé.
+  void _closeSlots() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final t in tasks) {
+      if (t.done || t.removed || t.link != 'slot' || t.plannedAt == 0) continue;
+      final end = t.plannedAt + t.blockMin * 60000;
+      if (end <= now) {
+        t.done = true;
+        t.doneAt = end;
+      }
     }
   }
 

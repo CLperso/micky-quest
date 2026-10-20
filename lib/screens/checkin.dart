@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../main.dart';
+import '../notifications.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
@@ -40,6 +41,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
   String _taskId = '';
   String _label = '';
   int _since = -1;
+  int _for = -1; // « pour combien de temps encore » : posé dans la liste et le déroulé
   String _reason = '';
   final _why = TextEditingController();
   static const _sinceChoices = [5, 15, 30, 45, 60, 90];
@@ -279,8 +281,18 @@ class _CheckinScreenState extends State<CheckinScreen> {
       emotion: _emotion,
       cause: _cause,
     ));
+    if (_for > 0 && _act.isNotEmpty) {
+      final title = Act.isOnTask(_act) && _label.isNotEmpty ? _label : (Act.labels[_act] ?? 'Créneau');
+      await store.planNow(
+        title: title,
+        category: _act == Act.pro || _act == Act.perso ? _act : '',
+        taskId: Act.isOnTask(_act) ? _taskId : '',
+        minutes: _for,
+      );
+      await rescheduleAll(store);
+    }
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Check-in envoyé · +1 XP')));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_for > 0 ? 'Check-in envoyé · dans ta liste pour ${_for} min' : 'Check-in envoyé · +1 XP')));
     Navigator.pop(context);
   }
 
@@ -541,6 +553,20 @@ class _CheckinScreenState extends State<CheckinScreen> {
                           _chip('$m min', _since == m, K.gold, () => setState(() => _since = _since == m ? -1 : m)),
                       ],
                     ),
+                    if (widget.existing == null && widget.at == null) ...[
+                      const SizedBox(height: 14),
+                      Text('Et pour combien de temps encore ?', style: K.display(15)),
+                      Text('Ça se met en tête de ta liste, et le déroulé décale le reste.', style: K.body(12, color: K.muted)),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final m in [5, 15, 30, 45, 60, 90, 120])
+                            _chip(m >= 60 ? '${m ~/ 60} h${m % 60 == 0 ? '' : ' ${m % 60}'}' : '$m min', _for == m, K.cyan, () => setState(() => _for = _for == m ? -1 : m)),
+                        ],
+                      ),
+                    ],
                   ],
                   if (_act.isNotEmpty && !Act.isWork(_act)) ...[
                     const SizedBox(height: 14),

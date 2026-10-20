@@ -126,9 +126,6 @@ class HomeScreen extends StatelessWidget {
           ),
           const SizedBox(height: 14),
         ],
-        const PauseSwitch(),
-        const SizedBox(height: 14),
-        const MissedCheckins(),
         const DirectionCard(),
         const SizedBox(height: 14),
 
@@ -193,7 +190,7 @@ class HomeScreen extends StatelessWidget {
         const SizedBox(height: 8),
         Row(
           children: [
-            Expanded(child: _quick(context, Icons.edit_note_rounded, 'Check-in', K.lime, () => openScreen(context, const CheckinScreen()))),
+            Expanded(child: _quick(context, Icons.edit_note_rounded, 'Je fais…', K.lime, () => openScreen(context, const CheckinScreen()))),
             const SizedBox(width: 8),
             Expanded(
                 child: _quick(context, Icons.photo_camera_rounded, 'Repas', K.gold,
