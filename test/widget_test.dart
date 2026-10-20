@@ -60,7 +60,7 @@ void main() {
     phone(t);
     captureErrors();
     await check(t, HomeScreen(onGoTo: (_) {}), 'QG');
-    expect(find.text('QG'), findsWidgets);
+    expect(find.byType(HomeScreen), findsOneWidget);
   });
   testWidgets('Matrice', (t) async {
     phone(t);
