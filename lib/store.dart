@@ -855,31 +855,50 @@ class AppStore extends ChangeNotifier {
       sorted.add((start, end));
     }
     sorted.sort((a, b) => a.$1.compareTo(b.$1));
-    // 2. le reste coule dans l'ordre de la liste et remplit les trous avant / entre les ancres
-    for (final t in seq) {
-      if (t.done) continue;
-      if (times.containsKey(t.id)) continue;
-      var start = cursor;
-      if (running != null && running.taskId == t.id) {
-        start = now.millisecondsSinceEpoch;
+    // 2. le reste coule dans l'ordre de la liste ; un trou avant une ancre se remplit avec
+    //    les prochaines tâches qui y tiennent (celle qui ne tient pas passe juste après l'ancre)
+    final pending = seq.where((t) => !t.done && !times.containsKey(t.id)).toList();
+    if (running != null) {
+      final i = pending.indexWhere((t) => t.id == running.taskId);
+      if (i >= 0) {
+        final t = pending.removeAt(i);
+        final start = now.millisecondsSinceEpoch;
         final end = max(start + 60000, running.start + (running.predictedMin + running.extraMin) * 60000);
         times[t.id] = (start, end);
-        cursor = end;
-        continue;
+        cursor = max(cursor, end);
       }
-      final len = t.blockMin * 60000;
-      var moved = true;
-      while (moved) {
-        moved = false;
-        for (final b in sorted) {
-          if (b.$1 < start + len && b.$2 > start) {
-            start = b.$2;
-            moved = true;
-          }
+    }
+    var guard = 0;
+    while (pending.isNotEmpty && guard++ < 500) {
+      // sortir d'un créneau occupé
+      for (final b in sorted) {
+        if (b.$1 <= cursor && b.$2 > cursor) cursor = b.$2;
+      }
+      int? nextBusy;
+      for (final b in sorted) {
+        if (b.$1 >= cursor && (nextBusy == null || b.$1 < nextBusy)) nextBusy = b.$1;
+      }
+      final gap = nextBusy == null ? null : nextBusy - cursor;
+      var pick = -1;
+      for (var i = 0; i < pending.length; i++) {
+        if (gap == null || pending[i].blockMin * 60000 <= gap) {
+          pick = i;
+          break;
         }
       }
-      times[t.id] = (start, start + len);
-      cursor = start + len;
+      if (pick < 0) {
+        // rien ne tient avant le prochain créneau : on passe derrière
+        var after = cursor;
+        for (final b in sorted) {
+          if (b.$1 == nextBusy) after = max(after, b.$2);
+        }
+        cursor = after;
+        continue;
+      }
+      final t = pending.removeAt(pick);
+      final len = t.blockMin * 60000;
+      times[t.id] = (cursor, cursor + len);
+      cursor += len;
     }
     var end = cursor;
     for (final v in times.values) {
