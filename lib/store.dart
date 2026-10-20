@@ -358,6 +358,7 @@ class AppStore extends ChangeNotifier {
 
   Future<void> commit() async {
     _syncProblemSteps();
+    _bossOnParent();
     _syncHabitTasks();
     _checkMorning();
     await save();
@@ -1061,6 +1062,19 @@ class AppStore extends ChangeNotifier {
     return t;
   }
 
+  /// Si le boss est devenu une sous-étape, le boss passe à sa tâche générale.
+  void _bossOnParent() {
+    for (final t in tasks) {
+      if (!t.isBoss || t.removed || t.parentId.isEmpty) continue;
+      final p = taskById(t.parentId);
+      if (p == null || p.removed || p.done) continue;
+      t.isBoss = false;
+      p.isBoss = true;
+      if (p.bossHp <= 0) p.bossHp = bossTotal(p);
+      p.bossProgress = max(p.bossProgress, t.bossProgress);
+    }
+  }
+
   /// Cochée ici ou dans Habitudes : les deux restent d'accord.
   void _syncHabitTasks() {
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -1130,6 +1144,9 @@ class AppStore extends ChangeNotifier {
   int bossTotal(Task t) => t.estimateMin > 0 ? max(60, t.estimateMin) : 300;
 
   Future<void> setBoss(Task t) async {
+    // une sous-étape ne peut pas être le boss : c'est sa tâche générale qui le devient
+    final p = t.parentId.isNotEmpty ? taskById(t.parentId) : null;
+    if (p != null && !p.removed) t = p;
     for (final x in tasks) {
       x.isBoss = false;
     }
