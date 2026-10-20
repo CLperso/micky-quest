@@ -4,7 +4,8 @@ import '../main.dart';
 import '../models.dart';
 import '../theme.dart';
 import 'task_panel.dart' show showTaskPanel;
-import 'timetable.dart' show PlanningView, askText;
+import 'deroule.dart';
+import 'timetable.dart' show askText;
 
 /// Préparer demain : les quêtes, leurs étapes, le reste, et le planning de demain.
 class TomorrowScreen extends StatelessWidget {
@@ -131,7 +132,7 @@ class TomorrowScreen extends StatelessWidget {
             const SizedBox(height: 14),
             Text('Le planning de demain', style: K.display(16)),
             const SizedBox(height: 6),
-            PlanningView(day: day),
+            DerouleView(day: day),
           ],
         ),
       ),

@@ -10,6 +10,7 @@ import '../models.dart';
 import '../notifications.dart';
 import '../store.dart';
 import '../theme.dart';
+import 'deroule.dart';
 import 'block.dart';
 import 'dump.dart';
 import 'slot.dart';
@@ -161,9 +162,9 @@ Future<void> whenSheet(BuildContext context, Task t) async {
               Text('Quand est-ce que tu t\'y mets ?', style: K.body(13, color: K.muted)),
               const SizedBox(height: 12),
               Row(children: [
-                Expanded(child: whenTile(ctx, 'Aujourd\'hui', '→ je choisis un créneau', K.lime, K.bg, () => Navigator.pop(ctx, 'today'))),
+                Expanded(child: whenTile(ctx, 'Aujourd\'hui', '→ en fin de liste', K.lime, K.bg, () => Navigator.pop(ctx, 'today'))),
                 const SizedBox(width: 8),
-                Expanded(child: whenTile(ctx, 'Demain', '→ planning de demain', K.cyan, K.bg, () => Navigator.pop(ctx, 'tomorrow'))),
+                Expanded(child: whenTile(ctx, 'Demain', '→ liste de demain', K.cyan, K.bg, () => Navigator.pop(ctx, 'tomorrow'))),
               ]),
               const SizedBox(height: 8),
               Row(children: [
@@ -217,13 +218,13 @@ Future<void> applyWhen(BuildContext context, Task t, String choice, {DateTime? d
   final today = DateTime(now.year, now.month, now.day);
   switch (choice) {
     case 'today':
-      await openScreen(context, PlanningScreen(day: dayKey(today), place: t));
+      await store.setDay(t, dayKey(today));
       break;
     case 'tomorrow':
-      await openScreen(context, PlanningScreen(day: dayKey(today.add(const Duration(days: 1))), place: t));
+      await store.setDay(t, dayKey(today.add(const Duration(days: 1))));
       break;
     case 'week':
-      await openScreen(context, PlanningScreen(day: dayKey(day ?? today.add(const Duration(days: 2))), place: t));
+      await store.setDay(t, dayKey(day ?? today.add(const Duration(days: 2))));
       break;
     case 'cond':
       final c = await askText(context, 'Seulement quand…', hint: 'j\'ai reçu la réponse de Nathalie', initial: t.condition);
@@ -288,16 +289,7 @@ class PlanningScreen extends StatelessWidget {
   const PlanningScreen({super.key, this.day, this.place});
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: Text(place == null ? 'Planning' : 'Caser « ${place!.title} »')),
-        body: SafeArea(
-          top: false,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 28),
-            children: [PlanningView(day: day, place: place, onPlaced: () => Navigator.pop(context))],
-          ),
-        ),
-      );
+  Widget build(BuildContext context) => DerouleScreen(day: day, place: place);
 }
 
 /// Ancien nom, gardé pour les écrans qui l'utilisent.

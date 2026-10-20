@@ -10,6 +10,7 @@ import 'matrix.dart' show MatrixScreen;
 import 'task_panel.dart';
 import 'timetable.dart';
 import 'tomorrow.dart';
+import 'deroule.dart';
 
 String fmtH(int m) => m >= 60 ? '${m ~/ 60} h${m % 60 == 0 ? '' : ' ${(m % 60).toString().padLeft(2, '0')}'}' : '$m min';
 
@@ -23,7 +24,6 @@ class TodayScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = AppScope.of(context);
     final plan = store.today;
-    final others = store.todayOther..sort((a, b) => (a.plannedAt == 0 ? 1 << 52 : a.plannedAt).compareTo(b.plannedAt == 0 ? 1 << 52 : b.plannedAt));
     final dups = store.similarPairs();
     final sorted = store.openTasks.where((t) => !store.inToday(t)).toList();
 
@@ -49,7 +49,7 @@ class TodayScreen extends StatelessWidget {
                 const Icon(Icons.add_circle_rounded, color: K.lime),
                 const SizedBox(width: 10),
                 Expanded(child: Text('Nouvelle tâche…', style: K.body(14, color: K.muted, w: FontWeight.w800))),
-                Text('pro / perso · quête · quand', style: K.body(11, color: K.muted)),
+                Text('pro / perso · durée · jour', style: K.body(11, color: K.muted)),
               ]),
             ),
           ),
@@ -62,7 +62,7 @@ class TodayScreen extends StatelessWidget {
         if (!plan.briefingDone)
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
-            child: Text('Touche une quête pour la nommer, ajoute ses étapes, pose-les dans la journée.', style: K.body(13, color: K.muted)),
+            child: Text('Une seule liste, dans l\'ordre réel de ta journée. Tire la poignée ≡ pour déplacer.', style: K.body(13, color: K.muted)),
           ),
         if (dups.isNotEmpty) ...[
           Panel(
@@ -78,34 +78,23 @@ class TodayScreen extends StatelessWidget {
           ),
           const SizedBox(height: 10),
         ],
-        _QuestBlock(cat: 'pro', tag: 'PRO', goal: plan.pro, color: K.lime),
+        const _DayHeader(),
         const SizedBox(height: 10),
-        _QuestBlock(cat: 'perso', tag: 'PERSO', goal: plan.perso, color: K.pink),
-        const SizedBox(height: 10),
-        if (others.isNotEmpty || sorted.isNotEmpty)
-        Panel(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                Expanded(child: Text('Sans catégorie', style: K.display(15))),
-                if (sorted.isNotEmpty)
-                  TextButton(
-                    onPressed: () => _pickSorted(context, store, sorted),
-                    child: Text('Récupérer (${sorted.length})', style: K.body(12, color: K.gold)),
-                  ),
-              ]),
-              if (others.isEmpty) Text('Tout est rangé en pro ou perso.', style: K.body(12, color: K.muted)),
-              for (final t in others) TaskRow(task: t, color: K.gold),
-            ],
+        const _DayList(),
+        if (sorted.isNotEmpty)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => _pickSorted(context, store, sorted),
+              child: Text('Récupérer une tâche rangée (${sorted.length})', style: K.body(12, color: K.gold)),
+            ),
           ),
-        ),
         if (store.toPlaceToday.isNotEmpty) ...[
           const SizedBox(height: 10),
           const _MaybeToday(),
         ],
         const SizedBox(height: 18),
-        const PlanningView(),
+        const DerouleView(),
         const SizedBox(height: 14),
         const _Later(),
       ],
@@ -140,21 +129,13 @@ class TodayScreen extends StatelessWidget {
       ),
     );
     if (t == null) return;
-    await store.moveTask(t, Quad.doNow);
+    store.addToToday(t);
   }
 }
 
-class _QuestBlock extends StatefulWidget {
-  final String cat, tag, goal;
-  final Color color;
-  const _QuestBlock({required this.cat, required this.tag, required this.goal, required this.color});
-
-  @override
-  State<_QuestBlock> createState() => _QuestBlockState();
-}
-
-class _QuestBlockState extends State<_QuestBlock> {
-  bool _open = true;
+/// En haut de la liste : pro (temps / objectif, cap), perso (fait / objectif, cap) et Micky sur ses pierres (une par tâche pro).
+class _DayHeader extends StatelessWidget {
+  const _DayHeader();
 
   Widget _stones(List<Task> steps, int cur, Color color) {
     final n = steps.length;
@@ -217,157 +198,213 @@ class _QuestBlockState extends State<_QuestBlock> {
     );
   }
 
+  Future<void> _rename(BuildContext context, String cat, String goal) async {
+    final store = AppScope.read(context);
+    final v = await askText(context, cat == 'pro' ? 'Ton cap pro aujourd\'hui' : 'Ton cap perso aujourd\'hui',
+        hint: cat == 'pro' ? 'finir la section méthode' : 'ranger la chambre', initial: goal);
+    if (v == null) return;
+    await store.setQuestTitle(cat, v);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final cat = widget.cat, goal = widget.goal, color = widget.color;
     final store = AppScope.of(context);
-    final steps = store.questSteps(cat);
-    final done = steps.where((s) => s.done).length;
-    final byTask = store.minutesByTask(store.todayKey);
-    final minutes = steps.fold(0.0, (a, s) => a + (byTask[s.id] ?? 0)).round();
-    final complete = steps.isNotEmpty && done == steps.length;
-    final goalMin = cat == 'pro' ? store.today.proGoalMin : 0;
-    final proTotal = cat == 'pro' ? store.proMinutesOn(store.todayKey).round() : 0;
-    final closed = store.xpEvents.any((e) => e.reason == 'Quête ${cat == 'pro' ? 'pro' : 'perso'} close' && dayKey(DateTime.fromMillisecondsSinceEpoch(e.ts)) == store.todayKey);
-    var cur = steps.indexWhere((s) => !s.done);
-    if (cur < 0) cur = steps.length;
-    final current = cur < steps.length ? steps[cur] : null;
-    final next = cur + 1 < steps.length ? steps.skip(cur + 1).firstWhere((s) => !s.done, orElse: () => steps[cur + 1]) : null;
-    final meter = cat == 'pro' && (proTotal > 0 || goalMin > 0)
-        ? (goalMin > 0 ? '${fmtH(proTotal)} / ${fmtH(goalMin)}' : fmtH(proTotal))
-        : (minutes > 0 ? fmtH(minutes) : (steps.isEmpty ? '' : '$done / ${steps.length}'));
+    final plan = store.today;
+    final pro = store.questSteps('pro'), perso = store.questSteps('perso');
+    final proTotal = store.proMinutesOn(store.todayKey).round();
+    final goalMin = plan.proGoalMin;
+    final persoDone = perso.where((t) => t.done).length;
+    var cur = pro.indexWhere((t) => !t.done);
+    if (cur < 0) cur = pro.length;
+    final proClosed = store.xpEvents.any((e) => e.reason == 'Quête pro close' && dayKey(DateTime.fromMillisecondsSinceEpoch(e.ts)) == store.todayKey);
+    final persoClosed = store.xpEvents.any((e) => e.reason == 'Quête perso close' && dayKey(DateTime.fromMillisecondsSinceEpoch(e.ts)) == store.todayKey);
+    Widget cap(String cat, String goal, Color color, String meter, bool complete, bool closed) => Expanded(
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => _rename(context, cat, goal),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${cat == 'pro' ? 'PRO' : 'PERSO'} · $meter', style: K.body(10, color: color, w: FontWeight.w900)),
+              Text(goal.isEmpty ? 'cap du jour…' : goal, style: K.body(13, color: goal.isEmpty ? K.dim : K.ink, w: FontWeight.w800), maxLines: 2, overflow: TextOverflow.ellipsis),
+              if (complete && !closed)
+                InkWell(
+                  onTap: () async {
+                    final ok = await store.closeQuest(cat);
+                    if (ok && context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Quête close ! +${cat == 'pro' ? 15 : 5} XP · Micky ronronne.')));
+                  },
+                  child: Text('🏁 Clore', style: K.body(12, color: color, w: FontWeight.w900)),
+                ),
+              if (closed) Text('close ✓', style: K.body(11, color: color, w: FontWeight.w800)),
+            ]),
+          ),
+        );
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: K.card,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: complete ? color : color.withValues(alpha: 0.35), width: 2),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      decoration: BoxDecoration(color: K.card, borderRadius: BorderRadius.circular(20), border: Border.all(color: K.lime.withValues(alpha: 0.35), width: 2)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          cap('pro', plan.pro, K.lime, goalMin > 0 ? '${fmtH(proTotal)} / ${fmtH(goalMin)}' : (pro.isEmpty ? '—' : '${pro.where((t) => t.done).length} / ${pro.length}'), pro.isNotEmpty && cur >= pro.length, proClosed),
+          const SizedBox(width: 10),
+          cap('perso', plan.perso, K.pink, perso.isEmpty ? '—' : '$persoDone / ${perso.length}', perso.isNotEmpty && persoDone == perso.length, persoClosed),
+        ]),
+        if (pro.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          _stones(pro, cur, K.lime),
+        ],
+      ]),
+    );
+  }
+}
+
+/// La séquence du jour : 1, 2, 3… ; faites en haut, à faire ensuite ; sous-étapes en 4a, 4b ; glisser pour réordonner.
+class _DayList extends StatelessWidget {
+  const _DayList();
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final seq = store.daySequence();
+    final done = seq.where((t) => t.done).toList();
+    final todo = seq.where((t) => !t.done).toList();
+    final sched = store.schedule(seq);
+    final fin = sched.end;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+      decoration: BoxDecoration(color: K.card, borderRadius: BorderRadius.circular(20)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        for (var i = 0; i < done.length; i++) _SeqRow(task: done[i], n: '${i + 1}', key: ValueKey(done[i].id)),
+        if (seq.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: Text('Rien dans la journée. Ajoute une tâche, ou récupère-en une dans « Plus tard ».', style: K.body(13, color: K.muted)),
+          ),
+        ReorderableListView(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          buildDefaultDragHandles: false,
+          onReorder: (a, b) => store.reorderDay(a, b > a ? b - 1 : b),
+          children: [
+            for (var i = 0; i < todo.length; i++)
+              _SeqRow(
+                key: ValueKey(todo[i].id),
+                task: todo[i],
+                n: '${done.length + i + 1}',
+                index: i,
+                start: sched.times[todo[i].id]?.$1,
+                late: sched.late.contains(todo[i].id),
+                current: i == 0,
+              ),
+          ],
+        ),
+        Row(children: [
+          TextButton.icon(
+            onPressed: () => newTaskSheet(context, quad: Quad.doNow),
+            icon: const Icon(Icons.add_rounded, color: K.lime, size: 18),
+            label: Text('Tâche', style: K.body(13, color: K.lime, w: FontWeight.w800)),
+          ),
+          const Spacer(),
+          if (todo.isNotEmpty)
+            Text.rich(TextSpan(children: [
+              TextSpan(text: 'si tu suis l\'ordre : fini vers ', style: K.body(11, color: K.dim)),
+              TextSpan(text: hm(DateTime.fromMillisecondsSinceEpoch(fin)), style: K.body(12, color: K.gold, w: FontWeight.w900)),
+            ])),
+        ]),
+      ]),
+    );
+  }
+}
+
+class _SeqRow extends StatelessWidget {
+  final Task task;
+  final String n;
+  final int? index; // null = faite (pas de poignée)
+  final int? start;
+  final bool late, current;
+  const _SeqRow({super.key, required this.task, required this.n, this.index, this.start, this.late = false, this.current = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final t = task;
+    final color = t.category == 'pro' ? K.lime : t.category == 'perso' ? K.pink : K.gold;
+    final anchor = t.plannedAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(t.plannedAt)) == store.todayKey;
+    final running = store.runningSession?.taskId == t.id;
+    final sub = <String>[
+      if (t.estimateMin > 0) fmtMin(t.estimateMin),
+      if (running) 'en cours',
+      if (!t.isBoss && t.progress > 0 && t.progress < 100) '${t.progress} %',
+      if (t.isBoss) 'boss',
+      if (t.link == 'boss') '→ boss',
+      if (t.link == 'pro' || t.link == 'perso') '→ objectif',
+      if (t.condition.isNotEmpty) 'si ${t.condition}',
+    ];
+    final subs = store.subStepsOf(t);
+    final row = Container(
+      padding: EdgeInsets.symmetric(vertical: current ? 6 : 4, horizontal: current ? 6 : 0),
+      decoration: current ? BoxDecoration(color: K.bg, borderRadius: BorderRadius.circular(12)) : null,
+      child: Row(children: [
+        SizedBox(width: 24, child: Text(n, textAlign: TextAlign.right, style: K.display(15, color: t.done ? K.dim : color))),
+        const SizedBox(width: 6),
+        CheckCircle(task: t, color: color),
+        const SizedBox(width: 4),
+        Expanded(
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => t.isBoss ? openScreen(context, const BossScreen()) : showTaskPanel(context, t),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(t.title, style: K.body(14, color: t.done ? K.muted : K.ink, w: FontWeight.w800).copyWith(decoration: t.done ? TextDecoration.lineThrough : null)),
+              Row(children: [
+                if (sub.isNotEmpty) Text(sub.join(' · '), style: K.body(11, color: K.muted)),
+                if (sub.isNotEmpty && (anchor || start != null)) Text(' · ', style: K.body(11, color: K.muted)),
+                if (anchor)
+                  Text('📌 ${hm(DateTime.fromMillisecondsSinceEpoch(t.plannedAt))}${late ? ' · en retard' : ''}', style: K.body(11, color: late ? K.coral : K.gold, w: FontWeight.w900))
+                else if (start != null && !t.done)
+                  Text('~ ${hm(DateTime.fromMillisecondsSinceEpoch(start!))}', style: K.body(11, color: K.dim)),
+              ]),
+            ]),
+          ),
+        ),
+        if (!t.done)
+          IconButton(
+            tooltip: 'Lancer',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => launchTask(context, t),
+            icon: Icon(Icons.play_circle_fill_rounded, color: color, size: 30),
+          ),
+        if (index != null)
+          ReorderableDragStartListener(
+            index: index!,
+            child: const Padding(padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8), child: Icon(Icons.drag_handle_rounded, color: K.line, size: 22)),
+          ),
+      ]),
+    );
+    if (subs.isEmpty) return row;
+    const letters = 'abcdefghij';
+    return Column(children: [
+      row,
+      for (var i = 0; i < subs.length; i++)
+        Padding(
+          padding: const EdgeInsets.only(left: 22),
+          child: Row(children: [
+            SizedBox(width: 24, child: Text('$n${letters[i % letters.length]}', textAlign: TextAlign.right, style: K.display(12, color: subs[i].done ? K.dim : color))),
+            const SizedBox(width: 6),
+            CheckCircle(task: subs[i], color: color),
             Expanded(
               child: InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: () async {
-                  final v = await askText(context, cat == 'pro' ? 'Ta quête pro aujourd\'hui' : 'Ta quête perso aujourd\'hui',
-                      hint: cat == 'pro' ? 'finir la section méthode' : 'ranger la chambre', initial: goal);
-                  if (v == null) return;
-                  await store.setQuestTitle(cat, v);
-                },
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(
-                    steps.isEmpty ? widget.tag : (complete ? '${widget.tag} · TOUT EST FAIT' : '${widget.tag} · ${done} / ${steps.length}'),
-                    style: K.body(10, color: color, w: FontWeight.w900),
-                  ),
-                  Text(goal.isEmpty ? 'Le cap du jour (facultatif)…' : goal, style: K.display(18, color: goal.isEmpty ? K.dim : K.ink)),
-                ]),
+                onTap: () => showTaskPanel(context, subs[i]),
+                child: Text('${subs[i].title}${subs[i].estimateMin > 0 ? ' · ${subs[i].estimateMin} min' : ''}',
+                    style: K.body(13, color: subs[i].done ? K.muted : K.ink).copyWith(decoration: subs[i].done ? TextDecoration.lineThrough : null)),
               ),
             ),
-            if (meter.isNotEmpty) Text(meter, style: K.body(12, color: proTotal >= goalMin && goalMin > 0 ? K.gold : K.muted, w: FontWeight.w800)),
+            if (!subs[i].done)
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                onPressed: () => launchTask(context, subs[i]),
+                icon: Icon(Icons.play_circle_outline_rounded, color: color, size: 24),
+              ),
+            const SizedBox(width: 30),
           ]),
-          if (steps.isNotEmpty) ...[
-            if (cat == 'pro') ...[
-              const SizedBox(height: 4),
-              _stones(steps, cur, color),
-            ],
-            const SizedBox(height: 6),
-            if (current != null)
-              Container(
-                padding: const EdgeInsets.fromLTRB(4, 4, 6, 4),
-                decoration: BoxDecoration(color: K.bg, borderRadius: BorderRadius.circular(14)),
-                child: Row(children: [
-                  CheckCircle(task: current, color: color),
-                  Expanded(
-                    child: InkWell(
-                      onTap: () => showTaskPanel(context, current),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text('${current.title}${current.estimateMin > 0 ? ' · ${fmtH(current.estimateMin)}' : ''}', style: K.body(14, w: FontWeight.w800)),
-                          if (current.progress > 0) ...[
-                            const SizedBox(height: 4),
-                            Row(children: [
-                              Expanded(child: Bar(current.progress / 100, color: color, height: 5)),
-                              const SizedBox(width: 6),
-                              Text('${current.progress} %', style: K.body(11, color: color, w: FontWeight.w900)),
-                            ]),
-                          ],
-                          for (final sub in store.subStepsOf(current))
-                            Padding(
-                              padding: const EdgeInsets.only(top: 2),
-                              child: Row(children: [
-                                Icon(sub.done ? Icons.check_rounded : Icons.subdirectory_arrow_right_rounded, size: 14, color: sub.done ? color : K.muted),
-                                const SizedBox(width: 4),
-                                Expanded(child: Text(sub.title, style: K.body(12, color: sub.done ? K.muted : K.ink).copyWith(decoration: sub.done ? TextDecoration.lineThrough : null))),
-                              ]),
-                            ),
-                          if (next != null) Text('ensuite : ${next.title}', style: K.body(11, color: K.dim)),
-                        ]),
-                      ),
-                    ),
-                  ),
-                  Material(
-                    color: color,
-                    borderRadius: BorderRadius.circular(12),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: () => launchTask(context, current),
-                      child: const SizedBox(width: 44, height: 40, child: Icon(Icons.play_arrow_rounded, color: K.bg)),
-                    ),
-                  ),
-                ]),
-              )
-            else
-              Text(closed ? 'Quête close. Micky ronronne.' : 'Toutes les étapes sont faites : tu peux clore la quête.', style: K.body(13, color: color, w: FontWeight.w800)),
-            if (_open) ...[
-              const SizedBox(height: 8),
-              ReorderableListView(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                buildDefaultDragHandles: false,
-                onReorder: (a, b) => store.reorderSteps(cat, a, b > a ? b - 1 : b),
-                children: [
-                  for (var i = 0; i < steps.length; i++)
-                    ReorderableDelayedDragStartListener(
-                      key: ValueKey(steps[i].id),
-                      index: i,
-                      child: TaskRow(task: steps[i], color: color, quest: cat),
-                    ),
-                ],
-              ),
-              Text('Appui long pour changer l\'ordre.', style: K.body(11, color: K.dim)),
-            ],
-          ],
-          const SizedBox(height: 2),
-          Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 2, children: [
-            if (steps.isNotEmpty)
-              TextButton(
-                onPressed: () => setState(() => _open = !_open),
-                child: Text(_open ? 'Replier la liste' : 'Toute la liste (${steps.length})', style: K.body(13, color: K.muted)),
-              ),
-            TextButton.icon(
-              onPressed: () => addStepSheet(context, cat),
-              icon: Icon(Icons.add_rounded, color: color, size: 18),
-              label: Text('Tâche', style: K.body(13, color: color)),
-            ),
-            if (complete && !closed)
-              TextButton.icon(
-                onPressed: () async {
-                  final ok = await store.closeQuest(cat);
-                  if (ok && context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Quête close ! +${cat == 'pro' ? 15 : 5} XP · Micky ronronne.')));
-                  }
-                },
-                icon: Icon(Icons.flag_rounded, color: color, size: 18),
-                label: Text('Clore', style: K.body(13, color: color, w: FontWeight.w800)),
-              ),
-            if (closed) Pill('CLOSE', color: color),
-          ]),
-        ],
-      ),
-    );
+        ),
+    ]);
   }
 }
 
@@ -657,7 +694,7 @@ class _MaybeTodayState extends State<_MaybeToday> {
             ]),
           ),
           if (_open) ...[
-            Text('Tes tâches « Planifier » sans heure. « Caser » les pose dans le planning, « Pas auj. » les cache jusqu\'à demain.', style: K.body(11, color: K.muted)),
+            Text('Tes tâches « Planifier » sans jour. « Aujourd\'hui » les ajoute en fin de liste, « Pas auj. » les cache jusqu\'à demain.', style: K.body(11, color: K.muted)),
             const SizedBox(height: 4),
                 for (final t in list.take(8))
                   Padding(
@@ -683,11 +720,11 @@ class _MaybeTodayState extends State<_MaybeToday> {
                       ),
                       InkWell(
                         borderRadius: BorderRadius.circular(999),
-                        onTap: () => openScreen(context, PlanningScreen(day: store.todayKey, place: t)),
+                        onTap: () => store.addToToday(t),
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                           decoration: BoxDecoration(color: K.lime, borderRadius: BorderRadius.circular(999)),
-                          child: Text('Caser', style: K.body(11, color: K.bg, w: FontWeight.w900)),
+                          child: Text('Aujourd\'hui', style: K.body(11, color: K.bg, w: FontWeight.w900)),
                         ),
                       ),
                       const SizedBox(width: 6),

@@ -722,14 +722,126 @@ class AppStore extends ChangeNotifier {
   /// Les tâches du jour d'une catégorie : une seule liste (étapes de quête et tâches prévues confondues).
   List<Task> questSteps(String category) {
     final l = tasks.where((t) => t.category == category && !t.removed && t.parentId.isEmpty && (t.done ? t.doneAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(t.doneAt)) == todayKey && t.day.compareTo(todayKey) <= 0 : inToday(t))).toList();
-    int key(Task t) => t.plannedAt > 0 ? 0 : 1;
+    l.sort((a, b) => a.order.compareTo(b.order));
+    return l;
+  }
+
+  /// La séquence du jour : les tâches faites (dans l'ordre où elles ont été faites), puis celles à faire dans l'ordre choisi.
+  /// Pour un autre jour que today : les tâches posées sur ce jour, dans l'ordre.
+  List<Task> daySequence({String? day}) {
+    final d = day ?? todayKey;
+    List<Task> l;
+    if (d == todayKey) {
+      l = tasks.where((t) => !t.removed && t.parentId.isEmpty && (t.done ? t.doneAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(t.doneAt)) == d && t.day.compareTo(d) <= 0 : inToday(t))).toList();
+    } else {
+      l = tasks.where((t) => !t.removed && !t.done && t.parentId.isEmpty && (t.day == d || (t.plannedAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(t.plannedAt)) == d))).toList();
+    }
     l.sort((a, b) {
-      final k = key(a).compareTo(key(b));
-      if (k != 0) return k;
-      if (a.plannedAt > 0) return a.plannedAt.compareTo(b.plannedAt);
+      if (a.done != b.done) return a.done ? -1 : 1;
+      if (a.done) return a.doneAt.compareTo(b.doneAt);
       return a.order.compareTo(b.order);
     });
     return l;
+  }
+
+  /// Glisser dans la liste du jour : [oldIndex] → [newIndex] parmi les tâches à faire.
+  Future<void> reorderDay(int oldIndex, int newIndex, {String? day}) async {
+    final todo = daySequence(day: day).where((t) => !t.done).toList();
+    if (oldIndex < 0 || oldIndex >= todo.length) return;
+    final moved = todo.removeAt(oldIndex);
+    todo.insert(newIndex.clamp(0, todo.length), moved);
+    for (var i = 0; i < todo.length; i++) {
+      todo[i].order = i;
+    }
+    await commit();
+  }
+
+  /// « En tête » : première des tâches à faire (les faites restent au-dessus).
+  Future<void> toHead(Task t) async {
+    addToToday(t, save: false);
+    final todo = daySequence().where((x) => !x.done && x.id != t.id).toList();
+    t.order = 0;
+    for (var i = 0; i < todo.length; i++) {
+      todo[i].order = i + 1;
+    }
+    await commit();
+  }
+
+  /// Met une tâche dans la journée (en fin de liste) si elle n'y est pas.
+  void addToToday(Task t, {bool save = true}) {
+    if (!inToday(t) && !t.done) {
+      t.quad = t.quad == Quad.inbox || t.quad == Quad.plan ? Quad.doNow : t.quad;
+      t.deferred = false;
+      t.day = todayKey;
+      t.hiddenDay = '';
+      final todo = daySequence().where((x) => !x.done && x.id != t.id).toList();
+      t.order = todo.isEmpty ? 0 : todo.map((x) => x.order).reduce(max) + 1;
+    }
+    if (save) commit();
+  }
+
+  /// Pose une tâche sur un jour (sans heure) : elle entre dans la séquence de ce jour, à la fin.
+  Future<void> setDay(Task t, String day) async {
+    t.parentId = '';
+    t.plannedAt = 0;
+    t.calEventId = '';
+    t.condition = '';
+    t.deferred = false;
+    t.hiddenDay = '';
+    t.day = day;
+    if (t.quad == Quad.inbox || t.quad == Quad.plan) t.quad = Quad.doNow;
+    final seq = daySequence(day: day).where((x) => !x.done && x.id != t.id).toList();
+    t.order = seq.isEmpty ? 0 : seq.map((x) => x.order).reduce(max) + 1;
+    await commit();
+    await _planChanged();
+  }
+
+  /// Déroulé calculé : heure de début/fin de chaque tâche à faire si on suit l'ordre, en respectant
+  /// les ancres (📌 pas avant) et les créneaux occupés [busy] (agenda). Retourne aussi les ancres intenables.
+  ({Map<String, (int, int)> times, Set<String> late, int end}) schedule(List<Task> seq, {String? day, List<(int, int)> busy = const []}) {
+    final d = day ?? todayKey;
+    final now = DateTime.now();
+    int cursor;
+    if (d == todayKey) {
+      cursor = now.millisecondsSinceEpoch;
+    } else {
+      final dd = DateTime.parse(d);
+      final h = settings.startTarget > 0 ? settings.startTarget : settings.startHour * 60;
+      cursor = DateTime(dd.year, dd.month, dd.day).millisecondsSinceEpoch + h * 60000;
+    }
+    final running = runningSession;
+    final times = <String, (int, int)>{};
+    final late = <String>{};
+    final sorted = [...busy]..sort((a, b) => a.$1.compareTo(b.$1));
+    for (final t in seq) {
+      if (t.done) continue;
+      var start = cursor;
+      if (running != null && running.taskId == t.id) {
+        start = now.millisecondsSinceEpoch;
+        final end = max(start + 60000, running.start + (running.predictedMin + running.extraMin) * 60000);
+        times[t.id] = (start, end);
+        cursor = end;
+        continue;
+      }
+      if (t.plannedAt > 0) {
+        if (t.plannedAt > start) start = t.plannedAt;
+        if (start > t.plannedAt + 5 * 60000) late.add(t.id);
+      }
+      final len = t.blockMin * 60000;
+      var moved = true;
+      while (moved) {
+        moved = false;
+        for (final b in sorted) {
+          if (b.$1 < start + len && b.$2 > start) {
+            start = b.$2;
+            moved = true;
+          }
+        }
+      }
+      times[t.id] = (start, start + len);
+      cursor = start + len;
+    }
+    return (times: times, late: late, end: cursor);
   }
 
   /// Tâches du jour sans catégorie.
@@ -796,7 +908,7 @@ class AppStore extends ChangeNotifier {
       estimateMin: estimate,
       quad: q && quad == Quad.inbox ? Quad.doNow : quad,
       day: todayKey,
-      order: q ? questSteps(category).length : tasks.length,
+      order: daySequence().where((x) => !x.done).fold(-1, (a, x) => max(a, x.order)) + 1,
       inQuest: q && category.isNotEmpty,
     );
     tasks.add(t);
@@ -2535,10 +2647,7 @@ class AppStore extends ChangeNotifier {
   void _fitSubs(Task parent) {
     final sum = subStepsOf(parent).where((x) => !x.done).fold(0, (a, x) => a + x.estimateMin);
     if (sum > parent.estimateMin) parent.estimateMin = sum;
-    if (parent.plannedAt > 0 && sum > parent.blockMin) {
-      parent.plannedMin = sum;
-      _shiftAfter(parent);
-    }
+    if (parent.plannedAt > 0 && parent.plannedMin > 0 && sum > parent.plannedMin) parent.plannedMin = sum;
   }
 
   /// Sous-étapes d'une tâche générale (sessions « avancer »).
@@ -2548,12 +2657,6 @@ class AppStore extends ChangeNotifier {
   Future<Task?> extendSession(SessionRec s, int minutes, String why, {String subStep = ''}) async {
     s.extraMin += minutes;
     if (why.isNotEmpty) s.extWhy = s.extWhy.isEmpty ? why : '${s.extWhy} · $why';
-    // le bloc du planning s'allonge et pousse ce qui suit
-    final pt = taskById(s.taskId);
-    if (minutes > 0 && pt != null && pt.plannedAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(pt.plannedAt)) == todayKey) {
-      pt.plannedMin = pt.blockMin + minutes;
-      _shiftAfter(pt);
-    }
     Task? created;
     if (subStep.trim().isNotEmpty) {
       final parent = taskById(s.taskId);
@@ -2572,17 +2675,6 @@ class AppStore extends ChangeNotifier {
     }
     await commit();
     return created;
-  }
-
-  /// Pousse les blocs prévus du même jour qui chevauchent la fin de [t] (en cascade).
-  void _shiftAfter(Task t) {
-    final day = dayKey(DateTime.fromMillisecondsSinceEpoch(t.plannedAt));
-    final later = plannedOn(day).where((x) => x.id != t.id && !x.done && x.plannedAt >= t.plannedAt).toList()..sort((a, b) => a.plannedAt.compareTo(b.plannedAt));
-    var end = t.plannedAt + t.blockMin * 60000;
-    for (final x in later) {
-      if (x.plannedAt < end) x.plannedAt = end;
-      end = x.plannedAt + x.blockMin * 60000;
-    }
   }
 
   /// Sous-étape ajoutée en session, cochée pendant la session : temps tenu ou pas.

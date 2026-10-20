@@ -60,6 +60,7 @@ Future<void> showTaskPanel(BuildContext context, Task t) async {
       child: StatefulBuilder(
         builder: (ctx, setState) {
           final planned = t.plannedAt > 0;
+          final inToday = store.inToday(t);
           Widget small(String label, IconData icon, Color c, String id) => InkWell(
                 borderRadius: BorderRadius.circular(10),
                 onTap: () => Navigator.pop(ctx, id),
@@ -117,46 +118,94 @@ Future<void> showTaskPanel(BuildContext context, Task t) async {
                   else
                     SecondaryButton(label: 'Décocher', onPressed: () => Navigator.pop(ctx, 'undone')),
                   const SizedBox(height: 12),
-                  Text('QUAND ?', style: K.body(11, color: K.muted, w: FontWeight.w900).copyWith(letterSpacing: 1)),
+                  if (t.parentId.isEmpty) ...[
+                    Text('PLACE', style: K.body(11, color: K.muted, w: FontWeight.w900).copyWith(letterSpacing: 1)),
+                    const SizedBox(height: 6),
+                    Wrap(children: [
+                      chip('↑ En tête', false, K.lime, () => Navigator.pop(ctx, 'head')),
+                      chip('↓ Plus tard', false, K.muted, () => Navigator.pop(ctx, 'later')),
+                      chip('↳ Sous-étape de…', false, K.cyan, () => Navigator.pop(ctx, 'subof')),
+                    ]),
+                    Text('Pour le reste de l\'ordre : tire la poignée ≡ dans la liste.', style: K.body(11, color: K.dim)),
+                    const SizedBox(height: 10),
+                  ],
+                  Text('QUEL JOUR ?', style: K.body(11, color: K.muted, w: FontWeight.w900).copyWith(letterSpacing: 1)),
                   const SizedBox(height: 6),
-                  Row(children: [
-                    Expanded(child: whenTile(ctx, 'Aujourd\'hui', '→ caser dans le planning', K.lime, K.bg, () => Navigator.pop(ctx, 'w:today'))),
-                    const SizedBox(width: 8),
-                    Expanded(child: whenTile(ctx, 'Demain', '→ caser demain', K.cyan, K.bg, () => Navigator.pop(ctx, 'w:tomorrow'))),
-                  ]),
-                  const SizedBox(height: 8),
-                  Row(children: [
-                    Expanded(
-                      child: whenTile(ctx, 'Cette semaine', '', K.raised, K.gold, () => Navigator.pop(ctx, 'w:week'), border: K.gold, child: Row(children: [
-                        for (var i = 0; i < 7; i++)
-                          Builder(builder: (_) {
-                            final d = today.add(Duration(days: i));
-                            final sel = d == weekDay;
-                            const n = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 3),
-                              child: InkWell(
-                                onTap: () => setState(() => weekDay = d),
-                                child: Container(
-                                  width: 18,
-                                  height: 20,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(color: sel ? K.gold : K.line, borderRadius: BorderRadius.circular(6)),
-                                  child: Text(n[d.weekday - 1], style: K.body(10, color: sel ? K.bg : K.ink, w: FontWeight.w900)),
-                                ),
-                              ),
-                            );
-                          }),
-                      ])),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: whenTile(ctx, 'Seulement quand…', t.condition.isNotEmpty ? '« ${t.condition} »' : 'une condition', K.raised, K.pink, () => Navigator.pop(ctx, 'w:cond'), border: K.pink),
-                    ),
+                  Wrap(children: [
+                    chip('Aujourd\'hui', inToday, K.lime, () => Navigator.pop(ctx, 'w:today')),
+                    chip('Demain', t.day == store.tomorrowKey && !inToday, K.cyan, () => Navigator.pop(ctx, 'w:tomorrow')),
+                    chip('Seulement quand…', t.condition.isNotEmpty, K.pink, () => Navigator.pop(ctx, 'w:cond')),
                   ]),
                   Row(children: [
-                    small('Temps estimé (${t.estimateMin > 0 ? fmtMin(t.estimateMin) : '?'})', Icons.timer_outlined, K.cyan, 'len'),
-                    if (planned) small('Retirer du planning', Icons.close_rounded, K.coral, 'unplan'),
+                    Text('cette semaine : ', style: K.body(12, color: K.muted)),
+                    for (var i = 2; i < 7; i++)
+                      Builder(builder: (_) {
+                        final d = today.add(Duration(days: i));
+                        final sel = t.day == dayKey(d) && !t.done;
+                        const n = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: InkWell(
+                            onTap: () {
+                              weekDay = d;
+                              Navigator.pop(ctx, 'w:week');
+                            },
+                            child: Container(
+                              width: 24,
+                              height: 24,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(color: sel ? K.gold : K.line, borderRadius: BorderRadius.circular(6)),
+                              child: Text(n[d.weekday - 1], style: K.body(11, color: sel ? K.bg : K.ink, w: FontWeight.w900)),
+                            ),
+                          ),
+                        );
+                      }),
+                  ]),
+                  const SizedBox(height: 10),
+                  Text('ANCRE (FACULTATIF)', style: K.body(11, color: K.muted, w: FontWeight.w900).copyWith(letterSpacing: 1)),
+                  const SizedBox(height: 6),
+                  Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
+                    Padding(padding: const EdgeInsets.only(right: 6, bottom: 6), child: Text('📌 pas avant', style: K.body(12, color: K.muted))),
+                    chip('—', !planned, K.gold, () async {
+                      if (planned) await store.unplanTask(t);
+                      setState(() {});
+                    }),
+                    for (final h in [9, 12, 14, 16])
+                      chip('${h}h', planned && DateTime.fromMillisecondsSinceEpoch(t.plannedAt).hour == h && DateTime.fromMillisecondsSinceEpoch(t.plannedAt).minute == 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(t.plannedAt)) == t.day, K.gold, () async {
+                        final d = DateTime.parse(t.day.compareTo(store.todayKey) < 0 ? store.todayKey : t.day);
+                        await store.planTask(t, DateTime(d.year, d.month, d.day, h));
+                        await rescheduleAll(store);
+                        setState(() {});
+                      }),
+                    chip(planned ? hm(DateTime.fromMillisecondsSinceEpoch(t.plannedAt)) : 'autre…', planned && ![9, 12, 14, 16].contains(DateTime.fromMillisecondsSinceEpoch(t.plannedAt).hour), K.gold, () async {
+                      final at = await pickWhen(ctx, initial: planned ? DateTime.fromMillisecondsSinceEpoch(t.plannedAt) : null, title: 'Pas avant…');
+                      if (at == null) return;
+                      await store.planTask(t, at);
+                      await rescheduleAll(store);
+                      setState(() {});
+                    }),
+                  ]),
+                  Text('Seulement pour un vrai rendez-vous : le déroulé attend cette heure.', style: K.body(11, color: K.dim)),
+                  const SizedBox(height: 10),
+                  Text('TEMPS ESTIMÉ', style: K.body(11, color: K.muted, w: FontWeight.w900).copyWith(letterSpacing: 1)),
+                  const SizedBox(height: 6),
+                  Wrap(children: [
+                    for (final m in [15, 30, 45, 60, 90, 120, 180])
+                      chip(fmtMin(m), t.estimateMin == m, K.cyan, () async {
+                        t.estimateMin = m;
+                        if (t.plannedAt > 0) t.plannedMin = m;
+                        await store.commit();
+                        setState(() {});
+                      }),
+                    chip(![15, 30, 45, 60, 90, 120, 180].contains(t.estimateMin) && t.estimateMin > 0 ? fmtMin(t.estimateMin) : 'autre…', ![15, 30, 45, 60, 90, 120, 180].contains(t.estimateMin) && t.estimateMin > 0, K.cyan, () async {
+                      final v = await askText(ctx, 'Temps estimé (minutes)', hint: '75', initial: t.estimateMin > 0 ? '${t.estimateMin}' : '');
+                      final m = int.tryParse((v ?? '').trim());
+                      if (m == null || m <= 0) return;
+                      t.estimateMin = m;
+                      if (t.plannedAt > 0) t.plannedMin = m;
+                      await store.commit();
+                      setState(() {});
+                    }),
                   ]),
                   const SizedBox(height: 12),
                   Text('PRO / PERSO', style: K.body(11, color: K.muted, w: FontWeight.w900).copyWith(letterSpacing: 1)),
@@ -175,11 +224,11 @@ Future<void> showTaskPanel(BuildContext context, Task t) async {
                   Text('ÇA COMPTE POUR…', style: K.body(11, color: K.muted, w: FontWeight.w900).copyWith(letterSpacing: 1)),
                   const SizedBox(height: 6),
                   Wrap(children: [
-                    chip('→ objectif pro', t.link == 'pro', K.lime, () async {
+                    chip(store.settings.dirPro.isNotEmpty ? '→ ${store.settings.dirPro}' : '→ objectif pro', t.link == 'pro', K.lime, () async {
                       await store.setLink(t, 'pro');
                       setState(() {});
                     }),
-                    chip('→ objectif perso', t.link == 'perso', K.pink, () async {
+                    chip(store.settings.dirPerso.isNotEmpty ? '→ ${store.settings.dirPerso}' : '→ objectif perso', t.link == 'perso', K.pink, () async {
                       await store.setLink(t, 'perso');
                       setState(() {});
                     }),
@@ -190,7 +239,7 @@ Future<void> showTaskPanel(BuildContext context, Task t) async {
                       }),
                   ]),
                   if (t.link.isNotEmpty)
-                    Text(t.link == 'boss' ? 'Chaque coche entame le boss (+10 XP).' : 'Compte dans Ma direction et le briefing (+5 XP).', style: K.body(11, color: K.muted)),
+                    Text(t.link == 'boss' ? 'Chaque coche entame le boss (+10 XP).' : 'Un pas de la semaine vers cet objectif, dans Ma direction et le briefing (+5 XP).', style: K.body(11, color: K.muted)),
                   if (t.parentId.isEmpty) ...[
                     const SizedBox(height: 8),
                     Text('SOUS-ÉTAPES', style: K.body(11, color: K.muted, w: FontWeight.w900).copyWith(letterSpacing: 1)),
@@ -265,24 +314,38 @@ Future<void> showTaskPanel(BuildContext context, Task t) async {
     case 'undone':
       await store.completeTask(t);
       break;
-    case 'len':
-      final v = await showModalBottomSheet<int>(
+    case 'head':
+      await store.toHead(t);
+      break;
+    case 'later':
+      await store.laterTask(t);
+      await rescheduleAll(store);
+      break;
+    case 'subof':
+      final cands = store.openTasks.where((x) => x.id != t.id && x.parentId.isEmpty).toList();
+      final parent = await showModalBottomSheet<Task>(
         context: context,
+        isScrollControlled: true,
         builder: (ctx) => SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Wrap(spacing: 8, runSpacing: 8, children: [
-              for (final m in [15, 30, 45, 60, 90, 120, 180, 240])
-                ActionChip(label: Text(fmtMin(m)), backgroundColor: K.raised, side: BorderSide.none, onPressed: () => Navigator.pop(ctx, m)),
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('« ${t.title} » devient une sous-étape de…', style: K.display(17)),
+              const SizedBox(height: 6),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.55),
+                child: ListView(shrinkWrap: true, children: [
+                  for (final x in cands)
+                    ListTile(dense: true, contentPadding: EdgeInsets.zero, title: Text(x.title, style: K.body(14, w: FontWeight.w700)), onTap: () => Navigator.pop(ctx, x)),
+                ]),
+              ),
             ]),
           ),
         ),
       );
-      if (v == null) return;
-      t.estimateMin = v;
-      if (t.plannedAt > 0) t.plannedMin = v;
-      await store.commit();
-      if (t.plannedAt > 0) await PhoneCalendar.writeBlock(store, t);
+      if (parent == null) return;
+      await store.attachSub(parent, t);
+      await rescheduleAll(store);
       break;
     case 'merge':
       final cands = store.openTasks.where((x) => x.id != t.id && x.parentId.isEmpty).toList();
