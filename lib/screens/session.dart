@@ -71,10 +71,16 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
   Widget build(BuildContext context) {
     final store = AppScope.of(context);
     final open = store.openTasks;
-    // quêtes et « Faire maintenant » d'abord
+    // dans l'ordre du planning : les heures d'aujourd'hui d'abord, puis la liste du jour, puis le reste
     open.sort((a, b) {
+      final ta = store.inToday(a), tb = store.inToday(b);
+      if (ta != tb) return ta ? -1 : 1;
+      final pa = a.plannedAt > 0 && store.inToday(a), pb = b.plannedAt > 0 && store.inToday(b);
+      if (pa != pb) return pa ? -1 : 1;
+      if (pa && pb) return a.plannedAt.compareTo(b.plannedAt);
       int rank(Task t) => t.category.isNotEmpty ? 0 : (t.quad == Quad.doNow ? 1 : (t.quad == Quad.plan ? 2 : 3));
-      return rank(a).compareTo(rank(b));
+      final r = rank(a).compareTo(rank(b));
+      return r != 0 ? r : a.order.compareTo(b.order);
     });
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),

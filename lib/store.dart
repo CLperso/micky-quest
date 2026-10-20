@@ -719,9 +719,60 @@ class AppStore extends ChangeNotifier {
 
   List<Task> tasksIn(String quad) => openTasks.where((t) => t.quad == quad).toList();
 
-  List<Task> questSteps(String category) =>
-      tasks.where((t) => t.inQuest && t.category == category && t.day == todayKey && !t.removed).toList()
-        ..sort((a, b) => a.order.compareTo(b.order));
+  /// Les tâches du jour d'une catégorie : une seule liste (étapes de quête et tâches prévues confondues).
+  List<Task> questSteps(String category) {
+    final l = tasks.where((t) => t.category == category && !t.removed && t.parentId.isEmpty && (t.done ? t.doneAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(t.doneAt)) == todayKey && t.day.compareTo(todayKey) <= 0 : inToday(t))).toList();
+    int key(Task t) => t.plannedAt > 0 ? 0 : 1;
+    l.sort((a, b) {
+      final k = key(a).compareTo(key(b));
+      if (k != 0) return k;
+      if (a.plannedAt > 0) return a.plannedAt.compareTo(b.plannedAt);
+      return a.order.compareTo(b.order);
+    });
+    return l;
+  }
+
+  /// Tâches du jour sans catégorie.
+  List<Task> get todayOther => openTasks.where((t) => t.category.isEmpty && inToday(t)).toList();
+
+  /// Paires de titres qui se ressemblent (doublons probables), parmi les tâches ouvertes.
+  List<(Task, Task)> similarPairs() {
+    String norm(String x) => x.toLowerCase().replaceAll(RegExp(r'[^a-z0-9àâäéèêëîïôöùûüç ]'), ' ').replaceAll(RegExp(r'\b(le|la|les|un|une|des|de|du|finir|faire|refaire|terminer)\b'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    final open = openTasks;
+    final out = <(Task, Task)>[];
+    for (var i = 0; i < open.length; i++) {
+      for (var j = i + 1; j < open.length; j++) {
+        final a = norm(open[i].title), b = norm(open[j].title);
+        if (a.length < 4 || b.length < 4) continue;
+        if (a == b || a.contains(b) || b.contains(a)) out.add((open[i], open[j]));
+      }
+    }
+    return out;
+  }
+
+  /// Fusionne [other] dans [keep] : sous-étapes, durée, heure, lien ; [other] est retirée.
+  Future<void> mergeTasks(Task keep, Task other) async {
+    for (final t in tasks) {
+      if (t.parentId == other.id) t.parentId = keep.id;
+    }
+    if (keep.estimateMin == 0) keep.estimateMin = other.estimateMin;
+    if (keep.plannedAt == 0) keep.plannedAt = other.plannedAt;
+    if (keep.link.isEmpty) keep.link = other.link;
+    if (keep.category.isEmpty) keep.category = other.category;
+    if (other.isBoss) keep.isBoss = true;
+    other.removed = true;
+    await commit();
+    await _planChanged();
+  }
+
+  /// Relie une tâche à l'objectif pro, perso, ou au boss (elle compte alors pour lui).
+  Future<void> setLink(Task t, String link) async {
+    t.link = t.link == link ? '' : link;
+    await commit();
+  }
+
+  /// Les tâches du jour qui comptent vers un objectif ou le boss.
+  List<Task> linkedToday(String link) => openTasks.where((t) => t.link == link && inToday(t)).toList();
 
   Task? get boss {
     for (final t in tasks) {
@@ -840,6 +891,12 @@ class AppStore extends ChangeNotifier {
       t.done = true;
       t.doneAt = DateTime.now().millisecondsSinceEpoch;
       _gainXp(taskXp(t), 'Tâche faite');
+      if (t.link == 'pro' || t.link == 'perso') _gainXp(5, 'Vers l\'objectif ${t.link}');
+      final b = boss;
+      if (t.link == 'boss' && b != null) {
+        _gainXp(10, 'Coup sur le boss');
+        b.bossProgress = (b.bossProgress + max(5, min(25, t.estimateMin ~/ 6))).clamp(0, 99);
+      }
       _checkBigBonuses();
       _checkMedals();
     }
@@ -875,8 +932,10 @@ class AppStore extends ChangeNotifier {
   }
 
   /// Sessions passées sur le boss (ses coups), les plus anciennes d'abord.
-  List<SessionRec> bossHits(Task boss) =>
-      sessions.where((s) => s.taskId == boss.id && !s.running).toList()..sort((a, b) => a.start.compareTo(b.start));
+  List<SessionRec> bossHits(Task boss) {
+    final linked = tasks.where((t) => t.link == 'boss').map((t) => t.id).toSet()..add(boss.id);
+    return sessions.where((s) => linked.contains(s.taskId) && !s.running).toList()..sort((a, b) => a.start.compareTo(b.start));
+  }
 
   int bossMinutes(Task boss) => bossHits(boss).fold(0, (a, s) => a + s.actualMin.round());
 
@@ -1091,7 +1150,7 @@ class AppStore extends ChangeNotifier {
   /// Pas faits cette semaine vers un objectif : étapes de quête faites (pro) / gestes perso + étapes perso faites.
   int weekStepsDone(String category, DateTime d) {
     final days = weekDays(d).toSet();
-    var n = tasks.where((t) => t.done && t.inQuest && t.category == category && t.doneAt > 0 && days.contains(dayKey(DateTime.fromMillisecondsSinceEpoch(t.doneAt)))).length;
+    var n = tasks.where((t) => t.done && (t.link == category || (t.link.isEmpty && t.category == category)) && t.doneAt > 0 && days.contains(dayKey(DateTime.fromMillisecondsSinceEpoch(t.doneAt)))).length;
     if (category == 'perso') n += weekDays(d).where((x) => pillarPerso(x) == 1).length;
     return n;
   }

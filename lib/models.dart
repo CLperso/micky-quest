@@ -62,6 +62,7 @@ class Task {
   int bossProgress; // boss : avancement déclaré, 0 à 100
   int progress; // avancement déclaré d'une tâche ou étape, 0 à 100
   String parentId; // sous-étape d'une session « avancer » : la tâche générale
+  String link; // vers quoi elle compte : '', pro (objectif 3 mois), perso, boss
   bool inQuest; // étape de la quête du jour (sinon simple tâche pro ou perso)
   String hiddenDay; // « pas aujourd'hui » : masquée de « À caser » ce jour-là
   int mod;
@@ -89,6 +90,7 @@ class Task {
     this.bossProgress = 0,
     this.progress = 0,
     this.parentId = '',
+    this.link = '',
     this.inQuest = false,
     this.hiddenDay = '',
     this.mod = 0,
@@ -120,6 +122,7 @@ class Task {
         bossProgress: _i(j['bossP']),
         progress: _i(j['prog']),
         parentId: _s(j['par']),
+        link: _s(j['link']),
         // avant ce champ, toute tâche pro ou perso était une étape de quête
         inQuest: j.containsKey('inQ') ? _b(j['inQ']) : _s(j['category']).isNotEmpty,
         hiddenDay: _s(j['hid']),
@@ -149,6 +152,7 @@ class Task {
         'bossP': bossProgress,
         'prog': progress,
         'par': parentId,
+        'link': link,
         'inQ': inQuest,
         'hid': hiddenDay,
         'mod': mod,

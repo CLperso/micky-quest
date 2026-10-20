@@ -465,6 +465,17 @@ class _PlanningViewState extends State<PlanningView> {
                 title: Text('Nouvelle tâche', style: K.body(15)),
                 onTap: () => Navigator.pop(ctx, Task(title: '', day: '')),
               ),
+              if (store.habits.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text('HABITUDES', style: K.body(11, color: K.muted, w: FontWeight.w900).copyWith(letterSpacing: 1)),
+                for (final h in store.habits)
+                  ListTile(
+                    leading: const Icon(Icons.repeat_rounded, color: K.cyan, size: 18),
+                    title: Text(h.title, style: K.body(15)),
+                    subtitle: h.reminderMin >= 0 ? Text('déjà à ${(h.reminderMin ~/ 60).toString().padLeft(2, '0')}:${(h.reminderMin % 60).toString().padLeft(2, '0')}', style: K.body(12, color: K.muted)) : null,
+                    onTap: () => Navigator.pop(ctx, Task(id: 'habit:${h.id}', title: h.title, day: '')),
+                  ),
+              ],
             ],
           ),
         ),
@@ -990,6 +1001,15 @@ class _TimetableViewState extends State<TimetableView> {
       ),
     );
     if (chosen == null || !mounted) return;
+    if (chosen.id.startsWith('habit:')) {
+      final hid = chosen.id.substring(6);
+      for (final h in store.habits) {
+        if (h.id == hid) h.reminderMin = at.hour * 60 + at.minute;
+      }
+      await store.commit();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('« ${chosen.title} » chaque jour à ${hm(at)}')));
+      return;
+    }
     Task t = chosen;
     if (t.title.isEmpty) {
       final n = await askNewTask(context);
@@ -1139,6 +1159,50 @@ class _TimetableViewState extends State<TimetableView> {
                           color: store.sessionCategory(x) == Act.perso ? K.pink : K.lime,
                           borderRadius: BorderRadius.circular(3),
                         ),
+                      ),
+                    ),
+                  ),
+                // habitudes avec une heure
+                for (final h in store.habits.where((h) => h.reminderMin >= 0))
+                  Positioned(
+                    top: top(dayMs + h.reminderMin * 60000) + 8,
+                    left: _left + 8,
+                    right: 0,
+                    height: 26,
+                    child: GestureDetector(
+                      onTap: () async {
+                        final lvl = store.habitLevel(h, _key);
+                        if (lvl == 0 && isToday) {
+                          await store.cycleHabit(h, to: 2);
+                        } else {
+                          final off = await showModalBottomSheet<bool>(
+                            context: context,
+                            builder: (ctx) => SafeArea(
+                              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                                ListTile(title: Text(h.title, style: K.display(16))),
+                                ListTile(leading: const Icon(Icons.close_rounded, color: K.coral), title: Text('Retirer du planning', style: K.body(14)), onTap: () => Navigator.pop(ctx, true)),
+                              ]),
+                            ),
+                          );
+                          if (off == true) {
+                            h.reminderMin = -1;
+                            await store.commit();
+                          }
+                        }
+                        if (mounted) setState(() {});
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: K.cyan.withValues(alpha: store.habitLevel(h, _key) > 0 ? 0.08 : 0.2),
+                          borderRadius: BorderRadius.circular(8),
+                          border: const Border(left: BorderSide(color: K.cyan, width: 3)),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        child: Row(children: [
+                          Icon(store.habitLevel(h, _key) > 0 ? Icons.check_rounded : Icons.repeat_rounded, color: K.cyan, size: 12),
+                          const SizedBox(width: 4),
+                          Expanded(child: Text(h.title, style: K.body(11, color: store.habitLevel(h, _key) > 0 ? K.muted : K.ink, w: FontWeight.w800), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                        ]),
                       ),
                     ),
                   ),

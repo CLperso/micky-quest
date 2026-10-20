@@ -154,29 +154,43 @@ Future<void> showTaskPanel(BuildContext context, Task t) async {
                       child: whenTile(ctx, 'Seulement quand…', t.condition.isNotEmpty ? '« ${t.condition} »' : 'une condition', K.raised, K.pink, () => Navigator.pop(ctx, 'w:cond'), border: K.pink),
                     ),
                   ]),
-                  if (planned)
-                    Row(children: [
-                      small('Durée (${fmtMin(t.blockMin)})', Icons.timer_outlined, K.cyan, 'len'),
-                      small('Retirer du planning', Icons.close_rounded, K.coral, 'unplan'),
-                    ]),
+                  Row(children: [
+                    small('Temps estimé (${t.estimateMin > 0 ? fmtMin(t.estimateMin) : '?'})', Icons.timer_outlined, K.cyan, 'len'),
+                    if (planned) small('Retirer du planning', Icons.close_rounded, K.coral, 'unplan'),
+                  ]),
                   const SizedBox(height: 12),
-                  Text('QUÊTE', style: K.body(11, color: K.muted, w: FontWeight.w900).copyWith(letterSpacing: 1)),
+                  Text('PRO / PERSO', style: K.body(11, color: K.muted, w: FontWeight.w900).copyWith(letterSpacing: 1)),
                   const SizedBox(height: 6),
                   Wrap(children: [
                     chip('Pro', t.category == 'pro', K.lime, () async {
-                      await store.editTask(t, category: t.category == 'pro' ? '' : 'pro');
+                      await store.editTask(t, category: t.category == 'pro' ? '' : 'pro', inQuest: true);
                       setState(() {});
                     }),
                     chip('Perso', t.category == 'perso', K.pink, () async {
-                      await store.editTask(t, category: t.category == 'perso' ? '' : 'perso');
+                      await store.editTask(t, category: t.category == 'perso' ? '' : 'perso', inQuest: true);
                       setState(() {});
                     }),
-                    if (t.category.isNotEmpty)
-                      chip('Étape de la quête du jour', t.inQuest, K.gold, () async {
-                        await store.editTask(t, inQuest: !t.inQuest);
+                  ]),
+                  const SizedBox(height: 8),
+                  Text('ÇA COMPTE POUR…', style: K.body(11, color: K.muted, w: FontWeight.w900).copyWith(letterSpacing: 1)),
+                  const SizedBox(height: 6),
+                  Wrap(children: [
+                    chip('→ objectif pro', t.link == 'pro', K.lime, () async {
+                      await store.setLink(t, 'pro');
+                      setState(() {});
+                    }),
+                    chip('→ objectif perso', t.link == 'perso', K.pink, () async {
+                      await store.setLink(t, 'perso');
+                      setState(() {});
+                    }),
+                    if (store.boss != null && store.boss!.id != t.id)
+                      chip('→ le boss', t.link == 'boss', K.coral, () async {
+                        await store.setLink(t, 'boss');
                         setState(() {});
                       }),
                   ]),
+                  if (t.link.isNotEmpty)
+                    Text(t.link == 'boss' ? 'Chaque coche entame le boss (+10 XP).' : 'Compte dans Ma direction et le briefing (+5 XP).', style: K.body(11, color: K.muted)),
                   const Divider(color: K.line, height: 18),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -185,6 +199,7 @@ Future<void> showTaskPanel(BuildContext context, Task t) async {
                       small('Découper', Icons.content_cut_rounded, K.cyan, 'cut'),
                       small('Modifier', Icons.edit_rounded, K.ink, 'edit'),
                       small(t.isBoss ? 'Boss' : 'Boss', Icons.pest_control_rounded, K.coral, 'boss'),
+                      small('Fusionner', Icons.call_merge_rounded, K.gold, 'merge'),
                       small('Supprimer', Icons.delete_outline_rounded, K.muted, 'delete'),
                     ],
                   ),
@@ -225,9 +240,35 @@ Future<void> showTaskPanel(BuildContext context, Task t) async {
         ),
       );
       if (v == null) return;
-      t.plannedMin = v;
+      t.estimateMin = v;
+      if (t.plannedAt > 0) t.plannedMin = v;
       await store.commit();
-      await PhoneCalendar.writeBlock(store, t);
+      if (t.plannedAt > 0) await PhoneCalendar.writeBlock(store, t);
+      break;
+    case 'merge':
+      final cands = store.openTasks.where((x) => x.id != t.id && x.parentId.isEmpty).toList();
+      final other = await showModalBottomSheet<Task>(
+        context: context,
+        isScrollControlled: true,
+        builder: (ctx) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Fusionner « ${t.title} » avec…', style: K.display(17)),
+              const SizedBox(height: 6),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.55),
+                child: ListView(shrinkWrap: true, children: [
+                  for (final x in cands)
+                    ListTile(dense: true, contentPadding: EdgeInsets.zero, title: Text(x.title, style: K.body(14, w: FontWeight.w700)), onTap: () => Navigator.pop(ctx, x)),
+                ]),
+              ),
+            ]),
+          ),
+        ),
+      );
+      if (other == null || !context.mounted) return;
+      await mergeSheet(context, t, other);
       break;
     case 'unplan':
       await store.unplanTask(t);
@@ -300,12 +341,11 @@ Widget _quadBtn(BuildContext ctx, String q, Task t) {
   );
 }
 
-/// Nouvelle tâche : titre, pro/perso, étape de quête, pari, case.
+/// Nouvelle tâche : titre, pro/perso, pari, case.
 Future<void> newTaskSheet(BuildContext context, {String quad = Quad.inbox, String category = ''}) async {
   final store = AppScope.read(context);
   final c = TextEditingController();
   var cat = category;
-  var inQuest = false;
   var min = 0;
   var where = quad;
   final ok = await showModalBottomSheet<bool>(
@@ -352,7 +392,6 @@ Future<void> newTaskSheet(BuildContext context, {String quad = Quad.inbox, Strin
         );
       }
 
-      final questName = cat == 'pro' ? store.today.pro : cat == 'perso' ? store.today.perso : '';
       String label(String s) => s.toUpperCase();
       return Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
@@ -384,30 +423,6 @@ Future<void> newTaskSheet(BuildContext context, {String quad = Quad.inbox, Strin
                         inQuest = false;
                       })),
                 ]),
-                if (cat.isNotEmpty)
-                  Container(
-                    margin: const EdgeInsets.only(top: 4),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: K.bg,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: inQuest ? K.gold : K.line, width: 2),
-                    ),
-                    child: SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      value: inQuest,
-                      activeColor: K.gold,
-                      onChanged: (v) => setState(() {
-                        inQuest = v;
-                        if (v && where == Quad.inbox) where = Quad.doNow;
-                      }),
-                      title: Text('Étape de la quête ${cat == 'pro' ? 'pro' : 'perso'} du jour', style: K.body(13, w: FontWeight.w800)),
-                      subtitle: Text(
-                        questName.isEmpty ? 'quête pas encore nommée' : '$questName / ${c.text.isEmpty ? '…' : c.text}',
-                        style: K.body(12, color: K.gold, w: FontWeight.w800),
-                      ),
-                    ),
-                  ),
                 const SizedBox(height: 10),
                 Text(label('Pari'), style: K.body(11, color: K.muted, w: FontWeight.w900)),
                 const SizedBox(height: 6),
@@ -438,7 +453,7 @@ Future<void> newTaskSheet(BuildContext context, {String quad = Quad.inbox, Strin
   final title = c.text.trim();
   c.dispose();
   if (ok != true || title.isEmpty) return;
-  final t = await store.addTask(title, category: cat, estimate: min, quad: where, inQuest: inQuest);
+  final t = await store.addTask(title, category: cat, estimate: min, quad: where, inQuest: true);
   if (where == Quad.plan && context.mounted) await whenSheet(context, t);
 }
 

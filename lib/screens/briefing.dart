@@ -204,6 +204,7 @@ class _BriefingScreenState extends State<BriefingScreen> {
             const _StartCard(),
             const SizedBox(height: 10),
             const _ProblemAsk(),
+            const _LinkedLine(),
             const SectionLabel('1 · Tes objectifs du jour'),
             Panel(
               border: K.gold,
@@ -694,6 +695,31 @@ class _ProblemAsk extends StatelessWidget {
               side: BorderSide.none,
             ),
         ]),
+      ]),
+    );
+  }
+}
+
+/// « n tâches vers l'objectif pro · m vers le boss » — ce qui compte aujourd'hui.
+class _LinkedLine extends StatelessWidget {
+  const _LinkedLine();
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final pro = store.linkedToday('pro').length, perso = store.linkedToday('perso').length, boss = store.linkedToday('boss').length;
+    if (pro + perso + boss == 0) return const SizedBox.shrink();
+    String n(int k, String w) => '$k $w${k > 1 ? 's' : ''}';
+    final parts = [
+      if (pro > 0) '${n(pro, 'tâche')} → objectif pro',
+      if (perso > 0) '${n(perso, 'tâche')} → objectif perso',
+      if (boss > 0) '${n(boss, 'coup')} → le boss',
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(children: [
+        const Icon(Icons.flag_rounded, color: K.gold, size: 16),
+        const SizedBox(width: 6),
+        Expanded(child: Text('Aujourd\'hui : ${parts.join(' · ')}', style: K.body(12, color: K.gold, w: FontWeight.w800))),
       ]),
     );
   }

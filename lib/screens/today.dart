@@ -23,9 +23,8 @@ class TodayScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = AppScope.of(context);
     final plan = store.today;
-    final inQuests = {for (final t in [...store.questSteps('pro'), ...store.questSteps('perso')]) t.id};
-    final others = store.openTasks.where((t) => !inQuests.contains(t.id) && store.inToday(t)).toList()
-      ..sort((a, b) => (a.plannedAt == 0 ? 1 << 52 : a.plannedAt).compareTo(b.plannedAt == 0 ? 1 << 52 : b.plannedAt));
+    final others = store.todayOther..sort((a, b) => (a.plannedAt == 0 ? 1 << 52 : a.plannedAt).compareTo(b.plannedAt == 0 ? 1 << 52 : b.plannedAt));
+    final dups = store.similarPairs();
     final sorted = store.openTasks.where((t) => !store.inToday(t)).toList();
 
     final body = ListView(
@@ -65,25 +64,39 @@ class TodayScreen extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: 10),
             child: Text('Touche une quête pour la nommer, ajoute ses étapes, pose-les dans la journée.', style: K.body(13, color: K.muted)),
           ),
-        _QuestBlock(cat: 'pro', tag: 'QUÊTE PRO', goal: plan.pro, color: K.lime),
+        if (dups.isNotEmpty) ...[
+          Panel(
+            border: K.gold,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Doublon ?', style: K.display(15, color: K.gold)),
+              for (final d in dups.take(3))
+                Row(children: [
+                  Expanded(child: Text('« ${d.$1.title} » et « ${d.$2.title} »', style: K.body(13))),
+                  TextButton(onPressed: () => mergeSheet(context, d.$1, d.$2), child: Text('fusionner', style: K.body(12, color: K.gold, w: FontWeight.w900))),
+                ]),
+            ]),
+          ),
+          const SizedBox(height: 10),
+        ],
+        _QuestBlock(cat: 'pro', tag: 'PRO', goal: plan.pro, color: K.lime),
         const SizedBox(height: 10),
-        _QuestBlock(cat: 'perso', tag: 'QUÊTE PERSO', goal: plan.perso, color: K.pink),
+        _QuestBlock(cat: 'perso', tag: 'PERSO', goal: plan.perso, color: K.pink),
         const SizedBox(height: 10),
+        if (others.isNotEmpty || sorted.isNotEmpty)
         Panel(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(children: [
-                Expanded(child: Text('Aussi aujourd\'hui', style: K.display(15))),
+                Expanded(child: Text('Sans catégorie', style: K.display(15))),
                 if (sorted.isNotEmpty)
                   TextButton(
                     onPressed: () => _pickSorted(context, store, sorted),
                     child: Text('Récupérer (${sorted.length})', style: K.body(12, color: K.gold)),
                   ),
               ]),
-              if (others.isEmpty)
-                Text('Rien d\'autre. « Faire maintenant » et ce qui a une heure aujourd\'hui arrive ici.', style: K.body(12, color: K.muted)),
-              for (final t in others) TaskRow(task: t, color: K.quadColors[t.quad] ?? K.gold),
+              if (others.isEmpty) Text('Tout est rangé en pro ou perso.', style: K.body(12, color: K.muted)),
+              for (final t in others) TaskRow(task: t, color: K.gold),
             ],
           ),
         ),
@@ -141,7 +154,7 @@ class _QuestBlock extends StatefulWidget {
 }
 
 class _QuestBlockState extends State<_QuestBlock> {
-  bool _open = false;
+  bool _open = true;
 
   Widget _stones(List<Task> steps, int cur, Color color) {
     final n = steps.length;
@@ -245,18 +258,20 @@ class _QuestBlockState extends State<_QuestBlock> {
                 },
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(
-                    steps.isEmpty ? 'QUÊTE ${widget.tag}' : (complete ? 'QUÊTE ${widget.tag} · TOUT EST FAIT' : 'QUÊTE ${widget.tag} · ÉTAPE ${cur + 1} / ${steps.length}'),
+                    steps.isEmpty ? widget.tag : (complete ? '${widget.tag} · TOUT EST FAIT' : '${widget.tag} · ${done} / ${steps.length}'),
                     style: K.body(10, color: color, w: FontWeight.w900),
                   ),
-                  Text(goal.isEmpty ? 'Touche pour nommer ta quête…' : goal, style: K.display(18, color: goal.isEmpty ? K.dim : K.ink)),
+                  Text(goal.isEmpty ? 'Le cap du jour (facultatif)…' : goal, style: K.display(18, color: goal.isEmpty ? K.dim : K.ink)),
                 ]),
               ),
             ),
             if (meter.isNotEmpty) Text(meter, style: K.body(12, color: proTotal >= goalMin && goalMin > 0 ? K.gold : K.muted, w: FontWeight.w800)),
           ]),
           if (steps.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            _stones(steps, cur, color),
+            if (cat == 'pro') ...[
+              const SizedBox(height: 4),
+              _stones(steps, cur, color),
+            ],
             const SizedBox(height: 6),
             if (current != null)
               Container(
@@ -330,12 +345,12 @@ class _QuestBlockState extends State<_QuestBlock> {
             if (steps.isNotEmpty)
               TextButton(
                 onPressed: () => setState(() => _open = !_open),
-                child: Text(_open ? 'Replier' : 'Étapes (${steps.length})', style: K.body(13, color: K.muted)),
+                child: Text(_open ? 'Replier la liste' : 'Toute la liste (${steps.length})', style: K.body(13, color: K.muted)),
               ),
             TextButton.icon(
               onPressed: () => addStepSheet(context, cat),
               icon: Icon(Icons.add_rounded, color: color, size: 18),
-              label: Text('Étape', style: K.body(13, color: color)),
+              label: Text('Tâche', style: K.body(13, color: color)),
             ),
             if (complete && !closed)
               TextButton.icon(
@@ -769,4 +784,33 @@ class _LaterState extends State<_Later> {
       ]),
     );
   }
+}
+
+/// Fusionner deux tâches : on garde l'une, l'autre disparaît (ses sous-étapes suivent).
+Future<void> mergeSheet(BuildContext context, Task a, Task b) async {
+  final store = AppScope.read(context);
+  final keep = await showModalBottomSheet<Task>(
+    context: context,
+    builder: (ctx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Laquelle on garde ?', style: K.display(18)),
+          const SizedBox(height: 4),
+          Text('L\'autre disparaît ; sa durée, son heure et ses sous-étapes passent sur celle gardée.', style: K.body(12, color: K.muted)),
+          const SizedBox(height: 10),
+          for (final t in [a, b])
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(t.title, style: K.body(15, w: FontWeight.w800)),
+              subtitle: Text([if (t.category.isNotEmpty) t.category, if (t.estimateMin > 0) '${t.estimateMin} min', if (t.plannedAt > 0) hm(DateTime.fromMillisecondsSinceEpoch(t.plannedAt))].join(' · '), style: K.body(12, color: K.muted)),
+              onTap: () => Navigator.pop(ctx, t),
+            ),
+        ]),
+      ),
+    ),
+  );
+  if (keep == null) return;
+  await store.mergeTasks(keep, keep.id == a.id ? b : a);
+  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fusionnées en « ${keep.title} »')));
 }
