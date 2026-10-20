@@ -341,6 +341,83 @@ class _PlanningViewState extends State<PlanningView> {
 
   String get _key => dayKey(_day);
 
+  /// En mode « caser », toucher un bloc occupé : intervertir, remplacer, ou en faire une sous-étape.
+  Future<void> _onOccupied(AppStore store, Task other) async {
+    final p = widget.place!;
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('« ${other.title} » est déjà là', style: K.display(18)),
+            const SizedBox(height: 4),
+            Text('${hm(DateTime.fromMillisecondsSinceEpoch(other.plannedAt))} · que fait-on de « ${p.title} » ?', style: K.body(13, color: K.muted)),
+            const SizedBox(height: 12),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.swap_vert_rounded, color: K.cyan),
+              title: Text('Intervertir', style: K.body(15, w: FontWeight.w800)),
+              subtitle: Text(p.plannedAt > 0 ? 'chacune prend la place de l\'autre' : '« ${other.title} » retourne dans tes tâches sans heure', style: K.body(12, color: K.muted)),
+              onTap: () => Navigator.pop(ctx, 'swap'),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.find_replace_rounded, color: K.gold),
+              title: Text('Remplacer', style: K.body(15, w: FontWeight.w800)),
+              subtitle: Text('« ${other.title} » retourne dans tes tâches, « ${p.title} » prend le créneau', style: K.body(12, color: K.muted)),
+              onTap: () => Navigator.pop(ctx, 'replace'),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.subdirectory_arrow_right_rounded, color: K.lime),
+              title: Text('En faire une sous-étape', style: K.body(15, w: FontWeight.w800)),
+              subtitle: Text('« ${p.title} » se fait pendant « ${other.title} »', style: K.body(12, color: K.muted)),
+              onTap: () => Navigator.pop(ctx, 'sub'),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.schedule_rounded, color: K.muted),
+              title: Text('Juste après', style: K.body(15, w: FontWeight.w800)),
+              subtitle: Text('à ${hm(DateTime.fromMillisecondsSinceEpoch(other.plannedAt + max(15, other.blockMin) * 60000))}', style: K.body(12, color: K.muted)),
+              onTap: () => Navigator.pop(ctx, 'after'),
+            ),
+          ]),
+        ),
+      ),
+    );
+    if (choice == null || !mounted) return;
+    final at = DateTime.fromMillisecondsSinceEpoch(other.plannedAt);
+    switch (choice) {
+      case 'swap':
+        final mine = p.plannedAt;
+        await store.planTask(p, at);
+        if (mine > 0) {
+          await store.planTask(other, DateTime.fromMillisecondsSinceEpoch(mine));
+        } else {
+          await store.unplanTask(other);
+        }
+        break;
+      case 'replace':
+        await store.unplanTask(other);
+        await store.planTask(p, at);
+        break;
+      case 'sub':
+        p.parentId = other.id;
+        p.plannedAt = 0;
+        await store.commit();
+        break;
+      case 'after':
+        await store.planTask(p, at.add(Duration(minutes: max(15, other.blockMin))));
+        break;
+    }
+    await rescheduleAll(store);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(choice == 'sub' ? '« ${p.title} » est une sous-étape de « ${other.title} »' : 'C\'est casé.')));
+    widget.onPlaced?.call();
+  }
+
+
   Future<void> _loadEvents() async {
     final store = AppScope.read(context);
     if (!store.settings.calendarRead) return;
@@ -872,82 +949,6 @@ class _TimetableViewState extends State<TimetableView> {
   }
 
   String get _key => dayKey(_day);
-
-  /// En mode « caser », toucher un bloc occupé : intervertir, remplacer, ou en faire une sous-étape.
-  Future<void> _onOccupied(AppStore store, Task other) async {
-    final p = widget.place!;
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('« ${other.title} » est déjà là', style: K.display(18)),
-            const SizedBox(height: 4),
-            Text('${hm(DateTime.fromMillisecondsSinceEpoch(other.plannedAt))} · que fait-on de « ${p.title} » ?', style: K.body(13, color: K.muted)),
-            const SizedBox(height: 12),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.swap_vert_rounded, color: K.cyan),
-              title: Text('Intervertir', style: K.body(15, w: FontWeight.w800)),
-              subtitle: Text(p.plannedAt > 0 ? 'chacune prend la place de l\'autre' : '« ${other.title} » retourne dans tes tâches sans heure', style: K.body(12, color: K.muted)),
-              onTap: () => Navigator.pop(ctx, 'swap'),
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.find_replace_rounded, color: K.gold),
-              title: Text('Remplacer', style: K.body(15, w: FontWeight.w800)),
-              subtitle: Text('« ${other.title} » retourne dans tes tâches, « ${p.title} » prend le créneau', style: K.body(12, color: K.muted)),
-              onTap: () => Navigator.pop(ctx, 'replace'),
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.subdirectory_arrow_right_rounded, color: K.lime),
-              title: Text('En faire une sous-étape', style: K.body(15, w: FontWeight.w800)),
-              subtitle: Text('« ${p.title} » se fait pendant « ${other.title} »', style: K.body(12, color: K.muted)),
-              onTap: () => Navigator.pop(ctx, 'sub'),
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.schedule_rounded, color: K.muted),
-              title: Text('Juste après', style: K.body(15, w: FontWeight.w800)),
-              subtitle: Text('à ${hm(DateTime.fromMillisecondsSinceEpoch(other.plannedAt + max(15, other.blockMin) * 60000))}', style: K.body(12, color: K.muted)),
-              onTap: () => Navigator.pop(ctx, 'after'),
-            ),
-          ]),
-        ),
-      ),
-    );
-    if (choice == null || !mounted) return;
-    final at = DateTime.fromMillisecondsSinceEpoch(other.plannedAt);
-    switch (choice) {
-      case 'swap':
-        final mine = p.plannedAt;
-        await store.planTask(p, at);
-        if (mine > 0) {
-          await store.planTask(other, DateTime.fromMillisecondsSinceEpoch(mine));
-        } else {
-          await store.unplanTask(other);
-        }
-        break;
-      case 'replace':
-        await store.unplanTask(other);
-        await store.planTask(p, at);
-        break;
-      case 'sub':
-        p.parentId = other.id;
-        p.plannedAt = 0;
-        await store.commit();
-        break;
-      case 'after':
-        await store.planTask(p, at.add(Duration(minutes: max(15, other.blockMin))));
-        break;
-    }
-    await rescheduleAll(store);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(choice == 'sub' ? '« ${p.title} » est une sous-étape de « ${other.title} »' : 'C\'est casé.')));
-    widget.onPlaced?.call();
-  }
 
   Future<void> _addAt(DateTime at) async {
     final store = AppScope.read(context);
