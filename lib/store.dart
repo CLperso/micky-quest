@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'cards.dart';
 import 'models.dart';
 
 const kStateKey = 'quest_state_v1';
@@ -43,6 +44,7 @@ class AppStore extends ChangeNotifier {
   Map<String, DayPlan> plans = {};
   List<XpEvent> xpEvents = [];
   List<String> inventory = [];
+  List<String> cardDrops = []; // cartes Micky gagnées, « ts|carte|xp|tâche »
   List<Pause> pauses = [];
   List<NoteMeta> notes = [];
   List<Habit> habits = [];
@@ -103,6 +105,7 @@ class AppStore extends ChangeNotifier {
           for (final p in list('plans').map(DayPlan.fromJson)) p.day: p,
         };
         inventory = ((j['inventory'] as List?) ?? []).map((e) => e.toString()).toList();
+        cardDrops = ((j['cardDrops'] as List?) ?? []).map((e) => e.toString()).toList();
         pauses = list('pauses').map(Pause.fromJson).toList();
         notes = list('notes').map(NoteMeta.fromJson).toList();
         habits = list('habits').map(Habit.fromJson).toList();
@@ -231,6 +234,7 @@ class AppStore extends ChangeNotifier {
       for (final e in r.entries) e.key: e.value.values.toList(),
       'xpEvents': xpEvents.map((e) => e.toJson()).toList(),
       'inventory': inventory,
+      'cardDrops': cardDrops,
       'cycle': {'start': settings.cycleStart, 'len': settings.cycleLength},
       'cabinPrefs': {
         'books': settings.books,
@@ -296,6 +300,9 @@ class AppStore extends ChangeNotifier {
     for (final it in ((remote['inventory'] as List?) ?? []).map((e) => e.toString())) {
       if (!inventory.contains(it)) inventory.add(it);
     }
+    for (final it in ((remote['cardDrops'] as List?) ?? []).map((e) => e.toString())) {
+      if (!cardDrops.contains(it)) cardDrops.add(it);
+    }
     final cp = remote['cabinPrefs'] as Map?;
     if (cp != null) {
       void union(List<String> mine, Object? theirs) {
@@ -337,6 +344,7 @@ class AppStore extends ChangeNotifier {
       'xpEvents': xpEvents.map((e) => e.toJson()).toList(),
       'plans': plans.values.map((e) => e.toJson()).toList(),
       'inventory': inventory,
+      'cardDrops': cardDrops,
       'pauses': pauses.map((e) => e.toJson()).toList(),
       'notes': notes.map((e) => e.toJson()).toList(),
       'habits': habits.map((e) => e.toJson()).toList(),
@@ -1147,14 +1155,20 @@ class AppStore extends ChangeNotifier {
     } else {
       t.done = true;
       t.doneAt = DateTime.now().millisecondsSinceEpoch;
+      var gained = taskXp(t);
       _gainXp(taskXp(t), 'Tâche faite');
       final el = effectiveLink(t);
-      if (el == 'pro' || el == 'perso') _gainXp(5, 'Vers l\'objectif $el');
+      if (el == 'pro' || el == 'perso') {
+        _gainXp(5, 'Vers l\'objectif $el');
+        gained += 5;
+      }
       final b = boss;
       if (t.link == 'boss' && b != null) {
         _gainXp(10, 'Coup sur le boss');
+        gained += 10;
         b.bossProgress = (b.bossProgress + max(5, min(25, t.estimateMin ~/ 6))).clamp(0, 99).toInt();
       }
+      if (t.category == 'pro' && t.link != 'slot') _dropCard(t, gained);
       _checkBigBonuses();
       _checkMedals();
     }
@@ -1793,8 +1807,7 @@ class AppStore extends ChangeNotifier {
     }
     var chest = '';
     if (s.onTarget) {
-      _gainXp(15, 'Pari réussi');
-      chest = _openChest();
+      _gainXp(15, 'Pari réussi'); // le coffre, c'est le soir : les paris réussis comptent pour lui
     }
     _checkMedals();
     await commit();
@@ -1883,22 +1896,48 @@ class AppStore extends ChangeNotifier {
   bool _claimedToday(String reason) => xpEvents.any(
       (e) => e.reason == reason && dayKey(DateTime.fromMillisecondsSinceEpoch(e.ts)) == todayKey);
 
-  /// Vérifie les super bonus du jour.
-  void _checkBigBonuses() {
-    final today = tasks.where((t) => t.day == todayKey && !t.removed).toList();
-    final pro = today.where((t) => t.category != 'perso').toList();
-    final msgs = <String>[];
-    if (pro.length >= 2 && pro.every((t) => t.done) && !_claimedToday('Coffre géant')) {
-      _gainXp(100, 'Coffre géant');
-      final a = _openChest();
-      final b = _openChest();
-      msgs.add('COFFRE GÉANT · toutes tes tâches pro sont faites !\n+100 XP · $a · $b');
-    }
-    final habitsOk = activeHabits.isNotEmpty && activeHabits.every((h) => habitLevel(h, todayKey) > 0);
-    if (today.length >= 3 && today.every((t) => t.done) && habitsOk && !_claimedToday('Journée parfaite')) {
-      _gainXp(200, 'Journée parfaite');
+  /// Les super bonus passent par le coffre du soir (voir [eveningChest]).
+  void _checkBigBonuses() {}
+
+  // ---------- Coffre du soir ----------
+
+  /// Les cinq critères du coffre du soir : dur, mais accessible.
+  List<(String, bool)> eveningCriteria(String day) {
+    final goal = (plans[day]?.proGoalMin ?? 0) > 0 ? plans[day]!.proGoalMin : settings.dirProDefault;
+    final pro = proMinutesOn(day);
+    final bets = sessionsOn(day).where((x) => !x.running && x.onTarget).length;
+    final hs = activeHabits;
+    final habitsOk = hs.isNotEmpty && hs.every((h) => habitLevel(h, day) > 0);
+    final done = tasks.where((t) => !t.removed && t.parentId.isEmpty && t.link != 'slot' && t.done && t.doneAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(t.doneAt)) == day).length;
+    final left = day == todayKey ? daySequence().where((t) => !t.done && t.link != 'slot').length : 0;
+    final listOk = done >= 3 && done / max(1, done + left) >= 0.8;
+    return [
+      ('Objectif pro tenu (${(goal / 60).toStringAsFixed(goal % 60 == 0 ? 0 : 1)} h)', pro >= goal),
+      ('Démarré à l\'heure', xpEvents.any((e) => e.reason == 'Démarrage à l\'heure · $day')),
+      ('Deux paris réussis', bets >= 2),
+      ('Habitudes du jour tenues', habitsOk),
+      ('Liste du jour faite à 80 %', listOk),
+    ];
+  }
+
+  bool eveningChestOpened(String day) => xpEvents.any((e) => e.reason == 'Coffre du soir · $day');
+
+  /// Ouvre le coffre du soir : 3 critères = coffre, 4 = grand coffre, 5 = coffre légendaire.
+  Future<List<String>> openEveningChest(String day) async {
+    final n = eveningCriteria(day).where((c) => c.$2).length;
+    if (n < 3 || eveningChestOpened(day)) return [];
+    _gainXp(0, 'Coffre du soir · $day');
+    final items = <String>[];
+    if (n == 3) {
+      items.add(_openChest());
+    } else if (n == 4) {
+      _gainXp(30, 'Grand coffre');
+      items.add(_openChest());
+      items.add(_openChest());
+    } else {
+      _gainXp(100, 'Coffre légendaire');
       _gainXp(0, 'Joker');
-      final epic = Objects.all.where((o) => o.rarity == 3 && !inventory.contains(o.id)).toList();
+      final epic = Objects.all.where((o) => o.rarity == 3 && !inventory.contains(o.id) && o.asset.isNotEmpty).toList();
       final obj = epic.isEmpty ? _drawObject(maxRarity: 3) : epic[Random().nextInt(epic.length)];
       final item = obj?.name ?? 'Thème doré pour 24 h';
       if (obj != null) {
@@ -1906,9 +1945,46 @@ class AppStore extends ChangeNotifier {
         lastObject = obj.id;
       }
       _gainXp(0, 'Butin : $item');
-      msgs.add('JOURNÉE PARFAITE · tout est fait, habitudes comprises !\n+200 XP · $item · un joker de série');
+      items.add(item);
+      items.add('un joker de série');
     }
-    if (msgs.isNotEmpty) pendingCelebration = msgs.join('\n\n');
+    await commit();
+    return items;
+  }
+
+  // ---------- Cartes Micky ----------
+
+  List<CardDrop> get drops => [for (final s in cardDrops) if (CardDrop.parse(s) != null) CardDrop.parse(s)!]..sort((a, b) => a.ts.compareTo(b.ts));
+
+  Map<String, int> get cardCounts {
+    final m = <String, int>{};
+    for (final d in drops) {
+      m[d.card] = (m[d.card] ?? 0) + 1;
+    }
+    return m;
+  }
+
+  /// Carte à révéler (consommée par l'interface).
+  CardDrop? pendingCard;
+
+  /// Tire une carte pour une tâche pro finie. Tâche longue ou liée au boss : plus de chances d'une rare.
+  void _dropCard(Task t, int xp) {
+    final r = Random();
+    final big = t.estimateMin >= 60 || t.link == 'boss' || t.isBoss;
+    final roll = r.nextInt(100);
+    final rarity = roll < (big ? 12 : 5) ? 3 : (roll < (big ? 47 : 30) ? 2 : 1);
+    final counts = cardCounts;
+    final pool = <MickyCard>[];
+    for (final c in Cards.all.where((c) => c.rarity == rarity)) {
+      for (var i = 0; i < (counts.containsKey(c.id) ? 1 : 3); i++) {
+        pool.add(c);
+      }
+    }
+    if (pool.isEmpty) return;
+    final c = pool[r.nextInt(pool.length)];
+    final d = CardDrop(DateTime.now().millisecondsSinceEpoch, c.id, xp, t.title);
+    cardDrops.add(d.encode());
+    pendingCard = d;
   }
 
   /// Gains d'un jour : XP total, détail par raison, butins.

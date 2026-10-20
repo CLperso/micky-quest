@@ -246,6 +246,8 @@ class _EveningScreenState extends State<EveningScreen> {
               ]);
             }),
             const SizedBox(height: 12),
+            _EveningChest(day: day),
+            const SizedBox(height: 12),
             _GainsRecap(day: day),
             const SizedBox(height: 12),
             Builder(builder: (context) {
@@ -823,6 +825,59 @@ class _GainsRecap extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// Le coffre du soir : 3 critères sur 5 = coffre, 4 = grand coffre, 5 = coffre légendaire.
+class _EveningChest extends StatelessWidget {
+  final String day;
+  const _EveningChest({required this.day});
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final crit = store.eveningCriteria(day);
+    final n = crit.where((c) => c.$2).length;
+    final opened = store.eveningChestOpened(day);
+    final name = n >= 5 ? 'Coffre légendaire' : (n == 4 ? 'Grand coffre' : 'Coffre');
+    final col = n >= 5 ? K.gold : (n == 4 ? K.cyan : (n == 3 ? K.lime : K.muted));
+    return Panel(
+      border: col,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text(n >= 3 ? '🎁' : '🔒', style: const TextStyle(fontSize: 22)),
+          const SizedBox(width: 8),
+          Expanded(child: Text('Coffre du soir', style: K.display(16))),
+          Text('$n / 5', style: K.display(16, color: col)),
+        ]),
+        Text('3 critères : un coffre · 4 : grand coffre · 5 : coffre légendaire', style: K.body(11, color: K.muted)),
+        const SizedBox(height: 6),
+        for (final c in crit)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(children: [
+              Icon(c.$2 ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded, size: 18, color: c.$2 ? K.lime : K.line),
+              const SizedBox(width: 8),
+              Expanded(child: Text(c.$1, style: K.body(13, color: c.$2 ? K.ink : K.muted))),
+            ]),
+          ),
+        const SizedBox(height: 8),
+        if (opened)
+          Text('Ouvert ce soir ✓', style: K.body(13, color: col, w: FontWeight.w800))
+        else if (n >= 3)
+          PrimaryButton(
+            label: 'Ouvrir le $name'.replaceFirst('le Coffre', 'le coffre').replaceFirst('le Grand', 'le grand'),
+            color: col,
+            onPressed: () async {
+              final items = await store.openEveningChest(day);
+              if (!context.mounted || items.isEmpty) return;
+              await showLoot(context, store, '$name · ${items.join(' · ')}');
+            },
+          )
+        else
+          Text('Encore ${3 - n} critère${3 - n > 1 ? 's' : ''} pour l\'ouvrir.', style: K.body(12, color: K.muted)),
+      ]),
     );
   }
 }

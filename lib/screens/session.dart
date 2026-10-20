@@ -11,6 +11,7 @@ import 'dump.dart';
 import 'house.dart';
 import 'reflect.dart';
 import 'timetable.dart' show launchTask, PlanningScreen;
+import 'cards.dart' show showPendingCard;
 
 /// Choix de la tâche et du pari de durée.
 class StartSessionSheet extends StatefulWidget {
@@ -459,6 +460,8 @@ class _SessionScreenState extends State<SessionScreen> {
     );
     if (!mounted) return;
     if (chest.isNotEmpty) await showLoot(context, store, chest);
+    if (!mounted) return;
+    await showPendingCard(context);
     if (!mounted) return;
     Navigator.pop(context);
     final ctx = navKey.currentContext;

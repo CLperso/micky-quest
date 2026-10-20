@@ -7,6 +7,7 @@ import '../store.dart';
 import '../theme.dart';
 import 'block.dart' show kTruths;
 import 'budget.dart';
+import 'cards.dart' show CardsEntry;
 import 'house.dart';
 
 class DiscoveriesScreen extends StatefulWidget {
@@ -76,6 +77,8 @@ class _DiscoveriesScreenState extends State<DiscoveriesScreen> {
         ),
         const SizedBox(height: 14),
         if (_tab == 0) ...[
+          const CardsEntry(),
+          const SizedBox(height: 12),
           const HouseCard(),
           const SizedBox(height: 12),
           _statsPanel(store),

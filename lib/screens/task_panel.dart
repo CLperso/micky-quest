@@ -6,6 +6,7 @@ import '../models.dart';
 import '../notifications.dart';
 import '../theme.dart';
 import 'boss.dart';
+import 'cards.dart' show showPendingCard;
 import 'dump.dart';
 import 'timetable.dart';
 import 'today.dart';
@@ -32,6 +33,12 @@ Future<void> checkTask(BuildContext context, Task t, {bool askAfter = true}) asy
       title: t.title,
     ));
     if (!context.mounted) return;
+  }
+  if (store.pendingCard != null && t.done) {
+    await showPendingCard(context);
+    if (!context.mounted) return;
+    if (askAfter) await askNext(context, 'Tâche faite !');
+    return;
   }
   final xp = store.taskXp(t);
   final messenger = ScaffoldMessenger.of(context);

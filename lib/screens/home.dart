@@ -20,6 +20,7 @@ import 'problems.dart';
 import 'direction.dart';
 import 'dump.dart';
 import 'help.dart';
+import 'cards.dart' show CardsEntry;
 import 'boss.dart';
 import 'house.dart';
 import 'task_panel.dart';
@@ -183,6 +184,8 @@ class HomeScreen extends StatelessWidget {
         _bossCard(context, boss),
         const SizedBox(height: 14),
         const HouseCard(),
+        const SizedBox(height: 10),
+        const CardsEntry(),
         const SizedBox(height: 14),
         const BudgetMiniCard(),
         const SizedBox(height: 18),
