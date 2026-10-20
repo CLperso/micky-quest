@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import '../main.dart';
 import '../models.dart';
 import '../notifications.dart';
+import '../store.dart';
 import '../theme.dart';
 import 'block.dart';
 import 'dump.dart';
 import 'notebook.dart';
 import 'problems.dart';
+import 'task_panel.dart' show showTaskPanel;
 import 'timetable.dart' show askText;
 import 'matrix.dart';
 
@@ -378,6 +380,34 @@ class _StepsEditorState extends State<StepsEditor> {
     super.dispose();
   }
 
+  static String _fmtMin(int m) => m >= 60 ? '${m ~/ 60} h${m % 60 == 0 ? '' : ' ${m % 60}'}' : '$m min';
+
+  Future<void> _pickMinutes(BuildContext context, AppStore store, Task t) async {
+    final v = await showModalBottomSheet<int>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Durée de « ${t.title} »', style: K.display(18)),
+            const SizedBox(height: 10),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final m in const [5, 10, 15, 25, 30, 45, 60, 90, 120, 180])
+                ActionChip(
+                  label: Text(_fmtMin(m)),
+                  onPressed: () => Navigator.pop(ctx, m),
+                  backgroundColor: t.estimateMin == m ? K.cyan : K.raised,
+                  labelStyle: K.body(13, color: t.estimateMin == m ? K.bg : K.ink, w: FontWeight.w800),
+                  side: BorderSide.none,
+                ),
+            ]),
+          ]),
+        ),
+      ),
+    );
+    if (v != null) await store.editTask(t, estimate: v);
+  }
+
   Future<void> _add() async {
     final title = _ctrl.text.trim();
     if (title.isEmpty) return;
@@ -395,29 +425,51 @@ class _StepsEditorState extends State<StepsEditor> {
         children: [
           Text(widget.label, style: K.display(15, color: widget.color)),
           const SizedBox(height: 6),
-          for (final t in steps)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () async {
-                      await store.completeTask(t);
-                      if (t.done && context.mounted) await askNext(context, 'Étape faite !');
-                    },
-                    icon: Icon(t.done ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
-                        color: t.done ? widget.color : K.muted),
+          ReorderableListView(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
+            onReorder: (a, b) => store.reorderSteps(widget.category, a, b > a ? b - 1 : b),
+            children: [
+              for (var i = 0; i < steps.length; i++)
+                ReorderableDelayedDragStartListener(
+                  key: ValueKey(steps[i].id),
+                  index: i,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          onPressed: () async {
+                            await store.completeTask(steps[i]);
+                            if (steps[i].done && context.mounted) await askNext(context, 'Étape faite !');
+                          },
+                          icon: Icon(steps[i].done ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                              color: steps[i].done ? widget.color : K.muted),
+                        ),
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => showTaskPanel(context, steps[i]),
+                            child: Text(steps[i].title, style: K.body(14)),
+                          ),
+                        ),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(999),
+                          onTap: () => _pickMinutes(context, store, steps[i]),
+                          child: Pill(steps[i].estimateMin > 0 ? _fmtMin(steps[i].estimateMin) : 'durée ?', color: steps[i].estimateMin > 0 ? K.cyan : K.gold),
+                        ),
+                        IconButton(
+                          tooltip: 'Supprimer',
+                          onPressed: () => store.removeTask(steps[i]),
+                          icon: const Icon(Icons.close_rounded, color: K.dim, size: 20),
+                        ),
+                      ],
+                    ),
                   ),
-                  Expanded(child: Text(t.title, style: K.body(14))),
-                  Pill('${t.estimateMin} min', color: K.cyan),
-                  IconButton(
-                    tooltip: 'Supprimer',
-                    onPressed: () => store.removeTask(t),
-                    icon: const Icon(Icons.close_rounded, color: K.dim, size: 20),
-                  ),
-                ],
-              ),
-            ),
+                ),
+            ],
+          ),
+          if (steps.length > 1) Text('Appui long sur une étape pour changer l\'ordre · touche la durée pour la changer · touche le titre pour le panneau.', style: K.body(11, color: K.dim)),
           if (steps.isEmpty)
             Text('Commence par la toute première action concrète.', style: K.body(13, color: K.muted)),
           const SizedBox(height: 8),
