@@ -1187,7 +1187,8 @@ class AppStore extends ChangeNotifier {
         gained += 10;
         b.bossProgress = (b.bossProgress + max(5, min(25, t.estimateMin ~/ 6))).clamp(0, 99).toInt();
       }
-      if (t.category == 'pro' && t.link != 'slot') _dropCard(t, gained);
+      // une carte pour toute tâche de travail (pro ou sans catégorie), pas pour le perso, les habitudes, les créneaux
+      if (t.category != 'perso' && t.link != 'slot' && !t.link.startsWith('habit:')) _dropCard(t, gained);
       _checkBigBonuses();
       _checkMedals();
     }

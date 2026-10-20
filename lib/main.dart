@@ -8,6 +8,7 @@ import 'crash.dart';
 import 'notifications.dart';
 import 'screens/next_sheet.dart';
 import 'screens/briefing.dart';
+import 'screens/cards.dart' show showPendingCard;
 import 'screens/checkin.dart';
 import 'screens/discoveries.dart';
 import 'screens/evening.dart';
@@ -230,9 +231,24 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     });
   }
 
+  bool _cardWaiting = false;
+
+  /// Filet de sécurité : une carte gagnée ailleurs (briefing, matrice, soir…) s'affiche dès qu'on revient ici.
+  void _maybeCard(AppStore store) {
+    if (store.pendingCard == null || _cardWaiting) return;
+    _cardWaiting = true;
+    Future.delayed(const Duration(milliseconds: 1500), () async {
+      _cardWaiting = false;
+      if (!mounted || store.pendingCard == null) return;
+      if (ModalRoute.of(context)?.isCurrent != true) return; // un écran ou une feuille est ouvert : on attendra
+      await showPendingCard(context);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     _maybeCelebrate(AppScope.of(context));
+    _maybeCard(AppScope.of(context));
     final wide = MediaQuery.of(context).size.width >= 840;
     final tablet = isTablet(context);
     final running = AppScope.of(context).runningSession != null;
