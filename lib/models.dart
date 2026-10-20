@@ -230,9 +230,16 @@ class SessionRec {
   int predProg; // avancement prévu à la fin (0..100), -1 = non dit
   String subId; // sous-étape faite pendant cette session
   String extWhy; // pourquoi : « plus compliqué que prévu », etc.
+  String subLog; // sous-étapes ajoutées en session : id|début|prévu|fin;…
   int mod;
 
   static const attLabels = ['à fond', 'ça va', 'ça flotte', 'ailleurs'];
+
+  /// Sous-étapes de cette session : (id, début ms, prévu min, fin ms ou 0).
+  List<(String, int, int, int)> get subEntries => [
+        for (final e in subLog.split(';'))
+          if (e.split('|').length == 4) (e.split('|')[0], int.tryParse(e.split('|')[1]) ?? 0, int.tryParse(e.split('|')[2]) ?? 0, int.tryParse(e.split('|')[3]) ?? 0),
+      ];
 
   /// Concentration suggérée d'après les réponses pendant la session (1..5), 0 si aucune.
   int get suggestedFocus {
@@ -273,6 +280,7 @@ class SessionRec {
     this.predProg = -1,
     this.subId = '',
     this.extWhy = '',
+    this.subLog = '',
     this.mod = 0,
   }) : id = id ?? newId();
 
@@ -324,6 +332,7 @@ class SessionRec {
         predProg: _i(j['pPred'], -1),
         subId: _s(j['sub']),
         extWhy: _s(j['extWhy']),
+        subLog: _s(j['subLog']),
         mod: _i(j['mod']),
       );
 
@@ -357,6 +366,7 @@ class SessionRec {
         'pPred': predProg,
         'sub': subId,
         'extWhy': extWhy,
+        'subLog': subLog,
         'mod': mod,
       };
 }

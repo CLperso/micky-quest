@@ -2510,6 +2510,12 @@ class AppStore extends ChangeNotifier {
   Future<Task?> extendSession(SessionRec s, int minutes, String why, {String subStep = ''}) async {
     s.extraMin += minutes;
     if (why.isNotEmpty) s.extWhy = s.extWhy.isEmpty ? why : '${s.extWhy} · $why';
+    // le bloc du planning s'allonge et pousse ce qui suit
+    final pt = taskById(s.taskId);
+    if (minutes > 0 && pt != null && pt.plannedAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(pt.plannedAt)) == todayKey) {
+      pt.plannedMin = pt.blockMin + minutes;
+      _shiftAfter(pt);
+    }
     Task? created;
     if (subStep.trim().isNotEmpty) {
       final parent = taskById(s.taskId);
@@ -2523,9 +2529,38 @@ class AppStore extends ChangeNotifier {
         final base = parent?.title ?? s.title;
         created = await addTask('$base › ${subStep.trim()}', category: parent?.category ?? '', estimate: minutes, quad: Quad.doNow, inQuest: false);
       }
+      final e = '${created.id}|${DateTime.now().millisecondsSinceEpoch}|$minutes|0';
+      s.subLog = s.subLog.isEmpty ? e : '${s.subLog};$e';
     }
     await commit();
     return created;
+  }
+
+  /// Pousse les blocs prévus du même jour qui chevauchent la fin de [t] (en cascade).
+  void _shiftAfter(Task t) {
+    final day = dayKey(DateTime.fromMillisecondsSinceEpoch(t.plannedAt));
+    final later = plannedOn(day).where((x) => x.id != t.id && !x.done && x.plannedAt >= t.plannedAt).toList()..sort((a, b) => a.plannedAt.compareTo(b.plannedAt));
+    var end = t.plannedAt + t.blockMin * 60000;
+    for (final x in later) {
+      if (x.plannedAt < end) x.plannedAt = end;
+      end = x.plannedAt + x.blockMin * 60000;
+    }
+  }
+
+  /// Sous-étape ajoutée en session, cochée pendant la session : temps tenu ou pas.
+  Future<bool> finishSessionSub(SessionRec s, Task sub) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    var met = true;
+    s.subLog = s.subEntries.map((e) {
+      if (e.$1 != sub.id) return '${e.$1}|${e.$2}|${e.$3}|${e.$4}';
+      final actual = (now - e.$2) / 60000;
+      met = e.$3 == 0 || actual <= e.$3 * 1.2;
+      return '${e.$1}|${e.$2}|${e.$3}|$now';
+    }).join(';');
+    if (!sub.done) await completeTask(sub);
+    if (met && sub.estimateMin > 0) _gainXp(5, 'Sous-temps tenu');
+    await commit();
+    return met;
   }
 
   /// Faisait partie de la journée [day] (pour clore la journée le soir).

@@ -659,6 +659,34 @@ class _SessionScreenState extends State<SessionScreen> {
                 child: Text('Ton plan B : si ${store.today.planIf}, alors ${store.today.planThen}.', style: K.body(13, color: K.muted)),
               ),
             ],
+            if (s.subEntries.any((e) => e.$4 == 0 && store.taskById(e.$1) != null && !store.taskById(e.$1)!.done)) ...[
+              const SizedBox(height: 10),
+              Panel(
+                border: K.cyan,
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Sous-étapes de cette session', style: K.body(12, color: K.cyan, w: FontWeight.w900)),
+                  for (final e in s.subEntries.where((e) => e.$4 == 0))
+                    Builder(builder: (context) {
+                      final st = store.taskById(e.$1);
+                      if (st == null || st.done) return const SizedBox.shrink();
+                      final el = ((DateTime.now().millisecondsSinceEpoch - e.$2) / 60000).floor();
+                      final late = e.$3 > 0 && el > e.$3;
+                      return Row(children: [
+                        Expanded(child: Text(st.title, style: K.body(14, w: FontWeight.w700))),
+                        Text(e.$3 > 0 ? '$el / ${e.$3} min' : '$el min', style: K.body(12, color: late ? K.coral : K.muted, w: FontWeight.w800)),
+                        IconButton(
+                          onPressed: () async {
+                            final met = await store.finishSessionSub(s, st);
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(met ? 'Sous-étape faite dans le temps ✓' : 'Sous-étape faite (un peu plus long que prévu)')));
+                          },
+                          icon: const Icon(Icons.check_circle_outline_rounded, color: K.cyan),
+                        ),
+                      ]);
+                    }),
+                ]),
+              ),
+            ],
             const SizedBox(height: 24),
             Row(children: [
               Expanded(child: SecondaryButton(label: '+ du temps', onPressed: () => extendSheet(context, s))),
@@ -721,7 +749,9 @@ Future<void> extendSheet(BuildContext context, SessionRec s, {bool sub = false})
   var minutes = sub ? 0 : 10;
   var why = sub ? 'une sous-tâche en plus' : '';
   var asStep = sub;
+  var other = false;
   final title = TextEditingController();
+  final manual = TextEditingController();
   const whys = ['plus compliqué que prévu', 'une sous-tâche en plus', 'j\'ai été interrompue', 'je me suis dispersée', 'ça avance bien, je continue'];
   final ok = await showModalBottomSheet<bool>(
     context: context,
@@ -740,18 +770,42 @@ Future<void> extendSheet(BuildContext context, SessionRec s, {bool sub = false})
               Text(sub ? 'Combien de temps pour elle ? (facultatif)' : 'Combien ?', style: K.body(13, w: FontWeight.w800)),
               const SizedBox(height: 6),
               Wrap(spacing: 6, runSpacing: 6, children: [
-                for (final m in [if (sub) 0, 5, 10, 15, 30, 45])
+                for (final m in [if (sub) 0, 5, 10, 15, 30, 45, 60, 90])
                   ChoiceChip(
                     label: Text(m == 0 ? 'aucun' : '+$m min'),
-                    selected: minutes == m,
-                    onSelected: (_) => setState(() => minutes = m),
+                    selected: minutes == m && !other,
+                    onSelected: (_) => setState(() {
+                      minutes = m;
+                      other = false;
+                    }),
                     selectedColor: K.cyan,
-                    labelStyle: K.body(13, color: minutes == m ? K.bg : K.ink, w: FontWeight.w800),
+                    labelStyle: K.body(13, color: minutes == m && !other ? K.bg : K.ink, w: FontWeight.w800),
                     backgroundColor: K.raised,
                     side: BorderSide.none,
                     showCheckmark: false,
                   ),
+                ChoiceChip(
+                  label: const Text('autre…'),
+                  selected: other,
+                  onSelected: (_) => setState(() => other = true),
+                  selectedColor: K.cyan,
+                  labelStyle: K.body(13, color: other ? K.bg : K.ink, w: FontWeight.w800),
+                  backgroundColor: K.raised,
+                  side: BorderSide.none,
+                  showCheckmark: false,
+                ),
               ]),
+              if (other)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: TextField(
+                    controller: manual,
+                    autofocus: true,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(hintText: 'minutes', suffixText: 'min'),
+                    onChanged: (v) => setState(() => minutes = int.tryParse(v.trim()) ?? 0),
+                  ),
+                ),
               if (!sub) ...[
                 const SizedBox(height: 12),
                 Text('Parce que…', style: K.body(13, w: FontWeight.w800)),
@@ -798,6 +852,7 @@ Future<void> extendSheet(BuildContext context, SessionRec s, {bool sub = false})
     ),
   );
   if (ok != true) return;
+  if (other) minutes = int.tryParse(manual.text.trim()) ?? 0;
   final created = await store.extendSession(s, minutes, why, subStep: asStep ? title.text : '');
   await rescheduleAll(store);
   if (!context.mounted) return;
