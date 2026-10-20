@@ -534,7 +534,7 @@ class TaskRow extends StatelessWidget {
     final store = AppScope.of(context);
     final t = task;
     final planned = t.plannedAt > 0;
-    return Padding(
+    final row = Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         children: [
@@ -554,7 +554,6 @@ class TaskRow extends StatelessWidget {
                     [
                       if (t.estimateMin > 0) '${t.estimateMin} min',
                       if (!t.isBoss && t.progress > 0 && t.progress < 100) '${t.progress} %',
-                      if (store.subStepsOf(t).isNotEmpty) '${store.subStepsOf(t).where((x) => x.done).length} sous-étape${store.subStepsOf(t).where((x) => x.done).length > 1 ? 's' : ''} faite${store.subStepsOf(t).where((x) => x.done).length > 1 ? 's' : ''}',
                       if (t.isBoss) 'boss',
                       if (t.condition.isNotEmpty) 'si ${t.condition}',
                       if (quest.isEmpty && t.category.isNotEmpty) t.category,
@@ -588,6 +587,32 @@ class TaskRow extends StatelessWidget {
         ],
       ),
     );
+    final subs = store.subStepsOf(t);
+    if (subs.isEmpty) return row;
+    return Column(children: [
+      row,
+      for (final sub in subs)
+        Padding(
+          padding: const EdgeInsets.only(left: 26),
+          child: Row(children: [
+            Icon(Icons.subdirectory_arrow_right_rounded, size: 14, color: sub.done ? K.dim : K.muted),
+            CheckCircle(task: sub, color: color),
+            Expanded(
+              child: InkWell(
+                onTap: () => showTaskPanel(context, sub),
+                child: Text('${sub.title}${sub.estimateMin > 0 ? ' · ${sub.estimateMin} min' : ''}',
+                    style: K.body(13, color: sub.done ? K.muted : K.ink).copyWith(decoration: sub.done ? TextDecoration.lineThrough : null)),
+              ),
+            ),
+            if (!sub.done)
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                onPressed: () => launchTask(context, sub),
+                icon: Icon(Icons.play_circle_outline_rounded, color: color, size: 24),
+              ),
+          ]),
+        ),
+    ]);
   }
 }
 

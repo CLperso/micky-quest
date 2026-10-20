@@ -191,9 +191,48 @@ Future<void> showTaskPanel(BuildContext context, Task t) async {
                   ]),
                   if (t.link.isNotEmpty)
                     Text(t.link == 'boss' ? 'Chaque coche entame le boss (+10 XP).' : 'Compte dans Ma direction et le briefing (+5 XP).', style: K.body(11, color: K.muted)),
+                  if (t.parentId.isEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text('SOUS-ÉTAPES', style: K.body(11, color: K.muted, w: FontWeight.w900).copyWith(letterSpacing: 1)),
+                    for (final sub in store.subStepsOf(t))
+                      Row(children: [
+                        CheckCircle(task: sub, color: K.cyan),
+                        Expanded(child: Text('${sub.title}${sub.estimateMin > 0 ? ' · ${sub.estimateMin} min' : ''}', style: K.body(13, color: sub.done ? K.muted : K.ink).copyWith(decoration: sub.done ? TextDecoration.lineThrough : null))),
+                        IconButton(
+                          tooltip: 'Détacher',
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () async {
+                            await store.detachSub(sub);
+                            setState(() {});
+                          },
+                          icon: const Icon(Icons.link_off_rounded, color: K.muted, size: 18),
+                        ),
+                      ]),
+                    TextButton.icon(
+                      onPressed: () async {
+                        await subStepSheet(context, t);
+                        setState(() {});
+                      },
+                      icon: const Icon(Icons.subdirectory_arrow_right_rounded, color: K.cyan, size: 18),
+                      label: Text('Ajouter ou rattacher une sous-étape', style: K.body(13, color: K.cyan, w: FontWeight.w800)),
+                    ),
+                  ] else if (store.taskById(t.parentId) != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Row(children: [
+                        Expanded(child: Text('Sous-étape de « ${store.taskById(t.parentId)!.title} »', style: K.body(12, color: K.muted))),
+                        TextButton(
+                          onPressed: () async {
+                            await store.detachSub(t);
+                            setState(() {});
+                          },
+                          child: Text('détacher', style: K.body(12, color: K.cyan, w: FontWeight.w800)),
+                        ),
+                      ]),
+                    ),
                   const Divider(color: K.line, height: 18),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  Wrap(
+                    alignment: WrapAlignment.spaceBetween,
                     children: [
                       small('Ranger', Icons.grid_view_rounded, K.ink, 'sort'),
                       small('Découper', Icons.content_cut_rounded, K.cyan, 'cut'),
@@ -502,4 +541,81 @@ Future<int> _askTimeSpent(BuildContext context, Task t) async {
     ),
   );
   return v ?? 30;
+}
+
+/// Nouvelle sous-étape pour [parent], ou rattacher une tâche existante (elle entre dans son bloc du planning).
+Future<void> subStepSheet(BuildContext context, Task parent) async {
+  final store = AppScope.read(context);
+  final c = TextEditingController();
+  var min = 0;
+  final cands = store.openTasks.where((x) => x.id != parent.id && !x.isBoss).toList();
+  final res = await showModalBottomSheet<Object>(
+    context: context,
+    isScrollControlled: true,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.8),
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+              children: [
+                Text('Sous-étape de « ${parent.title} »', style: K.display(18)),
+                const SizedBox(height: 4),
+                Text('Elle vit dans le bloc de la tâche ; si ça dépasse, le bloc s\'allonge.', style: K.body(12, color: K.muted)),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: c,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(hintText: 'Nouvelle sous-étape…'),
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 8),
+                Wrap(spacing: 6, runSpacing: 6, children: [
+                  for (final m in [10, 15, 25, 45, 60])
+                    ChoiceChip(
+                      label: Text('$m min'),
+                      selected: min == m,
+                      onSelected: (_) => setState(() => min = min == m ? 0 : m),
+                      selectedColor: K.cyan,
+                      labelStyle: K.body(12, color: min == m ? K.bg : K.ink, w: FontWeight.w800),
+                      backgroundColor: K.raised,
+                      side: BorderSide.none,
+                      showCheckmark: false,
+                    ),
+                ]),
+                const SizedBox(height: 8),
+                PrimaryButton(label: 'Ajouter', onPressed: c.text.trim().isEmpty ? null : () => Navigator.pop(ctx, c.text.trim())),
+                if (cands.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  Text('OU RATTACHER UNE TÂCHE EXISTANTE', style: K.body(11, color: K.muted, w: FontWeight.w900).copyWith(letterSpacing: 1)),
+                  for (final x in cands)
+                    ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Container(width: 10, height: 10, decoration: BoxDecoration(color: x.category == 'pro' ? K.lime : x.category == 'perso' ? K.pink : K.gold, shape: BoxShape.circle)),
+                      title: Text(x.title, style: K.body(14, w: FontWeight.w700)),
+                      subtitle: Text([if (x.estimateMin > 0) '${x.estimateMin} min', if (x.plannedAt > 0) 'à ${hm(DateTime.fromMillisecondsSinceEpoch(x.plannedAt))}'].join(' · '), style: K.body(11, color: K.muted)),
+                      onTap: () => Navigator.pop(ctx, x),
+                    ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  c.dispose();
+  if (res == null) return;
+  if (res is Task) {
+    await store.attachSub(parent, res);
+  } else if (res is String) {
+    await store.addSub(parent, res, minutes: min);
+  }
+  await rescheduleAll(store);
+  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Sous-étape de « ${parent.title} »')));
 }

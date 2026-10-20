@@ -1389,6 +1389,7 @@ class AppStore extends ChangeNotifier {
 
   /// Place une tâche à une heure : elle passe dans « Planifier » si elle était à trier.
   Future<void> planTask(Task t, DateTime at, {int? minutes, String condition = ''}) async {
+    t.parentId = ''; // une heure à elle : elle sort du bloc de sa tâche mère
     t.plannedAt = at.millisecondsSinceEpoch;
     if (minutes != null) t.plannedMin = minutes;
     t.day = dayKey(at);
@@ -2501,6 +2502,43 @@ class AppStore extends ChangeNotifier {
     if (s != null) s.boosts = s.boosts.isEmpty ? cause : '${s.boosts},$cause';
     logs.add(LogEntry(ts: DateTime.now().millisecondsSinceEpoch, kind: LogKind.free, note: 'Relance : ${boostLabels[cause] ?? cause}'));
     await commit();
+  }
+
+  /// Rattache [sub] comme sous-étape de [parent] : elle vit dans le bloc du parent (plus d'heure à elle),
+  /// et le bloc s'allonge si les sous-étapes dépassent le temps prévu.
+  Future<void> attachSub(Task parent, Task sub) async {
+    if (sub.id == parent.id || parent.parentId == sub.id) return;
+    sub.parentId = parent.id;
+    sub.plannedAt = 0;
+    sub.calEventId = '';
+    if (sub.category.isEmpty) sub.category = parent.category;
+    _fitSubs(parent);
+    await commit();
+    await _planChanged();
+  }
+
+  Future<Task> addSub(Task parent, String title, {int minutes = 0}) async {
+    final sub = Task(title: title.trim(), category: parent.category, quad: parent.quad, day: todayKey, parentId: parent.id, estimateMin: minutes);
+    tasks.add(sub);
+    _fitSubs(parent);
+    await commit();
+    await _planChanged();
+    return sub;
+  }
+
+  Future<void> detachSub(Task sub) async {
+    sub.parentId = '';
+    if (sub.quad == Quad.inbox) sub.quad = Quad.doNow;
+    await commit();
+  }
+
+  void _fitSubs(Task parent) {
+    final sum = subStepsOf(parent).where((x) => !x.done).fold(0, (a, x) => a + x.estimateMin);
+    if (sum > parent.estimateMin) parent.estimateMin = sum;
+    if (parent.plannedAt > 0 && sum > parent.blockMin) {
+      parent.plannedMin = sum;
+      _shiftAfter(parent);
+    }
   }
 
   /// Sous-étapes d'une tâche générale (sessions « avancer »).

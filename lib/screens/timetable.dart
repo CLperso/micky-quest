@@ -403,9 +403,7 @@ class _PlanningViewState extends State<PlanningView> {
         await store.planTask(p, at);
         break;
       case 'sub':
-        p.parentId = other.id;
-        p.plannedAt = 0;
-        await store.commit();
+        await store.attachSub(other, p);
         break;
       case 'after':
         await store.planTask(p, at.add(Duration(minutes: max(15, other.blockMin))));
@@ -1268,6 +1266,12 @@ class _TimetableViewState extends State<TimetableView> {
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
+                                    if (h > 56)
+                                      for (final sub in store.subStepsOf(t).take(((h - 44) / 13).floor()))
+                                        Text('${sub.done ? '✓' : '›'} ${sub.title}${sub.estimateMin > 0 ? ' · ${sub.estimateMin} min' : ''}',
+                                            style: K.body(10, color: sub.done ? K.dim : K.muted, w: FontWeight.w700).copyWith(decoration: sub.done ? TextDecoration.lineThrough : null),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis),
                                   ],
                                 ),
                               ),
