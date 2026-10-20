@@ -471,9 +471,9 @@ class _PlanningViewState extends State<PlanningView> {
                 for (final h in store.habits)
                   ListTile(
                     leading: const Icon(Icons.repeat_rounded, color: K.cyan, size: 18),
-                    title: Text(h.title, style: K.body(15)),
+                    title: Text(h.name, style: K.body(15)),
                     subtitle: h.reminderMin >= 0 ? Text('déjà à ${(h.reminderMin ~/ 60).toString().padLeft(2, '0')}:${(h.reminderMin % 60).toString().padLeft(2, '0')}', style: K.body(12, color: K.muted)) : null,
-                    onTap: () => Navigator.pop(ctx, Task(id: 'habit:${h.id}', title: h.title, day: '')),
+                    onTap: () => Navigator.pop(ctx, Task(id: 'habit:${h.id}', title: h.name, day: '')),
                   ),
               ],
             ],
@@ -1179,7 +1179,7 @@ class _TimetableViewState extends State<TimetableView> {
                             context: context,
                             builder: (ctx) => SafeArea(
                               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                                ListTile(title: Text(h.title, style: K.display(16))),
+                                ListTile(title: Text(h.name, style: K.display(16))),
                                 ListTile(leading: const Icon(Icons.close_rounded, color: K.coral), title: Text('Retirer du planning', style: K.body(14)), onTap: () => Navigator.pop(ctx, true)),
                               ]),
                             ),
@@ -1201,7 +1201,7 @@ class _TimetableViewState extends State<TimetableView> {
                         child: Row(children: [
                           Icon(store.habitLevel(h, _key) > 0 ? Icons.check_rounded : Icons.repeat_rounded, color: K.cyan, size: 12),
                           const SizedBox(width: 4),
-                          Expanded(child: Text(h.title, style: K.body(11, color: store.habitLevel(h, _key) > 0 ? K.muted : K.ink, w: FontWeight.w800), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                          Expanded(child: Text(h.name, style: K.body(11, color: store.habitLevel(h, _key) > 0 ? K.muted : K.ink, w: FontWeight.w800), maxLines: 1, overflow: TextOverflow.ellipsis)),
                         ]),
                       ),
                     ),

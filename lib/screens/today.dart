@@ -6,7 +6,6 @@ import '../store.dart';
 import '../theme.dart';
 import 'boss.dart';
 import 'briefing.dart';
-import 'matrix.dart' show MatrixScreen;
 import 'task_panel.dart';
 import 'timetable.dart';
 import 'tomorrow.dart';

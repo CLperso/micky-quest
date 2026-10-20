@@ -895,7 +895,7 @@ class AppStore extends ChangeNotifier {
       final b = boss;
       if (t.link == 'boss' && b != null) {
         _gainXp(10, 'Coup sur le boss');
-        b.bossProgress = (b.bossProgress + max(5, min(25, t.estimateMin ~/ 6))).clamp(0, 99);
+        b.bossProgress = (b.bossProgress + max(5, min(25, t.estimateMin ~/ 6))).clamp(0, 99).toInt();
       }
       _checkBigBonuses();
       _checkMedals();

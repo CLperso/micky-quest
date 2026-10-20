@@ -418,10 +418,7 @@ Future<void> newTaskSheet(BuildContext context, {String quad = Quad.inbox, Strin
                 Wrap(children: [
                   chip('Pro', cat == 'pro', K.lime, () => setState(() => cat = 'pro')),
                   chip('Perso', cat == 'perso', K.pink, () => setState(() => cat = 'perso')),
-                  chip('Aucun', cat.isEmpty, K.muted, () => setState(() {
-                        cat = '';
-                        inQuest = false;
-                      })),
+                  chip('Aucun', cat.isEmpty, K.muted, () => setState(() => cat = '')),
                 ]),
                 const SizedBox(height: 10),
                 Text(label('Pari'), style: K.body(11, color: K.muted, w: FontWeight.w900)),
