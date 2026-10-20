@@ -741,6 +741,17 @@ class AppStore extends ChangeNotifier {
       if (a.done) return a.doneAt.compareTo(b.doneAt);
       return a.order.compareTo(b.order);
     });
+    // les ancres 📌 prennent leur place chronologique dans la liste
+    if (l.any((t) => !t.done && t.plannedAt > 0)) {
+      final sc = schedule(l, day: d).times;
+      final done = l.where((t) => t.done).toList();
+      final todo = l.where((t) => !t.done).toList()
+        ..sort((a, b) {
+          final sa = sc[a.id]?.$1 ?? 0, sb = sc[b.id]?.$1 ?? 0;
+          return sa != sb ? sa.compareTo(sb) : a.order.compareTo(b.order);
+        });
+      l = [...done, ...todo];
+    }
     return l;
   }
 
@@ -812,20 +823,37 @@ class AppStore extends ChangeNotifier {
     final running = runningSession;
     final times = <String, (int, int)>{};
     final late = <String>{};
-    final sorted = [...busy]..sort((a, b) => a.$1.compareTo(b.$1));
+    final sorted = [...busy];
+    // 1. les ancres : posées à leur heure (ou maintenant si l'heure est passée), elles deviennent des créneaux occupés
+    final anchored = seq.where((t) => !t.done && t.plannedAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(t.plannedAt)) == d).toList()..sort((a, b) => a.plannedAt.compareTo(b.plannedAt));
+    for (final t in anchored) {
+      var start = t.plannedAt;
+      if (running != null && running.taskId == t.id) {
+        start = now.millisecondsSinceEpoch;
+      } else if (d == todayKey && start < cursor) {
+        start = cursor;
+        if (cursor > t.plannedAt + 5 * 60000) late.add(t.id);
+      }
+      final end = start + t.blockMin * 60000;
+      times[t.id] = (start, end);
+      sorted.add((start, end));
+    }
+    sorted.sort((a, b) => a.$1.compareTo(b.$1));
+    // 2. le reste coule dans l'ordre, autour des créneaux occupés, sans passer devant une ancre qui le précède dans la liste
+    var notBefore = 0;
     for (final t in seq) {
       if (t.done) continue;
-      var start = cursor;
+      if (times.containsKey(t.id)) {
+        notBefore = max(notBefore, times[t.id]!.$2);
+        continue;
+      }
+      var start = max(cursor, notBefore);
       if (running != null && running.taskId == t.id) {
         start = now.millisecondsSinceEpoch;
         final end = max(start + 60000, running.start + (running.predictedMin + running.extraMin) * 60000);
         times[t.id] = (start, end);
         cursor = end;
         continue;
-      }
-      if (t.plannedAt > 0) {
-        if (t.plannedAt > start) start = t.plannedAt;
-        if (start > t.plannedAt + 5 * 60000) late.add(t.id);
       }
       final len = t.blockMin * 60000;
       var moved = true;
@@ -841,6 +869,11 @@ class AppStore extends ChangeNotifier {
       times[t.id] = (start, start + len);
       cursor = start + len;
     }
+    var end = cursor;
+    for (final v in times.values) {
+      end = max(end, v.$2);
+    }
+    cursor = end;
     return (times: times, late: late, end: cursor);
   }
 
