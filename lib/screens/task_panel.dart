@@ -224,22 +224,38 @@ Future<void> showTaskPanel(BuildContext context, Task t) async {
                   Text('ÇA COMPTE POUR…', style: K.body(11, color: K.muted, w: FontWeight.w900).copyWith(letterSpacing: 1)),
                   const SizedBox(height: 6),
                   Wrap(children: [
-                    chip(store.settings.dirPro.isNotEmpty ? '→ ${store.settings.dirPro}' : '→ objectif pro', t.link == 'pro', K.lime, () async {
-                      await store.setLink(t, 'pro');
-                      setState(() {});
-                    }),
-                    chip(store.settings.dirPerso.isNotEmpty ? '→ ${store.settings.dirPerso}' : '→ objectif perso', t.link == 'perso', K.pink, () async {
-                      await store.setLink(t, 'perso');
-                      setState(() {});
-                    }),
+                    if (t.category != 'perso')
+                      chip(store.settings.dirPro.isNotEmpty ? '→ ${store.settings.dirPro}' : '→ objectif pro', store.effectiveLink(t) == 'pro', K.lime, () async {
+                        if (t.category == 'pro') {
+                          if (t.link == 'boss') await store.setLink(t, 'boss');
+                        } else {
+                          await store.setLink(t, 'pro');
+                        }
+                        setState(() {});
+                      }),
+                    if (t.category != 'pro')
+                      chip(store.settings.dirPerso.isNotEmpty ? '→ ${store.settings.dirPerso}' : '→ objectif perso', store.effectiveLink(t) == 'perso', K.pink, () async {
+                        if (t.category == 'perso') {
+                          if (t.link == 'boss') await store.setLink(t, 'boss');
+                        } else {
+                          await store.setLink(t, 'perso');
+                        }
+                        setState(() {});
+                      }),
                     if (store.boss != null && store.boss!.id != t.id)
                       chip('→ le boss', t.link == 'boss', K.coral, () async {
                         await store.setLink(t, 'boss');
                         setState(() {});
                       }),
                   ]),
-                  if (t.link.isNotEmpty)
-                    Text(t.link == 'boss' ? 'Chaque coche entame le boss (+10 XP).' : 'Un pas de la semaine vers cet objectif, dans Ma direction et le briefing (+5 XP).', style: K.body(11, color: K.muted)),
+                  Text(
+                    t.link == 'boss'
+                        ? 'Chaque coche entame le boss (+10 XP).'
+                        : store.effectiveLink(t).isEmpty
+                            ? 'Sans pro / perso, elle ne compte pour aucun objectif.'
+                            : 'Une tâche ${t.category} est un pas de la semaine vers le jalon ${t.category} (Ma direction, briefing, +5 XP).',
+                    style: K.body(11, color: K.muted),
+                  ),
                   if (t.parentId.isEmpty) ...[
                     const SizedBox(height: 8),
                     Text('SOUS-ÉTAPES', style: K.body(11, color: K.muted, w: FontWeight.w900).copyWith(letterSpacing: 1)),
@@ -612,6 +628,7 @@ Future<void> subStepSheet(BuildContext context, Task parent) async {
   final c = TextEditingController();
   var min = 0;
   final cands = store.openTasks.where((x) => x.id != parent.id && !x.isBoss).toList();
+  final picked = <String>{};
   final res = await showModalBottomSheet<Object>(
     context: context,
     isScrollControlled: true,
@@ -654,16 +671,20 @@ Future<void> subStepSheet(BuildContext context, Task parent) async {
                 PrimaryButton(label: 'Ajouter', onPressed: c.text.trim().isEmpty ? null : () => Navigator.pop(ctx, c.text.trim())),
                 if (cands.isNotEmpty) ...[
                   const SizedBox(height: 14),
-                  Text('OU RATTACHER UNE TÂCHE EXISTANTE', style: K.body(11, color: K.muted, w: FontWeight.w900).copyWith(letterSpacing: 1)),
+                  Text('OU RATTACHER DES TÂCHES EXISTANTES', style: K.body(11, color: K.muted, w: FontWeight.w900).copyWith(letterSpacing: 1)),
                   for (final x in cands)
-                    ListTile(
+                    CheckboxListTile(
                       dense: true,
                       contentPadding: EdgeInsets.zero,
-                      leading: Container(width: 10, height: 10, decoration: BoxDecoration(color: x.category == 'pro' ? K.lime : x.category == 'perso' ? K.pink : K.gold, shape: BoxShape.circle)),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      activeColor: K.cyan,
+                      value: picked.contains(x.id),
+                      onChanged: (v) => setState(() => v == true ? picked.add(x.id) : picked.remove(x.id)),
                       title: Text(x.title, style: K.body(14, w: FontWeight.w700)),
-                      subtitle: Text([if (x.estimateMin > 0) '${x.estimateMin} min', if (x.plannedAt > 0) 'à ${hm(DateTime.fromMillisecondsSinceEpoch(x.plannedAt))}'].join(' · '), style: K.body(11, color: K.muted)),
-                      onTap: () => Navigator.pop(ctx, x),
+                      subtitle: Text([if (x.category.isNotEmpty) x.category, if (x.estimateMin > 0) '${x.estimateMin} min', if (x.plannedAt > 0) '📌 ${hm(DateTime.fromMillisecondsSinceEpoch(x.plannedAt))}'].join(' · '), style: K.body(11, color: K.muted)),
                     ),
+                  const SizedBox(height: 6),
+                  PrimaryButton(label: picked.isEmpty ? 'Rattacher' : 'Rattacher (${picked.length})', color: K.cyan, onPressed: picked.isEmpty ? null : () => Navigator.pop(ctx, picked.toList())),
                 ],
               ],
             ),
@@ -674,8 +695,11 @@ Future<void> subStepSheet(BuildContext context, Task parent) async {
   );
   c.dispose();
   if (res == null) return;
-  if (res is Task) {
-    await store.attachSub(parent, res);
+  if (res is List<String>) {
+    for (final id in res) {
+      final x = store.taskById(id);
+      if (x != null) await store.attachSub(parent, x);
+    }
   } else if (res is String) {
     await store.addSub(parent, res, minutes: min);
   }

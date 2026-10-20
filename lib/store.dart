@@ -917,7 +917,10 @@ class AppStore extends ChangeNotifier {
   }
 
   /// Les tâches du jour qui comptent vers un objectif ou le boss.
-  List<Task> linkedToday(String link) => openTasks.where((t) => t.link == link && inToday(t)).toList();
+  List<Task> linkedToday(String link) => openTasks.where((t) => effectiveLink(t) == link && inToday(t)).toList();
+
+  /// Lien effectif : une tâche pro compte pour l'objectif pro (et perso pour perso) sauf si elle vise le boss.
+  String effectiveLink(Task t) => t.link.isNotEmpty ? t.link : (t.category == 'pro' || t.category == 'perso' ? t.category : '');
 
   Task? get boss {
     for (final t in tasks) {
@@ -1036,7 +1039,8 @@ class AppStore extends ChangeNotifier {
       t.done = true;
       t.doneAt = DateTime.now().millisecondsSinceEpoch;
       _gainXp(taskXp(t), 'Tâche faite');
-      if (t.link == 'pro' || t.link == 'perso') _gainXp(5, 'Vers l\'objectif ${t.link}');
+      final el = effectiveLink(t);
+      if (el == 'pro' || el == 'perso') _gainXp(5, 'Vers l\'objectif $el');
       final b = boss;
       if (t.link == 'boss' && b != null) {
         _gainXp(10, 'Coup sur le boss');
@@ -1295,7 +1299,7 @@ class AppStore extends ChangeNotifier {
   /// Pas faits cette semaine vers un objectif : étapes de quête faites (pro) / gestes perso + étapes perso faites.
   int weekStepsDone(String category, DateTime d) {
     final days = weekDays(d).toSet();
-    var n = tasks.where((t) => t.done && (t.link == category || (t.link.isEmpty && t.category == category)) && t.doneAt > 0 && days.contains(dayKey(DateTime.fromMillisecondsSinceEpoch(t.doneAt)))).length;
+    var n = tasks.where((t) => t.done && effectiveLink(t) == category && t.doneAt > 0 && days.contains(dayKey(DateTime.fromMillisecondsSinceEpoch(t.doneAt)))).length;
     if (category == 'perso') n += weekDays(d).where((x) => pillarPerso(x) == 1).length;
     return n;
   }
