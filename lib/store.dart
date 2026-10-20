@@ -1072,6 +1072,23 @@ class AppStore extends ChangeNotifier {
     return day == todayKey ? -1 : 0;
   }
 
+  /// Geste perso du jour (objectif perso du briefing) : 1 fait, 0 pas fait, -1 pas fixé / à venir.
+  int pillarPerso(String day) {
+    if (day.compareTo(todayKey) > 0) return -1;
+    final p = plan(day);
+    if (p.persoGoal.isEmpty) return -1;
+    if (p.persoGoalDone) return 1;
+    return day == todayKey ? -1 : 0;
+  }
+
+  /// Pas faits cette semaine vers un objectif : étapes de quête faites (pro) / gestes perso + étapes perso faites.
+  int weekStepsDone(String category, DateTime d) {
+    final days = weekDays(d).toSet();
+    var n = tasks.where((t) => t.done && t.inQuest && t.category == category && t.doneAt > 0 && days.contains(dayKey(DateTime.fromMillisecondsSinceEpoch(t.doneAt)))).length;
+    if (category == 'perso') n += weekDays(d).where((x) => pillarPerso(x) == 1).length;
+    return n;
+  }
+
   /// Un jour « tenu » : pro atteint ou jour minimum.
   int dayKept(String day) {
     final p = pillarPro(day);

@@ -11,6 +11,7 @@ import 'notebook.dart';
 import 'problems.dart';
 import 'task_panel.dart' show showTaskPanel;
 import 'timetable.dart' show askText;
+import 'today.dart' show TodayScreen;
 import 'matrix.dart';
 
 class BriefingScreen extends StatefulWidget {
@@ -324,7 +325,7 @@ class _BriefingScreenState extends State<BriefingScreen> {
                 if (!context.mounted) return;
                 final messenger = ScaffoldMessenger.of(context);
                 Navigator.pop(context);
-                if (first) openScreen(context, const MatrixScreen(standalone: true));
+                if (first) openScreen(context, const TodayScreen(standalone: true));
                 // le kannada se glisse pendant qu'on se prépare
                 for (final h in store.activeHabits) {
                   if (store.habitLevel(h, store.todayKey) == 0 && h.name.toLowerCase().contains('kannada')) {

@@ -184,6 +184,13 @@ class DirectionScreen extends StatelessWidget {
               values: [for (final d in days) store.pillarPro(d)],
               color: K.lime,
             ),
+            _PillarRow(
+              icon: '🏃',
+              title: 'Mon geste perso du jour',
+              target: s.dirHabTgt,
+              values: [for (final d in days) store.pillarPerso(d)],
+              color: K.pink,
+            ),
             for (final h in store.activeHabits)
               _PillarRow(
                 icon: '🌸',
@@ -204,8 +211,9 @@ class DirectionScreen extends StatelessWidget {
             const SizedBox(height: 16),
             Text('MES OBJECTIFS SUR 3 MOIS', style: K.body(11, color: _vio, w: FontWeight.w900)),
             const SizedBox(height: 6),
-            _goalTile(context, store, '📄', 'Pro', s.dirPro, (v) => s.dirPro = v),
-            _goalTile(context, store, '🏃', 'Perso', s.dirPerso, (v) => s.dirPerso = v),
+            _goalTile(context, store, '📄', 'Pro', s.dirPro, (v) => s.dirPro = v, '${store.weekStepsDone('pro', DateTime.now())} étape${store.weekStepsDone('pro', DateTime.now()) > 1 ? 's' : ''} de quête pro cette semaine'),
+            _goalTile(context, store, '🏃', 'Perso', s.dirPerso, (v) => s.dirPerso = v, '${store.weekStepsDone('perso', DateTime.now())} pas cette semaine (gestes perso et étapes perso)'),
+            Text('Tes quêtes pro nourrissent l\'objectif pro, tes gestes et étapes perso l\'objectif perso. Rien à cocher en plus.', style: K.body(11, color: K.dim)),
             if (s.dirIntention.isNotEmpty) ...[
               const SizedBox(height: 6),
               Text('Intention pro de la semaine : ${s.dirIntention}', style: K.body(13, color: K.muted)),
@@ -256,7 +264,7 @@ class DirectionScreen extends StatelessWidget {
     );
   }
 
-  Widget _goalTile(BuildContext context, AppStore store, String icon, String label, String value, void Function(String) set) => Padding(
+  Widget _goalTile(BuildContext context, AppStore store, String icon, String label, String value, void Function(String) set, String sub) => Padding(
         padding: const EdgeInsets.only(bottom: 6),
         child: Material(
           color: K.card,
@@ -274,7 +282,12 @@ class DirectionScreen extends StatelessWidget {
               child: Row(children: [
                 Text(icon, style: const TextStyle(fontSize: 20)),
                 const SizedBox(width: 10),
-                Expanded(child: Text(value.isEmpty ? '$label : touche pour l\'écrire' : value, style: K.body(14, color: value.isEmpty ? K.dim : K.ink, w: FontWeight.w700))),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(value.isEmpty ? '$label : touche pour l\'écrire' : value, style: K.body(14, color: value.isEmpty ? K.dim : K.ink, w: FontWeight.w700)),
+                    Text(sub, style: K.body(11, color: K.muted)),
+                  ]),
+                ),
                 const Icon(Icons.edit_rounded, color: K.muted, size: 16),
               ]),
             ),
@@ -442,6 +455,7 @@ class _WeekReviewScreenState extends State<WeekReviewScreen> {
               child: Column(children: [
                 line('⏰ Démarré avant ${_hm(s.startTarget)}', st, s.dirStartTgt),
                 line('💼 Pro tenu (ou jour minimum)', pr, s.dirProTgt),
+                line('🏃 Geste perso du jour', store.last7(store.pillarPerso), s.dirHabTgt),
                 for (final h in store.activeHabits) line('🌸 ${h.name}', store.last7((d) => store.pillarHabit(h, d)), s.dirHabTgt),
               ]),
             ),

@@ -6,6 +6,7 @@ import '../store.dart';
 import '../theme.dart';
 import 'boss.dart';
 import 'briefing.dart';
+import 'matrix.dart' show MatrixScreen;
 import 'task_panel.dart';
 import 'timetable.dart';
 import 'tomorrow.dart';
@@ -36,6 +37,29 @@ class TodayScreen extends StatelessWidget {
             TextButton(onPressed: () => openScreen(context, const TomorrowScreen()), child: const Text('Demain ›')),
             TextButton(onPressed: () => openScreen(context, const BriefingScreen()), child: const Text('Briefing')),
           ]),
+        Material(
+          color: K.card,
+          borderRadius: BorderRadius.circular(14),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => newTaskSheet(context),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), border: Border.all(color: K.line, width: 2)),
+              child: Row(children: [
+                const Icon(Icons.add_circle_rounded, color: K.lime),
+                const SizedBox(width: 10),
+                Expanded(child: Text('Nouvelle tâche…', style: K.body(14, color: K.muted, w: FontWeight.w800))),
+                Text('pro / perso · quête · quand', style: K.body(11, color: K.muted)),
+              ]),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (store.tasksIn(Quad.inbox).isNotEmpty) ...[
+          const _ToSort(),
+          const SizedBox(height: 10),
+        ],
         if (!plan.briefingDone)
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
@@ -69,6 +93,8 @@ class TodayScreen extends StatelessWidget {
         ],
         const SizedBox(height: 18),
         const PlanningView(),
+        const SizedBox(height: 14),
+        const _Later(),
       ],
     );
     if (!standalone) return body;
@@ -561,50 +587,8 @@ class QuestsTab extends StatefulWidget {
 }
 
 class _QuestsTabState extends State<QuestsTab> {
-  int? _mode; // 0 = Trier, 1 = Aujourd'hui
-  int _lastToSort = -1;
-
   @override
-  Widget build(BuildContext context) {
-    final store = AppScope.of(context);
-    final toSort = store.tasksIn(Quad.inbox).length;
-    // le bandeau « à trier » vient de se vider : on passe à Aujourd'hui
-    if (_lastToSort > 0 && toSort == 0 && (_mode ?? 0) == 0) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        setState(() => _mode = 1);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tout est trié · place à Aujourd\'hui')));
-      });
-    }
-    _lastToSort = toSort;
-    final mode = _mode ?? (toSort > 0 ? 0 : 1);
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
-          child: Row(children: [
-            for (final (i, label) in [toSort > 0 ? '1 · Trier ($toSort)' : '1 · Trier', '2 · Aujourd\'hui'].indexed)
-              Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(right: i == 0 ? 6 : 0),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () => setState(() => _mode = i),
-                    child: Container(
-                      height: 40,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(color: mode == i ? K.gold : K.card, borderRadius: BorderRadius.circular(12)),
-                      child: Text(label, style: K.body(13, color: mode == i ? K.bg : K.ink, w: FontWeight.w800)),
-                    ),
-                  ),
-                ),
-              ),
-          ]),
-        ),
-        Expanded(child: mode == 1 ? const TodayScreen() : widget.matrix),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => const TodayScreen();
 }
 
 /// « Peut-être aujourd'hui ? » : tâches Planifier sans heure, repliées par défaut.
@@ -682,6 +666,108 @@ class _MaybeTodayState extends State<_MaybeToday> {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// Bandeau « À trier » : chaque tâche s'ouvre sur le panneau (Quand ?, Ranger…).
+class _ToSort extends StatefulWidget {
+  const _ToSort();
+
+  @override
+  State<_ToSort> createState() => _ToSortState();
+}
+
+class _ToSortState extends State<_ToSort> {
+  bool _open = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final list = store.tasksIn(Quad.inbox);
+    return Panel(
+      border: K.cyan,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        InkWell(
+          onTap: () => setState(() => _open = !_open),
+          child: Row(children: [
+            Expanded(child: Text('À trier (${list.length})', style: K.display(15, color: K.cyan))),
+            Icon(_open ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: K.cyan),
+          ]),
+        ),
+        if (_open) ...[
+          Text('Touche une tâche : aujourd\'hui, demain, cette semaine, ou plus tard.', style: K.body(11, color: K.muted)),
+          const SizedBox(height: 4),
+          for (final t in list.take(10))
+            InkWell(
+              onTap: () => showTaskPanel(context, t),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(children: [
+                  Container(width: 8, height: 8, decoration: BoxDecoration(color: t.category == 'pro' ? K.lime : t.category == 'perso' ? K.pink : K.muted, shape: BoxShape.circle)),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(t.title, style: K.body(14, w: FontWeight.w700))),
+                  const Icon(Icons.chevron_right_rounded, color: K.muted, size: 18),
+                ]),
+              ),
+            ),
+        ],
+      ]),
+    );
+  }
+}
+
+/// « Plus tard » : Planifier, Alléger, Un jour — replié, avec la matrice en lien.
+class _Later extends StatefulWidget {
+  const _Later();
+
+  @override
+  State<_Later> createState() => _LaterState();
+}
+
+class _LaterState extends State<_Later> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final store = AppScope.of(context);
+    final groups = [
+      (Quad.plan, 'Planifier', K.cyan),
+      (Quad.light, 'Alléger', K.gold),
+      (Quad.drop, 'Un jour', K.dim),
+    ];
+    final n = groups.fold(0, (a, g) => a + store.tasksIn(g.$1).where((t) => !store.inToday(t)).length);
+    return Panel(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        InkWell(
+          onTap: () => setState(() => _open = !_open),
+          child: Row(children: [
+            Expanded(child: Text('Plus tard ($n)', style: K.display(15, color: K.muted))),
+            TextButton(onPressed: () => openScreen(context, const MatrixScreen(standalone: true)), child: Text('voir en matrice', style: K.body(12, color: K.cyan))),
+            Icon(_open ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: K.muted),
+          ]),
+        ),
+        if (_open)
+          for (final g in groups) ...[
+            if (store.tasksIn(g.$1).where((t) => !store.inToday(t)).isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(g.$2.toUpperCase(), style: K.body(10, color: g.$3, w: FontWeight.w900)),
+              for (final t in store.tasksIn(g.$1).where((t) => !store.inToday(t)))
+                InkWell(
+                  onTap: () => showTaskPanel(context, t),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 5),
+                    child: Row(children: [
+                      Container(width: 8, height: 8, decoration: BoxDecoration(color: t.category == 'pro' ? K.lime : t.category == 'perso' ? K.pink : g.$3, shape: BoxShape.circle)),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(t.title, style: K.body(13))),
+                      if (t.condition.isNotEmpty) Text('si ${t.condition}', style: K.body(11, color: K.muted)),
+                    ]),
+                  ),
+                ),
+            ],
+          ],
+      ]),
     );
   }
 }
