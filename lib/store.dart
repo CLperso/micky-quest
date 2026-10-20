@@ -840,15 +840,11 @@ class AppStore extends ChangeNotifier {
       sorted.add((start, end));
     }
     sorted.sort((a, b) => a.$1.compareTo(b.$1));
-    // 2. le reste coule dans l'ordre, autour des créneaux occupés, sans passer devant une ancre qui le précède dans la liste
-    var notBefore = 0;
+    // 2. le reste coule dans l'ordre de la liste et remplit les trous avant / entre les ancres
     for (final t in seq) {
       if (t.done) continue;
-      if (times.containsKey(t.id)) {
-        notBefore = max(notBefore, times[t.id]!.$2);
-        continue;
-      }
-      var start = max(cursor, notBefore);
+      if (times.containsKey(t.id)) continue;
+      var start = cursor;
       if (running != null && running.taskId == t.id) {
         start = now.millisecondsSinceEpoch;
         final end = max(start + 60000, running.start + (running.predictedMin + running.extraMin) * 60000);
