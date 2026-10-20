@@ -187,7 +187,7 @@ class DirectionScreen extends StatelessWidget {
             _PillarRow(
               icon: '🏃',
               title: 'Mon geste perso du jour',
-              target: s.dirHabTgt,
+              target: s.dirPersoTgt,
               values: [for (final d in days) store.pillarPerso(d)],
               color: K.pink,
             ),
@@ -195,7 +195,7 @@ class DirectionScreen extends StatelessWidget {
               _PillarRow(
                 icon: '🌸',
                 title: h.name,
-                target: s.dirHabTgt,
+                target: min(h.daysPerWeek, s.dirHabTgt),
                 values: [for (final d in days) store.pillarHabit(h, d)],
                 color: K.pink,
               ),
@@ -455,8 +455,8 @@ class _WeekReviewScreenState extends State<WeekReviewScreen> {
               child: Column(children: [
                 line('⏰ Démarré avant ${_hm(s.startTarget)}', st, s.dirStartTgt),
                 line('💼 Pro tenu (ou jour minimum)', pr, s.dirProTgt),
-                line('🏃 Geste perso du jour', store.last7(store.pillarPerso), s.dirHabTgt),
-                for (final h in store.activeHabits) line('🌸 ${h.name}', store.last7((d) => store.pillarHabit(h, d)), s.dirHabTgt),
+                line('🏃 Geste perso du jour', store.last7(store.pillarPerso), s.dirPersoTgt),
+                for (final h in store.activeHabits) line('🌸 ${h.name}', store.last7((d) => store.pillarHabit(h, d)), min(h.daysPerWeek, s.dirHabTgt)),
               ]),
             ),
             const SizedBox(height: 6),
@@ -472,7 +472,8 @@ class _WeekReviewScreenState extends State<WeekReviewScreen> {
               child: Column(children: [
                 _stepper('⏰ Démarrer avant ${_hm(s.startTarget)}', s.dirStartTgt, (v) => setState(() => s.dirStartTgt = v)),
                 _stepper('💼 Pro tenu', s.dirProTgt, (v) => setState(() => s.dirProTgt = v)),
-                _stepper('🌸 Habitudes', s.dirHabTgt, (v) => setState(() => s.dirHabTgt = v)),
+                _stepper('🏃 Geste perso', s.dirPersoTgt, (v) => setState(() => s.dirPersoTgt = v)),
+                _stepper('🌸 Habitudes (plafond)', s.dirHabTgt, (v) => setState(() => s.dirHabTgt = v)),
                 Row(children: [
                   Expanded(child: Text('Jour minimum', style: K.body(14))),
                   for (final m in const [15, 30, 60])
@@ -624,6 +625,22 @@ Future<void> editHourGoals(BuildContext context) async {
             ]),
             const SizedBox(height: 6),
             Text('Il préremplit le briefing et « Préparer demain ». Un jour différent ? Change-le juste ce jour-là.', style: K.body(11, color: K.muted)),
+            const SizedBox(height: 14),
+            Text('🌙 Jour minimum : ce qui suffit pour que le jour compte', style: K.body(14, w: FontWeight.w800)),
+            const SizedBox(height: 6),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final m in const [10, 15, 20, 30, 45, 60])
+                ChoiceChip(
+                  label: Text('$m min'),
+                  selected: s.dirMinPro == m,
+                  onSelected: (_) => setState(() => s.dirMinPro = m),
+                  selectedColor: K.gold,
+                  labelStyle: K.body(13, color: s.dirMinPro == m ? K.bg : K.ink, w: FontWeight.w800),
+                  backgroundColor: K.raised,
+                  side: BorderSide.none,
+                  showCheckmark: false,
+                ),
+            ]),
             const SizedBox(height: 14),
             PrimaryButton(label: 'OK', onPressed: () => Navigator.pop(ctx)),
           ]),

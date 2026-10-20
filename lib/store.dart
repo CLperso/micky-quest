@@ -550,7 +550,7 @@ class AppStore extends ChangeNotifier {
       }
       final hs = activeHabits;
       if (hs.isNotEmpty) {
-        final done = hs.where((h) => habitLevel(h, d) > 0).length;
+        final done = hs.where((h) => habitLevel(h, d) > 0).length; // 3 (pas aujourd'hui) compte comme tenu pour la couronne
         pts += done == hs.length ? 1 : (done > 0 ? 0.5 : 0);
       }
     }
@@ -1067,16 +1067,23 @@ class AppStore extends ChangeNotifier {
   int pillarHabit(Habit h, String day) {
     if (day.compareTo(todayKey) > 0) return -1;
     final l = habitLevel(h, day);
-    if (l >= 2) return 1;
+    if (l == 3) return -1; // pas aujourd'hui
+    if (l == 2) return 1;
     if (l == 1) return 2;
     return day == todayKey ? -1 : 0;
+  }
+
+  /// « Pas aujourd'hui » pour une habitude : ni fait ni raté.
+  Future<void> skipHabit(Habit h, {String? day}) async {
+    final cur = habitLevel(h, day ?? todayKey);
+    await cycleHabit(h, day: day, to: cur == 3 ? 0 : 3);
   }
 
   /// Geste perso du jour (objectif perso du briefing) : 1 fait, 0 pas fait, -1 pas fixé / à venir.
   int pillarPerso(String day) {
     if (day.compareTo(todayKey) > 0) return -1;
     final p = plan(day);
-    if (p.persoGoal.isEmpty) return -1;
+    if (p.persoGoal.isEmpty || p.persoSkip) return -1;
     if (p.persoGoalDone) return 1;
     return day == todayKey ? -1 : 0;
   }
@@ -2345,18 +2352,19 @@ class AppStore extends ChangeNotifier {
       if (l.habitId == h.id && l.day == d) log = l;
     }
     final cur = log?.level ?? 0;
-    final next = to ?? (cur == 0 ? 2 : (cur == 2 ? 1 : 0));
+    final next = to ?? (cur == 0 || cur == 3 ? 2 : (cur == 2 ? 1 : 0));
     if (log == null) {
       log = HabitLog(habitId: h.id, day: d, level: next);
       habitLogs.add(log);
     } else {
       log.level = next;
     }
-    if (cur == 0 && next > 0) _gainXp(next == 2 ? 5 : 3, 'Habitude');
-    if (cur > 0 && next == 0) _gainXp(cur == 2 ? -5 : -3, 'Habitude annulée');
+    final wasDone = cur == 1 || cur == 2, isDone = next == 1 || next == 2;
+    if (!wasDone && isDone) _gainXp(next == 2 ? 5 : 3, 'Habitude');
+    if (wasDone && !isDone) _gainXp(cur == 2 ? -5 : -3, 'Habitude annulée');
     if (cur == 2 && next == 1) _gainXp(-2, 'Habitude en mini');
     if (cur == 1 && next == 2) _gainXp(2, 'Habitude complète');
-    if (next > 0) {
+    if (isDone) {
       _checkBigBonuses();
       _checkMedals();
     }
@@ -2380,8 +2388,8 @@ class AppStore extends ChangeNotifier {
       final lv = done[dayKey(d)] ?? 0;
       final v = lv == 2 ? 1.0 : (lv == 1 ? 0.7 : 0.0);
       final isToday = dayKey(d) == todayKey;
-      // aujourd'hui ne compte que si c'est déjà fait
-      if (!isToday || v > 0) s += 0.07 * (v - s);
+      // aujourd'hui ne compte que si c'est déjà fait ; « pas aujourd'hui » (3) ne compte pas du tout
+      if (lv != 3 && (!isToday || v > 0)) s += 0.07 * (v - s);
       d = d.add(const Duration(days: 1));
     }
     return s.clamp(0.0, 1.0);

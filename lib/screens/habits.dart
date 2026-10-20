@@ -62,9 +62,19 @@ class HabitRow extends StatelessWidget {
         children: [
           Semantics(
             button: true,
-            label: '${h.name} : ${lv == 2 ? 'faite' : lv == 1 ? 'version mini' : 'pas encore faite'}',
+            label: '${h.name} : ${lv == 2 ? 'faite' : lv == 1 ? 'version mini' : lv == 3 ? 'pas aujourd\'hui' : 'pas encore faite'}',
             child: InkWell(
               customBorder: const CircleBorder(),
+              onLongPress: () async {
+                HapticFeedback.mediumImpact();
+                await store.skipHabit(h);
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  duration: const Duration(seconds: 2),
+                  content: Text(store.habitLevel(h, store.todayKey) == 3 ? '${h.name} : pas aujourd\'hui, ça ne compte pas comme raté.' : '${h.name} : de retour dans la journée.'),
+                ));
+              },
               onTap: () async {
                 HapticFeedback.lightImpact();
                 final next = await store.cycleHabit(h);
@@ -82,11 +92,11 @@ class HabitRow extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: lv == 2 ? c : (lv == 1 ? c.withValues(alpha: 0.35) : Colors.transparent),
-                  border: Border.all(color: c, width: 3),
+                  border: Border.all(color: lv == 3 ? K.line : c, width: 3),
                 ),
                 child: lv == 0
                     ? null
-                    : Icon(lv == 2 ? Icons.check_rounded : Icons.remove_rounded, color: lv == 2 ? K.bg : K.ink, size: 24),
+                    : Icon(lv == 2 ? Icons.check_rounded : (lv == 3 ? Icons.bedtime_rounded : Icons.remove_rounded), color: lv == 2 ? K.bg : (lv == 3 ? K.dim : K.ink), size: lv == 3 ? 18 : 24),
               ),
             ),
           ),
@@ -107,9 +117,11 @@ class HabitRow extends StatelessWidget {
                   SizedBox(width: 30, height: 30, child: PlantView(strength: strength, color: c, size: 30)),
                 ]),
                 Text(
-                  lv == 1 && h.mini.isNotEmpty
-                      ? 'Mini : ${h.mini}'
-                      : (h.cue.isNotEmpty ? h.cue : 'Pas de déclencheur'),
+                  lv == 3
+                      ? 'Pas aujourd\'hui${h.daysPerWeek < 7 ? ' · ${h.daysPerWeek} j / semaine' : ''}'
+                      : lv == 1 && h.mini.isNotEmpty
+                          ? 'Mini : ${h.mini}'
+                          : (h.daysPerWeek < 7 ? '${h.daysPerWeek} j / semaine${h.cue.isNotEmpty ? ' · ${h.cue}' : ''}' : (h.cue.isNotEmpty ? h.cue : 'Pas de déclencheur · appui long = pas aujourd\'hui')),
                   style: K.body(12, color: K.muted),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -295,6 +307,7 @@ class _HabitEditorState extends State<HabitEditor> {
   final _mini = TextEditingController();
   int _color = habitColors.first;
   int _remind = -1;
+  int _dpw = 7;
 
   static const _cueIdeas = [
     'Après mon petit-déjeuner',
@@ -314,6 +327,7 @@ class _HabitEditorState extends State<HabitEditor> {
       _mini.text = h.mini;
       _color = h.color;
       _remind = h.reminderMin;
+      _dpw = h.daysPerWeek;
     }
   }
 
@@ -394,6 +408,23 @@ class _HabitEditorState extends State<HabitEditor> {
               ],
             ),
             const SizedBox(height: 8),
+            Text('Combien de jours par semaine ?', style: K.body(13, color: K.muted)),
+            const SizedBox(height: 6),
+            Wrap(spacing: 6, children: [
+              for (final n in const [1, 2, 3, 4, 5, 6, 7])
+                ChoiceChip(
+                  label: Text(n == 7 ? 'tous' : '$n'),
+                  selected: _dpw == n,
+                  onSelected: (_) => setState(() => _dpw = n),
+                  selectedColor: K.lime,
+                  labelStyle: K.body(13, color: _dpw == n ? K.bg : K.ink, w: FontWeight.w800),
+                  backgroundColor: K.raised,
+                  side: BorderSide.none,
+                  showCheckmark: false,
+                ),
+            ]),
+            Text('Les jours où tu ne la fais pas : appui long sur le rond = « pas aujourd\'hui », ça ne compte pas comme raté.', style: K.body(11, color: K.dim)),
+            const SizedBox(height: 8),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: Text('Rappel quotidien', style: K.body(15)),
@@ -422,6 +453,7 @@ class _HabitEditorState extends State<HabitEditor> {
                 h.mini = _mini.text.trim();
                 h.color = _color;
                 h.reminderMin = _remind;
+                h.daysPerWeek = _dpw;
                 final err = await store.saveHabit(h);
                 if (!context.mounted) return;
                 if (err != null) {

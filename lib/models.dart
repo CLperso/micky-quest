@@ -665,6 +665,7 @@ class DayPlan {
   int proGoalMin; // objectif de temps pro du jour, 0 = pas fixé
   String persoGoal; // objectif perso du jour (aller courir…)
   bool persoGoalDone;
+  bool persoSkip; // pas de geste perso aujourd'hui, et ce n'est pas un raté
   String spawn; // point de spawn de demain : le geste préparé ce soir
   int skin; // peau : -1 = non noté, 0 nette → 4 poussée
   String skinZones;
@@ -685,6 +686,7 @@ class DayPlan {
     this.proGoalMin = 0,
     this.persoGoal = '',
     this.persoGoalDone = false,
+    this.persoSkip = false,
     this.spawn = '',
     this.skin = -1,
     this.skinZones = '',
@@ -708,6 +710,7 @@ class DayPlan {
         proGoalMin: _i(j['proGoal']),
         persoGoal: _s(j['persoGoal']),
         persoGoalDone: _b(j['persoDone']),
+        persoSkip: _b(j['persoSkip']),
         spawn: _s(j['spawn']),
         skin: _i(j['skin'], -1),
         skinZones: _s(j['skinZ']),
@@ -729,6 +732,7 @@ class DayPlan {
         'proGoal': proGoalMin,
         'persoGoal': persoGoal,
         'persoDone': persoGoalDone,
+        'persoSkip': persoSkip,
         'spawn': spawn,
         'skin': skin,
         'skinZ': skinZones,
@@ -758,6 +762,7 @@ class Settings {
   String dirFrom; // début des 13 semaines (lundi, aaaa-mm-jj)
   String dirPro, dirPerso; // objectifs sur 3 mois, en une phrase
   int dirStartTgt, dirProTgt, dirHabTgt; // cibles de la semaine (jours sur 7)
+  int dirPersoTgt; // geste perso : jours par semaine
   int dirMinPro; // jour minimum : minutes de pro qui suffisent
   int dirProDefault; // temps pro visé par défaut, si le jour n'a pas d'objectif
   String dirReviewWeek; // lundi de la dernière semaine dont le bilan est fait
@@ -811,6 +816,7 @@ class Settings {
     this.dirStartTgt = 4,
     this.dirProTgt = 4,
     this.dirHabTgt = 5,
+    this.dirPersoTgt = 3,
     this.dirMinPro = 30,
     this.dirProDefault = 180,
     this.dirReviewWeek = '',
@@ -872,6 +878,7 @@ class Settings {
         dirStartTgt: _i(j['dirStartTgt'], 4),
         dirProTgt: _i(j['dirProTgt'], 4),
         dirHabTgt: _i(j['dirHabTgt'], 5),
+        dirPersoTgt: _i(j['dirPersoTgt'], 3),
         dirMinPro: _i(j['dirMinPro'], 30),
         dirProDefault: _i(j['dirProDef'], 180),
         dirReviewWeek: _s(j['dirRev']),
@@ -928,6 +935,7 @@ class Settings {
         'dirStartTgt': dirStartTgt,
         'dirProTgt': dirProTgt,
         'dirHabTgt': dirHabTgt,
+        'dirPersoTgt': dirPersoTgt,
         'dirMinPro': dirMinPro,
         'dirProDef': dirProDefault,
         'dirRev': dirReviewWeek,
@@ -1130,6 +1138,7 @@ class Habit {
   String mini; // version minimale qui compte les jours difficiles
   int color;
   int reminderMin; // minutes depuis minuit, -1 = pas de rappel
+  int daysPerWeek; // 7 = tous les jours ; sinon « pas aujourd'hui » ne compte pas comme raté
   bool archived;
   String created;
   int order;
@@ -1142,6 +1151,7 @@ class Habit {
     this.mini = '',
     this.color = 0xFFB8FF3C,
     this.reminderMin = -1,
+    this.daysPerWeek = 7,
     this.archived = false,
     required this.created,
     this.order = 0,
@@ -1157,6 +1167,7 @@ class Habit {
         mini: _s(j['mini']),
         color: _i(j['color'], 0xFFB8FF3C),
         reminderMin: _i(j['remind'], -1),
+        daysPerWeek: _i(j['dpw'], 7),
         archived: _b(j['archived']),
         created: _s(j['created']),
         order: _i(j['order']),
@@ -1170,6 +1181,7 @@ class Habit {
         'mini': mini,
         'color': color,
         'remind': reminderMin,
+        'dpw': daysPerWeek,
         'archived': archived,
         'created': created,
         'order': order,

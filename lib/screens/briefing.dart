@@ -237,14 +237,35 @@ class _BriefingScreenState extends State<BriefingScreen> {
                     ],
                   ),
                   const SizedBox(height: 10),
-                  TextField(
-                    controller: _persoGoal,
-                    textCapitalization: TextCapitalization.sentences,
-                    decoration: const InputDecoration(
-                      labelText: 'Objectif perso du jour',
-                      hintText: 'aller courir, appeler maman, 20 min de rangement…',
+                  Row(children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _persoGoal,
+                        enabled: !store.today.persoSkip,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: InputDecoration(
+                          labelText: store.today.persoSkip ? 'Pas de geste perso aujourd\'hui' : 'Geste perso du jour',
+                          hintText: 'aller courir, appeler maman, 20 min de rangement…',
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 6),
+                    ChoiceChip(
+                      label: const Text('Pas auj.'),
+                      selected: store.today.persoSkip,
+                      onSelected: (v) async {
+                        store.today.persoSkip = v;
+                        await store.commit();
+                        setState(() {});
+                      },
+                      selectedColor: K.pink,
+                      labelStyle: K.body(12, color: store.today.persoSkip ? K.bg : K.ink, w: FontWeight.w800),
+                      backgroundColor: K.raised,
+                      side: BorderSide.none,
+                      showCheckmark: false,
+                    ),
+                  ]),
+                  Text('Ton objectif : ${store.settings.dirPersoTgt} jours par semaine. « Pas auj. » ne compte pas comme raté.', style: K.body(11, color: K.dim)),
                   const SizedBox(height: 8),
                   Text(
                     'Objectif pro atteint : médaille d\'argent (+60 XP). Perso fait : un ruban pour Micky et de la Sérénité. Les deux : or. Tout, habitudes comprises : la couronne.',
