@@ -134,12 +134,59 @@ class _DerouleViewState extends State<DerouleView> {
           ],
         ]),
       ),
+      Row(children: [
+        TextButton.icon(
+          onPressed: () => _addHabit(context, store),
+          icon: const Icon(Icons.repeat_rounded, color: K.cyan, size: 18),
+          label: Text('Habitude à heure fixe', style: K.body(12, color: K.cyan, w: FontWeight.w800)),
+        ),
+      ]),
       if (sched.late.isNotEmpty)
         Padding(
           padding: const EdgeInsets.only(top: 6),
           child: Text('Une ancre 📌 est intenable dans cet ordre : raccourcis ce qui est avant, remonte-la dans la liste, ou décale l\'ancre.', style: K.body(12, color: K.coral)),
         ),
     ]);
+  }
+
+  /// Choisir une habitude, puis son heure : elle apparaît chaque jour dans le déroulé.
+  Future<void> _addHabit(BuildContext context, AppStore store) async {
+    final hs = store.habits.where((h) => !h.archived).toList();
+    if (hs.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Crée d\'abord une habitude dans Habitudes.')));
+      return;
+    }
+    final h = await showModalBottomSheet<Habit>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: ListView(shrinkWrap: true, padding: const EdgeInsets.fromLTRB(18, 16, 18, 10), children: [
+          Text('Quelle habitude ?', style: K.display(18)),
+          const SizedBox(height: 6),
+          for (final x in hs)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.repeat_rounded, color: K.cyan, size: 18),
+              title: Text(x.name, style: K.body(14, w: FontWeight.w700)),
+              subtitle: x.reminderMin >= 0 ? Text('déjà à ${x.reminderMin ~/ 60}h${(x.reminderMin % 60).toString().padLeft(2, '0')} · touche pour changer ou retirer', style: K.body(11, color: K.muted)) : null,
+              onTap: () => Navigator.pop(ctx, x),
+            ),
+        ]),
+      ),
+    );
+    if (h == null || !context.mounted) return;
+    final init = h.reminderMin >= 0 ? TimeOfDay(hour: h.reminderMin ~/ 60, minute: h.reminderMin % 60) : const TimeOfDay(hour: 8, minute: 0);
+    final t = await showTimePicker(context: context, initialTime: init, helpText: h.name.toUpperCase(), cancelText: h.reminderMin >= 0 ? 'RETIRER' : 'ANNULER');
+    if (t == null) {
+      if (h.reminderMin >= 0) {
+        h.reminderMin = -1;
+        await store.commit();
+      }
+      return;
+    }
+    h.reminderMin = t.hour * 60 + t.minute;
+    await store.commit();
+    if (mounted) setState(() {});
   }
 
   Widget _row(BuildContext context, _Line l, int now, bool isToday) {
