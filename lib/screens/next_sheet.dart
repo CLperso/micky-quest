@@ -18,8 +18,7 @@ Future<void> showNextSheet(BuildContext context, String message) async {
   // la suite, dans l'ordre de la liste du jour
   for (final t in store.daySequence()) {
     if (cands.length >= 3) break;
-    final subs = store.subStepsOf(t).where((x) => !x.done).toList();
-    add(subs.isNotEmpty ? subs.first : t);
+    add(t);
   }
 
   await showModalBottomSheet(

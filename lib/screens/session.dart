@@ -309,7 +309,7 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
                 ],
               ),
               const SizedBox(height: 8),
-              Text('Finis entre ${(_min * 0.8).round()} et ${(_min * 1.2).round()} min pour gagner un coffre.',
+              Text('Finis entre ${(_min * 0.8).round()} et ${(_min * 1.2).round()} min : pari réussi (compte pour le coffre du soir).',
                   style: K.body(13, color: K.muted)),
               const SizedBox(height: 12),
               Text('À la fin de cette session, j\'aurai… (facultatif)', style: K.body(13, w: FontWeight.w800, color: K.lime)),
@@ -430,6 +430,12 @@ class _SessionScreenState extends State<SessionScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final store = AppScope.read(context);
+      final s = store.runningSession;
+      if (s != null) store.ensureSub(s);
+    });
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
@@ -507,8 +513,14 @@ class _SessionScreenState extends State<SessionScreen> {
       );
     }
     final t = store.taskById(s.taskId);
-    final elapsed = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(s.start));
-    final frac = elapsed.inSeconds / ((s.predictedMin + s.extraMin) * 60);
+    final cur = store.currentSub(s);
+    final curEntry = cur == null ? null : s.subEntries.lastWhere((e) => e.$1 == cur.id);
+    final subs = t == null ? <Task>[] : store.subStepsOf(t);
+    final sessionElapsed = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(s.start));
+    // avec une sous-étape en cours, l'anneau suit la sous-étape
+    final elapsed = curEntry != null ? DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(curEntry.$2)) : sessionElapsed;
+    final target = curEntry != null && curEntry.$3 > 0 ? curEntry.$3 : (curEntry != null ? max(10, cur!.estimateMin) : s.predictedMin + s.extraMin);
+    final frac = elapsed.inSeconds / (max(1, target) * 60);
     final over = frac > 1;
     final mm = elapsed.inMinutes.toString().padLeft(2, '0');
     final ss = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
@@ -597,7 +609,24 @@ class _SessionScreenState extends State<SessionScreen> {
               Text('QUÊTE ${t.category.toUpperCase()}', style: K.body(12, color: t.category == 'pro' ? K.lime : K.pink, w: FontWeight.w900)),
             if (t != null && t.isBoss)
               Text('COMBAT CONTRE LE BOSS · ${t.bossProgress} % · ${store.bossMinutes(t)} min de coups', style: K.body(12, color: K.coral, w: FontWeight.w900)),
-            Text(s.title, style: K.display(24)),
+            Text(t?.title ?? s.title, style: K.display(24)),
+            if (cur != null) ...[
+              const SizedBox(height: 10),
+              Panel(
+                border: K.cyan,
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('EN COURS · SOUS-ÉTAPE ${subs.indexWhere((x) => x.id == cur.id) + 1} / ${subs.length}', style: K.body(11, color: K.cyan, w: FontWeight.w900)),
+                  Text(cur.title, style: K.display(19)),
+                  Text(
+                    [
+                      if (target > 0) 'prévu ${target} min',
+                      if (subs.where((x) => !x.done && x.id != cur.id).isNotEmpty) 'ensuite : ${subs.firstWhere((x) => !x.done && x.id != cur.id).title}',
+                    ].join(' · '),
+                    style: K.body(12, color: K.muted),
+                  ),
+                ]),
+              ),
+            ],
             if (s.advance) ...[
               const SizedBox(height: 4),
               Text(
@@ -620,7 +649,10 @@ class _SessionScreenState extends State<SessionScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text('$mm:$ss', style: K.display(52, w: FontWeight.w700)),
-                        Text(s.extraMin > 0 ? 'pari ${s.predictedMin} min · +${s.extraMin}' : 'ton pari : ${s.predictedMin} min', style: K.body(14, color: K.muted)),
+                        if (cur != null)
+                          Text('sous-étape · $target min\nsession ${sessionElapsed.inMinutes} / ${s.predictedMin + s.extraMin} min', textAlign: TextAlign.center, style: K.body(13, color: K.muted))
+                        else
+                          Text(s.extraMin > 0 ? 'pari ${s.predictedMin} min · +${s.extraMin}' : 'ton pari : ${s.predictedMin} min', style: K.body(14, color: K.muted)),
                       ],
                     ),
                   ),
@@ -660,8 +692,8 @@ class _SessionScreenState extends State<SessionScreen> {
                   Expanded(
                     child: Text(
                       inWindow
-                          ? 'Tu es dans la zone du coffre : c\'est le moment de finir !'
-                          : 'Finis entre ${(s.predictedMin * 0.8).round()} et ${(s.predictedMin * 1.2).round()} min et tu gagnes un coffre.',
+                          ? 'Tu es dans la zone du pari : c\'est le moment de finir !'
+                          : 'Finis entre ${(s.predictedMin * 0.8).round()} et ${(s.predictedMin * 1.2).round()} min : pari réussi, +15 XP et un pas vers le coffre du soir.',
                       style: K.body(13),
                     ),
                   ),
@@ -674,7 +706,7 @@ class _SessionScreenState extends State<SessionScreen> {
                 child: Text('Ton plan B : si ${store.today.planIf}, alors ${store.today.planThen}.', style: K.body(13, color: K.muted)),
               ),
             ],
-            if (s.subEntries.any((e) => e.$4 == 0 && store.taskById(e.$1) != null && !store.taskById(e.$1)!.done)) ...[
+            if (s.subEntries.any((e) => e.$4 == 0 && e.$1 != cur?.id && store.taskById(e.$1) != null && !store.taskById(e.$1)!.done && store.taskById(e.$1)!.parentId != s.taskId)) ...[
               const SizedBox(height: 10),
               Panel(
                 border: K.cyan,
@@ -713,7 +745,23 @@ class _SessionScreenState extends State<SessionScreen> {
               children: [
                 Expanded(child: SecondaryButton(label: 'J\'ai décroché', onPressed: () => _end(false))),
                 const SizedBox(width: 10),
-                Expanded(child: PrimaryButton(label: t != null && t.isBoss ? 'Fin du coup' : (s.advance ? 'Fin de la session' : 'Étape finie'), onPressed: () => _end(true))),
+                Expanded(
+                  child: PrimaryButton(
+                    label: cur != null ? 'Sous-étape finie' : (t != null && t.isBoss ? 'Fin du coup' : (s.advance ? 'Fin de la session' : 'Étape finie')),
+                    onPressed: () async {
+                      if (cur == null) return _end(true);
+                      final next = await store.nextSub(s);
+                      if (!mounted) return;
+                      await showPendingCard(context);
+                      if (!mounted) return;
+                      if (next == null) {
+                        await _end(true);
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Suite : ${next.title}')));
+                      }
+                    },
+                  ),
+                ),
               ],
             ),
           ],

@@ -1812,8 +1812,50 @@ class AppStore extends ChangeNotifier {
     sessions.add(s);
     final t = taskById(taskId);
     if (t != null && t.estimateMin == 0) t.estimateMin = predicted;
+    ensureSub(s, save: false);
     await commit();
     return s;
+  }
+
+  /// Sous-étape demandée au lancement (touchée dans la liste).
+  String preferSub = '';
+
+  /// Sous-étape en cours d'une session sur une tâche découpée.
+  Task? currentSub(SessionRec s) {
+    for (final e in s.subEntries.reversed) {
+      if (e.$4 != 0) continue;
+      final t = taskById(e.$1);
+      if (t != null && !t.done && !t.removed) return t;
+    }
+    return null;
+  }
+
+  /// Si la tâche de la session est découpée, ouvre sa prochaine sous-étape.
+  Task? ensureSub(SessionRec s, {bool save = true}) {
+    final cur = currentSub(s);
+    if (cur != null) return cur;
+    final parent = taskById(s.taskId);
+    if (parent == null) return null;
+    final open = subStepsOf(parent).where((x) => !x.done).toList();
+    if (open.isEmpty) return null;
+    var next = open.first;
+    for (final x in open) {
+      if (x.id == preferSub) next = x;
+    }
+    preferSub = '';
+    final e = '${next.id}|${DateTime.now().millisecondsSinceEpoch}|${next.estimateMin}|0';
+    s.subLog = s.subLog.isEmpty ? e : '${s.subLog};$e';
+    if (save) commit();
+    return next;
+  }
+
+  /// « Sous-étape finie » : coche la sous-étape en cours et passe à la suivante (null s'il n'y en a plus).
+  Future<Task?> nextSub(SessionRec s) async {
+    final cur = currentSub(s);
+    if (cur != null) await finishSessionSub(s, cur);
+    final n = ensureSub(s, save: false);
+    await commit();
+    return n;
   }
 
   /// Termine la session. Renvoie le butin éventuel.
