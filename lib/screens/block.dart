@@ -16,8 +16,31 @@ import 'reflect.dart';
 import 'session.dart';
 import 'timetable.dart';
 
-/// « Je bloque » : coups de pouce pour relancer, pour relancer,
-/// et le même bloc « plus tard » que « pas tout de suite ».
+/// Petites vérités utiles (affichées dans Découvertes).
+const kTruths = [
+  (
+    'Pas besoin d\'être prête',
+    'Avancer vers un objectif coûte avant de rapporter. Tu peux agir sans te sentir prête : l\'action d\'abord, le ressenti se traite à côté.'
+  ),
+  (
+    '« Demain » est une pensée, pas un plan',
+    'Ton mental propose « je le ferai demain ». Ce n\'est pas toi qui décides, c\'est une pensée qui passe. Tu peux la regarder sans la suivre.'
+  ),
+  (
+    'Qu\'est-ce que j\'évite de ressentir ?',
+    'La procrastination est une solution efficace : elle enlève une émotion désagréable. Nomme-la (ennui, peur de rater, honte, flou) et elle perd de la force.'
+  ),
+  (
+    'Reste dans le conflit',
+    'La volonté, c\'est surveiller un conflit jusqu\'à l\'action. Pas besoin d\'être calme avant : « je me fiche de ce que mon cerveau veut », et on y va.'
+  ),
+  (
+    'Décris la tâche sans la gonfler',
+    'Ni « c\'est une thèse », ni « c\'est rien ». C\'est quoi, exactement, pendant 15 minutes ?'
+  ),
+];
+
+/// « Je n'arrive pas à m'y mettre » : découper, relancer, en parler ; jusqu'où je peux aller ; plus tard.
 class BlockScreen extends StatefulWidget {
   final Task? task;
   const BlockScreen({super.key, this.task});
@@ -27,35 +50,13 @@ class BlockScreen extends StatefulWidget {
 }
 
 class _BlockScreenState extends State<BlockScreen> {
-  static const _drK = [
-    (
-      'Pas besoin d\'être prête',
-      'Avancer vers un objectif coûte avant de rapporter. Tu peux agir sans te sentir prête : l\'action d\'abord, le ressenti se traite à côté.'
-    ),
-    (
-      '« Demain » est une pensée, pas un plan',
-      'Ton mental propose « je le ferai demain ». Ce n\'est pas toi qui décides, c\'est une pensée qui passe. Tu peux la regarder sans la suivre.'
-    ),
-    (
-      'Qu\'est-ce que j\'évite de ressentir ?',
-      'La procrastination est une solution efficace : elle enlève une émotion désagréable. Nomme-la (ennui, peur de rater, honte, flou) et elle perd de la force.'
-    ),
-    (
-      'Reste dans le conflit',
-      'La volonté, c\'est surveiller un conflit jusqu\'à l\'action. Pas besoin d\'être calme avant : « je me fiche de ce que mon cerveau veut », et on y va.'
-    ),
-    (
-      'Décris la tâche sans la gonfler',
-      'Ni « c\'est une thèse », ni « c\'est rien ». C\'est quoi, exactement, pendant 15 minutes ?'
-    ),
-  ];
 
   @override
   Widget build(BuildContext context) {
     final store = AppScope.of(context);
     final t = widget.task;
     return Scaffold(
-      appBar: AppBar(title: const Text('Je bloque')),
+      appBar: AppBar(title: const Text('Je n\'arrive pas à m\'y mettre')),
       body: SafeArea(
         top: false,
         child: ListView(
@@ -69,15 +70,6 @@ class _BlockScreenState extends State<BlockScreen> {
               ring: K.coral,
             ),
             const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () => openScreen(context, const CabinScreen()),
-                icon: const Text('🏕'),
-                label: Text('C\'est plutôt un coup de mou ? La cabane', style: K.body(13, color: const Color(0xFFB9A7FF), w: FontWeight.w800)),
-              ),
-            ),
-
             _big(
               context,
               Icons.content_cut_rounded,
@@ -107,19 +99,6 @@ class _BlockScreenState extends State<BlockScreen> {
             ),
             _big(
               context,
-              Icons.extension_rounded,
-              'Définir le problème',
-              'le dire concrètement, puis résoudre ou traverser',
-              K.lime,
-              () async {
-                final v = await askText(context, 'Le problème, concrètement', hint: 'un fait, pas un jugement sur toi', initial: t == null ? '' : 'Je bloque sur « ${t.title} » parce que ');
-                if (v == null || v.trim().isEmpty || !context.mounted) return;
-                final p = await store.addProblem(v.trim());
-                if (context.mounted) openScreen(context, ProblemScreen(problem: p, guided: true));
-              },
-            ),
-            _big(
-              context,
               Icons.forum_rounded,
               'En parler à quelqu\'un, ou à l\'IA',
               'dire le blocage à voix haute le rend plus petit',
@@ -140,7 +119,13 @@ class _BlockScreenState extends State<BlockScreen> {
               Expanded(child: _goBtn(context, 'À fond', '60 min', 60)),
             ]),
 
-            const SectionLabel('Autres coups de pouce'),
+            const SizedBox(height: 10),
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: Text('Autres coups de pouce', style: K.display(15, color: K.muted)),
+                children: [
             _tool(
               context,
               Icons.directions_walk_rounded,
@@ -158,24 +143,12 @@ class _BlockScreenState extends State<BlockScreen> {
               () => _run(context, const ProcrastinationTimer()),
             ),
 
-            const SectionLabel('Petites vérités utiles'),
-            for (final d in _drK)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Panel(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(d.$1, style: K.display(15, color: K.gold)),
-                      const SizedBox(height: 4),
-                      Text(d.$2, style: K.body(13, color: K.muted)),
-                    ],
-                  ),
-                ),
+                ],
               ),
+            ),
             const SizedBox(height: 4),
             SecondaryButton(
-              label: 'Regarder ce qui coince',
+              label: 'Comprendre ce qui coince',
               onPressed: () => openScreen(context, ReflectionScreen(kind: 'pasfaite', taskId: t?.id ?? '', title: t?.title ?? '')),
             ),
 

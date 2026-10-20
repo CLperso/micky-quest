@@ -401,13 +401,19 @@ class _CabinScreenState extends State<CabinScreen> {
                 _door = 'dessus';
                 _step = 0;
               })),
-          _door1('🧩', 'J\'ai un problème à régler', 'direct dans « Mes problèmes »', K.lime, () async {
-            final t = await askText(context, 'Le problème, concrètement', hint: 'un fait, pas un jugement sur toi');
-            if (t == null || t.trim().isEmpty || !mounted) return;
-            final p = await store.addProblem(t.trim());
-            if (!mounted) return;
-            Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => ProblemScreen(problem: p, guided: true)));
-          }),
+          const SizedBox(height: 8),
+          Center(
+            child: TextButton(
+              onPressed: () async {
+                final t = await askText(context, 'Le problème, concrètement', hint: 'un fait, pas un jugement sur toi');
+                if (t == null || t.trim().isEmpty || !mounted) return;
+                final p = await store.addProblem(t.trim());
+                if (!mounted) return;
+                Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => ProblemScreen(problem: p, guided: true)));
+              },
+              child: Text('🧩 C\'est plutôt un problème concret ? Le poser', style: K.body(12, color: K.muted, w: FontWeight.w800)),
+            ),
+          ),
         ],
       );
 

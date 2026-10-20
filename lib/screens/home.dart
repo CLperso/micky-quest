@@ -19,6 +19,7 @@ import 'cabin.dart';
 import 'problems.dart';
 import 'direction.dart';
 import 'dump.dart';
+import 'help.dart';
 import 'boss.dart';
 import 'house.dart';
 import 'task_panel.dart';
@@ -205,92 +206,12 @@ class HomeScreen extends StatelessWidget {
                     () => openScreen(context, const CheckinScreen(focusLog: LogKind.energy)))),
             const SizedBox(width: 8),
             Expanded(
-                child: _quick(context, Icons.support_rounded, 'Je bloque', K.coral,
-                    () => openScreen(context, const BlockScreen()))),
+                child: _quick(context, Icons.psychology_alt_rounded, 'Ranger la tête', K.cyan,
+                    () => openScreen(context, const DumpScreen()))),
           ],
         ),
         const SizedBox(height: 10),
-        Material(
-          color: K.card,
-          borderRadius: BorderRadius.circular(18),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(18),
-            onTap: () => openScreen(context, const DumpScreen()),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: K.cyan, width: 2)),
-              child: Row(children: [
-                const Icon(Icons.psychology_alt_rounded, color: K.cyan),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Se ranger la tête', style: K.display(15)),
-                    Text('tout écrire, puis ranger en tâches ou en étapes', style: K.body(11, color: K.muted)),
-                  ]),
-                ),
-                const Icon(Icons.chevron_right_rounded, color: K.cyan),
-              ]),
-            ),
-          ),
-        ),
-        const SizedBox(height: 10),
-        Material(
-          color: const Color(0xFF241E48),
-          borderRadius: BorderRadius.circular(18),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(18),
-            onTap: () => openScreen(context, const CabinScreen()),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFB9A7FF), width: 2)),
-              child: Row(children: [
-                const Text('🏕', style: TextStyle(fontSize: 22)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('La cabane de Micky', style: K.display(15)),
-                    Text('pour un coup de mou : souffler, comprendre, un petit geste', style: K.body(11, color: K.muted)),
-                  ]),
-                ),
-                const Icon(Icons.chevron_right_rounded, color: Color(0xFFB9A7FF)),
-              ]),
-            ),
-          ),
-        ),
-        const SizedBox(height: 10),
-        Builder(builder: (context) {
-          final store = AppScope.of(context);
-          final open = store.openProblems;
-          return Material(
-            color: K.card,
-            borderRadius: BorderRadius.circular(18),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(18),
-              onTap: () => openScreen(context, const ProblemsScreen()),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                child: Row(children: [
-                  const Icon(Icons.extension_rounded, color: K.lime),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('Mes problèmes', style: K.display(15)),
-                      Text(
-                        open.isEmpty
-                            ? 'résoudre ou traverser, et suivre l\'évolution'
-                            : '${open.length} ouvert${open.length > 1 ? 's' : ''}${open.first.nextStep == null ? '' : ' · prochaine étape : ${open.first.nextStep!['t']}'}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: K.body(11, color: K.muted),
-                      ),
-                    ]),
-                  ),
-                  const Icon(Icons.chevron_right_rounded, color: K.lime),
-                ]),
-              ),
-            ),
-          );
-        }),
+        const HelpCard(),
       ],
     );
   }

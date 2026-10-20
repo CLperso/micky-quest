@@ -10,6 +10,7 @@ import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
 import 'block.dart';
+import 'help.dart';
 import 'cabin.dart';
 import 'session.dart';
 import 'timetable.dart' show askText;
@@ -598,14 +599,14 @@ class _CheckinScreenState extends State<CheckinScreen> {
                 borderRadius: BorderRadius.circular(16),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(16),
-                  onTap: () => openScreen(context, BlockScreen(task: _taskId.isEmpty ? null : store.taskById(_taskId))),
+                  onTap: () => openScreen(context, HelpScreen(task: _taskId.isEmpty ? null : store.taskById(_taskId))),
                   child: Container(
                     decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: K.coral, width: 2)),
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     child: Row(children: [
                       const Icon(Icons.support_rounded, color: K.coral),
                       const SizedBox(width: 10),
-                      Expanded(child: Text('Je bloque · coups de pouce', style: K.body(14, w: FontWeight.w800))),
+                      Expanded(child: Text('Un coup de main ?', style: K.body(14, w: FontWeight.w800))),
                       const Icon(Icons.chevron_right_rounded, color: K.muted),
                     ]),
                   ),

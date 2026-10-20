@@ -5,6 +5,7 @@ import '../main.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
+import 'block.dart' show kTruths;
 import 'budget.dart';
 import 'house.dart';
 
@@ -84,6 +85,20 @@ class _DiscoveriesScreenState extends State<DiscoveriesScreen> {
           const GainsStats(),
           const SizedBox(height: 12),
           SecondaryButton(label: 'Voir l\'album', onPressed: () => openScreen(context, const AlbumScreen())),
+          const SizedBox(height: 16),
+          Text('Petites vérités utiles', style: K.display(16)),
+          const SizedBox(height: 8),
+          for (final d in kTruths)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Panel(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(d.$1, style: K.display(15, color: K.gold)),
+                  const SizedBox(height: 4),
+                  Text(d.$2, style: K.body(13, color: K.muted)),
+                ]),
+              ),
+            ),
         ],
         if (_tab == 1) ...[
           const TimeStats(),
