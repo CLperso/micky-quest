@@ -36,7 +36,7 @@ class TodayScreen extends StatelessWidget {
         if (!standalone)
           Row(children: [
             Expanded(child: Text('Aujourd\'hui', style: K.display(24))),
-            TextButton(onPressed: () => openScreen(context, const TomorrowScreen()), child: const Text('Demain ›')),
+            TextButton(onPressed: () => openScreen(context, const TomorrowScreen()), child: const Text('Semaine ›')),
             TextButton(onPressed: () => openScreen(context, const BriefingScreen()), child: const Text('Briefing')),
           ]),
         Material(

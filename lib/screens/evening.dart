@@ -388,10 +388,7 @@ class _EveningScreenState extends State<EveningScreen> {
                   _field(_win, 'Une victoire, même petite', K.lime),
                   _field(_brake, 'Ce qui m\'a freinée', K.coral),
                   _field(_tomorrow, 'Demain, je commence par', K.cyan),
-                  const SizedBox(height: 6),
-                  Text('Point de spawn de demain : un geste ce soir pour que demain démarre sans friction.',
-                      style: K.body(12, color: K.muted)),
-                  _field(_spawn, 'ouvrir le fichier, préparer le sac, téléphone loin du lit…', K.gold),
+
                 ],
               ),
             ),

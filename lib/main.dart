@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -184,6 +186,10 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
         case 'habit':
           openScreen(ctx, const HabitsScreen());
           break;
+        case 'stopsession':
+          if (store.runningSession != null) openScreen(ctx, SessionScreen(stopAt: pendingStopTs));
+          pendingStopTs = null;
+          break;
         case 'session':
           if (store.runningSession != null) openScreen(ctx, const SessionScreen());
           break;
@@ -283,6 +289,37 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   String _staleAsked = '';
 
   /// Une session oubliée (depuis hier, ou plus de 8 h) : on ouvre l'écran pour la fermer à la bonne heure.
+  /// Une session arrêtée toute seule (pas de réponse) : on le dit, et on peut corriger l'heure.
+  void _maybeAutoStopped(AppStore store) {
+    final s = store.pendingAutoStop;
+    if (s == null) return;
+    store.pendingAutoStop = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await rescheduleAll(store);
+      final ctx = navKey.currentContext;
+      if (ctx == null) return;
+      final fix = await showDialog<bool>(
+        context: ctx,
+        builder: (c) => AlertDialog(
+          title: const Text('Session arrêtée'),
+          content: Text('« ${s.title} » s\'est arrêtée à ${hm(DateTime.fromMillisecondsSinceEpoch(s.end))} : pas de réponse à « toujours dessus ? ». Le temps jusque-là compte.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Corriger l\'heure')),
+            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('OK')),
+          ],
+        ),
+      );
+      if (fix != true) return;
+      final c2 = navKey.currentContext;
+      if (c2 == null) return;
+      final t0 = await showTimePicker(context: c2, initialTime: TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(s.end)), helpText: 'ARRÊTÉE À QUELLE HEURE ?');
+      if (t0 == null) return;
+      final st = DateTime.fromMillisecondsSinceEpoch(s.start);
+      s.end = max(s.start + 60000, min(DateTime.now().millisecondsSinceEpoch, DateTime(st.year, st.month, st.day, t0.hour, t0.minute).millisecondsSinceEpoch));
+      await store.commit();
+    });
+  }
+
   void _maybeStale(AppStore store) {
     final s = store.runningSession;
     if (s == null || !store.isStale(s) || _staleAsked == s.id) return;
@@ -295,6 +332,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    _maybeAutoStopped(AppScope.of(context));
     _maybeStale(AppScope.of(context));
     _maybeCelebrate(AppScope.of(context));
     _maybeCard(AppScope.of(context));

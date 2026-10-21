@@ -150,13 +150,6 @@ class _BriefingScreenState extends State<BriefingScreen> {
               ),
             ),
 
-            if (store.today.spawn.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Panel(
-                border: K.gold,
-                child: Text('Ton point de spawn, préparé hier soir : ${store.today.spawn}', style: K.body(14)),
-              ),
-            ],
             const SizedBox(height: 10),
             if (!store.today.briefingDone) ...[
               Panel(

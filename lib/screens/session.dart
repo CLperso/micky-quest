@@ -418,7 +418,8 @@ class _StartSessionSheetState extends State<StartSessionSheet> {
 }
 
 class SessionScreen extends StatefulWidget {
-  const SessionScreen({super.key});
+  final int? stopAt; // « J'ai arrêté » touché dans la notification : l'heure de la question
+  const SessionScreen({super.key, this.stopAt});
 
   @override
   State<SessionScreen> createState() => _SessionScreenState();
@@ -430,13 +431,29 @@ class _SessionScreenState extends State<SessionScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       final store = AppScope.read(context);
+      if (await store.autoStop()) {
+        if (mounted) Navigator.pop(context);
+        return;
+      }
       final s = store.runningSession;
-      if (s != null) store.ensureSub(s);
+      if (s == null) return;
+      if (widget.stopAt != null) {
+        await _askStop(s, widget.stopAt!);
+        return;
+      }
+      store.markAlive(s);
+      store.ensureSub(s);
     });
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+    var ticks = 0;
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) async {
+      if (!mounted) return;
+      if (++ticks % 60 == 0 && await AppScope.read(context).autoStop()) {
+        if (mounted) Navigator.pop(context);
+        return;
+      }
       if (mounted) setState(() {});
     });
   }
@@ -445,6 +462,45 @@ class _SessionScreenState extends State<SessionScreen> {
   void dispose() {
     _timer?.cancel();
     super.dispose();
+  }
+
+  /// « J'ai arrêté » : quand ?
+  Future<void> _askStop(SessionRec s, int askedAt) async {
+    final store = AppScope.read(context);
+    final alive = s.aliveTimes.where((a) => a < askedAt).fold(0, max);
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text('Tu as arrêté « ${s.title} » vers quelle heure ?', style: K.display(18)),
+            const SizedBox(height: 12),
+            PrimaryButton(label: 'Vers ${hm(DateTime.fromMillisecondsSinceEpoch(askedAt))} (l\'heure de la question)', onPressed: () => Navigator.pop(ctx, 'ask')),
+            if (alive > s.start) ...[
+              const SizedBox(height: 8),
+              SecondaryButton(label: 'Vers ${hm(DateTime.fromMillisecondsSinceEpoch(alive))} (dernier « je continue »)', onPressed: () => Navigator.pop(ctx, 'alive')),
+            ],
+            const SizedBox(height: 8),
+            SecondaryButton(label: 'Maintenant', onPressed: () => Navigator.pop(ctx, 'now')),
+            TextButton(onPressed: () => Navigator.pop(ctx, 'other'), child: Text('Une autre heure…', style: K.body(13, color: K.muted))),
+          ]),
+        ),
+      ),
+    );
+    if (choice == null || !mounted) return;
+    var end = DateTime.now().millisecondsSinceEpoch;
+    if (choice == 'ask') end = askedAt;
+    if (choice == 'alive') end = alive;
+    if (choice == 'other') {
+      final t0 = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(askedAt)), helpText: 'ARRÊTÉE À QUELLE HEURE ?');
+      if (t0 == null || !mounted) return;
+      final st = DateTime.fromMillisecondsSinceEpoch(s.start);
+      end = DateTime(st.year, st.month, st.day, t0.hour, t0.minute).millisecondsSinceEpoch;
+    }
+    await store.closeSessionAt(s, end);
+    await rescheduleAll(store);
+    if (mounted) Navigator.pop(context);
   }
 
   Future<void> _end(bool finished) async {

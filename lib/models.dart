@@ -232,9 +232,19 @@ class SessionRec {
   String extWhy; // pourquoi : « plus compliqué que prévu », etc.
   String subLog; // sous-étapes ajoutées en session : id|début|prévu|fin;…
   bool flow; // session ouverte (sur la vague) : pas de pari
+  String alives; // « oui, je continue » : heures de confirmation (ms), séparées par des virgules
   int mod;
 
   static const attLabels = ['à fond', 'ça va', 'ça flotte', 'ailleurs'];
+
+  List<int> get aliveTimes => [for (final x in alives.split(',')) if (int.tryParse(x) != null) int.parse(x)];
+
+  /// Heures des questions « toujours dessus ? » : fin du pari puis toutes les 30 min ; vague : toutes les 90 min.
+  List<int> get askTimes {
+    final first = flow ? 90 : max(10, predictedMin + extraMin);
+    final step = flow ? 90 : 30;
+    return [for (var k = 0; k < 8; k++) start + (first + step * k) * 60000];
+  }
 
   /// Sous-étapes de cette session : (id, début ms, prévu min, fin ms ou 0).
   List<(String, int, int, int)> get subEntries => [
@@ -283,6 +293,7 @@ class SessionRec {
     this.extWhy = '',
     this.subLog = '',
     this.flow = false,
+    this.alives = '',
     this.mod = 0,
   }) : id = id ?? newId();
 
@@ -336,6 +347,7 @@ class SessionRec {
         extWhy: _s(j['extWhy']),
         subLog: _s(j['subLog']),
         flow: _b(j['flow']),
+        alives: _s(j['alv']),
         mod: _i(j['mod']),
       );
 
@@ -371,6 +383,7 @@ class SessionRec {
         'extWhy': extWhy,
         'subLog': subLog,
         'flow': flow,
+        'alv': alives,
         'mod': mod,
       };
 }
@@ -796,6 +809,7 @@ class Settings {
   String dirIntention; // intention pro de la semaine (une ligne, facultatif)
   bool checkinsDuringSession;
   bool checkinNotifs; // check-ins par notification (sinon proposés à l'ouverture de l'appli)
+  bool dayNotifs; // briefing, feu de camp, rappels de blocs : désactivés par défaut (seules restent les questions de session)
   bool habitNotifs; // rappels d'habitudes par notification
   int briefingHour;
   int briefingMinute;
@@ -851,6 +865,7 @@ class Settings {
     this.dirIntention = '',
     this.checkinsDuringSession = false,
     this.checkinNotifs = false,
+    this.dayNotifs = false,
     this.habitNotifs = false,
     this.briefingHour = 8,
     this.briefingMinute = 30,
@@ -914,6 +929,7 @@ class Settings {
         dirIntention: _s(j['dirInt']),
         checkinsDuringSession: _b(j['duringSession']),
         checkinNotifs: _b(j['ciNotif']),
+        dayNotifs: _b(j['dayNotif']),
         habitNotifs: _b(j['habNotif']),
         briefingHour: _i(j['briefH'], 8),
         briefingMinute: _i(j['briefM'], 30),
@@ -972,6 +988,7 @@ class Settings {
         'dirInt': dirIntention,
         'duringSession': checkinsDuringSession,
         'ciNotif': checkinNotifs,
+        'dayNotif': dayNotifs,
         'habNotif': habitNotifs,
         'briefH': briefingHour,
         'briefM': briefingMinute,

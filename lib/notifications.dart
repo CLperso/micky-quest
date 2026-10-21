@@ -104,6 +104,9 @@ AndroidNotificationDetails _dayDetails() => const AndroidNotificationDetails(
     );
 
 /// Reprogramme check-ins, briefing, feu de camp et fin de pari.
+/// « J'ai arrêté » touché dans une notification : l'heure de la question.
+int? pendingStopTs;
+
 Future<void> rescheduleAll(AppStore store) async {
   scheduledCheckins.clear();
   if (!notificationsReady) {
@@ -158,25 +161,11 @@ Future<void> rescheduleAll(AppStore store) async {
       scheduledCheckins.add(t);
     }
 
-    // sans check-ins réguliers : une seule question au milieu d'une session non silencieuse
-    if (!s.checkinNotifs && d == 0 && run != null && !run.silent && !run.flow) {
-      final mid = DateTime.fromMillisecondsSinceEpoch(run.start).add(Duration(minutes: max(10, run.predictedMin ~/ 2)));
-      if (mid.isAfter(now.add(const Duration(minutes: 1)))) {
-        await _schedule(
-          id: 2190,
-          when: mid,
-          title: 'Toujours sur « ${run.title} » ?',
-          body: 'Un tap pour confirmer, ou dis ce qui s\'est passé.',
-          details: _checkDetails(session: true, timeoutMin: interval),
-          payload: jsonEncode({'type': 'checkin', 'ts': mid.millisecondsSinceEpoch, 'task': run.taskId}),
-        );
-      }
-    }
 
     // briefing
     final brief = day.add(Duration(hours: s.briefingHour, minutes: s.briefingMinute));
     final briefDone = d == 0 && store.today.briefingDone;
-    if (brief.isAfter(now) && !briefDone) {
+    if (s.dayNotifs && brief.isAfter(now) && !briefDone) {
       await _schedule(
         id: 10 + d,
         when: brief,
@@ -190,7 +179,7 @@ Future<void> rescheduleAll(AppStore store) async {
     // feu de camp
     final eve = day.add(Duration(hours: s.eveningHour));
     final eveDone = d == 0 && store.today.eveningDone;
-    if (eve.isAfter(now) && !eveDone) {
+    if (s.dayNotifs && eve.isAfter(now) && !eveDone) {
       await _schedule(
         id: 20 + d,
         when: eve,
@@ -231,7 +220,7 @@ Future<void> rescheduleAll(AppStore store) async {
   }
 
   // rappels « c'est l'heure » des blocs prévus
-  for (final t in store.tasks) {
+  for (final t in s.dayNotifs ? store.tasks : const <Task>[]) {
     if (t.done || t.removed || t.plannedAt == 0) continue;
     final when = DateTime.fromMillisecondsSinceEpoch(t.plannedAt);
     if (!when.isAfter(now) || when.isAfter(now.add(const Duration(days: 2)))) continue;
@@ -258,7 +247,7 @@ Future<void> rescheduleAll(AppStore store) async {
 
   // fin de la pause
   final pause = store.activePause;
-  if (pause != null && pause.end > now.millisecondsSinceEpoch) {
+  if (s.dayNotifs && pause != null && pause.end > now.millisecondsSinceEpoch) {
     await _schedule(
       id: 40,
       when: DateTime.fromMillisecondsSinceEpoch(pause.end),
@@ -269,33 +258,36 @@ Future<void> rescheduleAll(AppStore store) async {
     );
   }
 
-  // sur la vague : une pause-corps toutes les 90 min, rien d'autre
-  if (run != null && run.flow) {
-    for (var k = 1; k <= 4; k++) {
-      final at = DateTime.fromMillisecondsSinceEpoch(run.start).add(Duration(minutes: 90 * k));
+  // pendant une session : la seule question, « toujours dessus ? »
+  // pari : à la fin du pari puis toutes les 30 min ; vague : toutes les 90 min (avec la pause-corps)
+  if (run != null) {
+    final start = DateTime.fromMillisecondsSinceEpoch(run.start);
+    final first = run.flow ? 90 : max(10, run.predictedMin + run.extraMin);
+    final step = run.flow ? 90 : 30;
+    for (var k = 0; k < 8; k++) {
+      final at = start.add(Duration(minutes: first + step * k));
       if (!at.isAfter(now)) continue;
+      final mins = first + step * k;
       await _schedule(
-        id: 40 + k,
+        id: 50 + k,
         when: at,
-        title: 'Pause-corps 🧘',
-        body: '${90 * k} min sur la vague. Lève-toi, bois, étire-toi, puis on repart.',
-        details: _dayDetails(),
-        payload: jsonEncode({'type': 'session'}),
-      );
-    }
-  }
-
-  // fin du pari
-  if (run != null && !run.flow) {
-    final due = DateTime.fromMillisecondsSinceEpoch(run.start).add(Duration(minutes: run.predictedMin + run.extraMin));
-    if (due.isAfter(now)) {
-      await _schedule(
-        id: 30,
-        when: due,
-        title: 'Ton pari arrive à échéance',
-        body: '${run.title} : ${run.predictedMin} min écoulées. Tu en es où ?',
-        details: _dayDetails(),
-        payload: jsonEncode({'type': 'session'}),
+        title: run.flow ? 'Pause-corps · toujours sur la vague ?' : 'Toujours sur « ${run.title} » ?',
+        body: run.flow
+            ? '$mins min sur « ${run.title} ». Lève-toi, bois, étire-toi. Tu continues ?'
+            : (k == 0 ? 'Ton pari de ${run.predictedMin} min arrive à échéance. Tu continues ? (sans réponse dans 30 min, la session s\'arrête)' : '$mins min au compteur. Tu es encore dessus ? (sans réponse dans 30 min, elle s\'arrête)'),
+        details: AndroidNotificationDetails(
+          _dayChannel,
+          'Briefing et feu de camp',
+          importance: Importance.high,
+          priority: Priority.high,
+          color: const Color(0xFF4FE3FF),
+          timeoutAfter: 30 * 60000,
+          actions: const [
+            AndroidNotificationAction('still', 'Oui, je continue', cancelNotification: true),
+            AndroidNotificationAction('stopped', 'J\'ai arrêté', showsUserInterface: true),
+          ],
+        ),
+        payload: jsonEncode({'type': 'session', 'ts': at.millisecondsSinceEpoch, 'sid': run.id}),
       );
     }
   }
@@ -391,6 +383,31 @@ Future<void> _handle(NotificationResponse r, {required bool foreground}) async {
     } catch (_) {}
     await _plugin.cancel(id);
     if (foreground) onOpenFromNotification?.call('refresh');
+    return;
+  }
+
+  if (type == 'session' && action == 'still') {
+    try {
+      final p = jsonDecode(r.payload ?? '{}') as Map<String, dynamic>;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
+      final list = prefs.getStringList(kPendingAliveKey) ?? [];
+      list.add('${p['sid']}|${DateTime.now().millisecondsSinceEpoch}');
+      await prefs.setStringList(kPendingAliveKey, list);
+    } catch (_) {}
+    await _plugin.cancel(id);
+    if (foreground) onOpenFromNotification?.call('refresh');
+    return;
+  }
+  if (type == 'session' && action == 'stopped') {
+    try {
+      final p = jsonDecode(r.payload ?? '{}') as Map<String, dynamic>;
+      pendingStopTs = (p['ts'] as num?)?.toInt() ?? ts;
+    } catch (_) {
+      pendingStopTs = ts;
+    }
+    await _plugin.cancel(id);
+    if (foreground) onOpenFromNotification?.call('stopsession');
     return;
   }
 

@@ -94,6 +94,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   }),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
+                    title: Text('Briefing, feu de camp, rappels de blocs', style: K.body(15)),
+                    subtitle: Text('Désactivé : seule notification, « toujours dessus ? » pendant une session.', style: K.body(12, color: K.muted)),
+                    value: s.dayNotifs,
+                    onChanged: (v) async {
+                      s.dayNotifs = v;
+                      await _apply();
+                    },
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
                     title: Text('Check-ins par notification', style: K.body(15)),
                     subtitle: Text('Désactivé : le check-in t\'est proposé en ouvrant l\'appli, sans te déranger.', style: K.body(12, color: K.muted)),
                     value: s.checkinNotifs,

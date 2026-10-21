@@ -11,6 +11,7 @@ import 'models.dart';
 const kStateKey = 'quest_state_v1';
 const kPendingKey = 'pending_checkins_v1';
 const kPendingHabitsKey = 'pending_habits_v1';
+const kPendingAliveKey = 'pending_alive_v1';
 const kPendingRemindKey = 'pending_reminders_v1';
 
 const xpPerLevel = 1000;
@@ -395,6 +396,18 @@ class AppStore extends ChangeNotifier {
   /// Réponses données depuis les notifications (appli fermée).
   Future<void> mergePending({bool notify = true}) async {
     await _prefs.reload();
+    final al = _prefs.getStringList(kPendingAliveKey) ?? [];
+    if (al.isNotEmpty) {
+      await _prefs.setStringList(kPendingAliveKey, []);
+      for (final raw in al) {
+        final p = raw.split('|');
+        if (p.length < 2) continue;
+        for (final x in sessions) {
+          if (x.id == p[0]) x.alives = x.alives.isEmpty ? p[1] : '${x.alives},${p[1]}';
+        }
+      }
+    }
+    await autoStop(save: false);
     final hl = _prefs.getStringList(kPendingHabitsKey) ?? [];
     if (hl.isNotEmpty) {
       await _prefs.setStringList(kPendingHabitsKey, []);
@@ -1865,6 +1878,37 @@ class AppStore extends ChangeNotifier {
     return open.isEmpty ? null : open.first;
   }
 
+  /// « Je suis là » (écran de session ouvert, bouton touché) : vaut un « oui, je continue ».
+  void markAlive(SessionRec s) {
+    final n = DateTime.now().millisecondsSinceEpoch;
+    s.alives = s.alives.isEmpty ? '$n' : '${s.alives},$n';
+  }
+
+  /// Pas de réponse à « toujours dessus ? » dans les 30 min : la session s'arrête à l'heure de la question.
+  Future<bool> autoStop({bool save = true}) async {
+    final s = runningSession;
+    if (s == null) return false;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final alive = s.aliveTimes;
+    for (final q in s.askTimes) {
+      if (q + 30 * 60000 > now) break;
+      final answered = alive.any((a) => a >= q && a <= q + 30 * 60000);
+      if (!answered) {
+        s.end = q;
+        s.finished = false;
+        s.stopWhy = 'sans réponse';
+        _gainXp(min(180, s.actualMin).round(), 'Session');
+        pendingAutoStop = s;
+        if (save) await commit();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Session arrêtée toute seule (pour le dire à l'ouverture).
+  SessionRec? pendingAutoStop;
+
   /// Une session restée ouverte (oubliée) : commencée un autre jour, ou depuis plus de 8 h.
   bool isStale(SessionRec s) {
     if (!s.running) return false;
@@ -2704,7 +2748,7 @@ class AppStore extends ChangeNotifier {
         final h = ms.floor(), m = ((ms - h) * 60).round();
         out.add(Discovery('start', 'Ton heure de démarrage',
             'Tu commences à travailler vers ${h}h${m.toString().padLeft(2, '0')} en moyenne, après ${mp.round()} min de préparation. '
-            '${mp > 60 ? 'Un point de spawn préparé la veille peut raccourcir ça.' : 'Chaque demi-heure gagnée le matin se retrouve dans ta barre Focus.'}',
+            '${mp > 60 ? 'Préparer la veille le premier geste du matin peut raccourcir ça.' : 'Chaque demi-heure gagnée le matin se retrouve dans ta barre Focus.'}',
             1, ''));
       } else {
         out.add(Discovery('start', 'Ton heure de démarrage', '', starts.length / 5, '5 jours avec du travail pro noté'));
