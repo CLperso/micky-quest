@@ -20,6 +20,8 @@ import 'problems.dart';
 import 'direction.dart';
 import 'dump.dart';
 import 'help.dart';
+import 'modes.dart' show ModePill;
+import 'recap.dart' show RecapBanner;
 import 'cards.dart' show CardsEntry;
 import 'boss.dart';
 import 'house.dart';
@@ -128,6 +130,8 @@ class HomeScreen extends StatelessWidget {
           ),
           const SizedBox(height: 14),
         ],
+        const Padding(padding: EdgeInsets.only(bottom: 10), child: Align(alignment: Alignment.centerLeft, child: ModePill())),
+        const RecapBanner(),
         const DirectionCard(),
         const SizedBox(height: 14),
 

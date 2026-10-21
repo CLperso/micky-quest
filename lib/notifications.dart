@@ -125,9 +125,9 @@ Future<void> rescheduleAll(AppStore store) async {
   // fenêtre de la session en cours, sans check-in
   DateTime? quietFrom, quietTo;
   final run = store.runningSession;
-  if (run != null && run.silent) {
+  if (run != null && (run.silent || run.flow)) {
     quietFrom = DateTime.fromMillisecondsSinceEpoch(run.start);
-    quietTo = quietFrom.add(Duration(minutes: max(run.predictedMin + 15, (run.predictedMin * 1.5).round())));
+    quietTo = quietFrom.add(Duration(minutes: run.flow ? 360 : max(run.predictedMin + 15, (run.predictedMin * 1.5).round())));
   }
 
   for (var d = 0; d < 2; d++) {
@@ -159,7 +159,7 @@ Future<void> rescheduleAll(AppStore store) async {
     }
 
     // sans check-ins réguliers : une seule question au milieu d'une session non silencieuse
-    if (!s.checkinNotifs && d == 0 && run != null && !run.silent) {
+    if (!s.checkinNotifs && d == 0 && run != null && !run.silent && !run.flow) {
       final mid = DateTime.fromMillisecondsSinceEpoch(run.start).add(Duration(minutes: max(10, run.predictedMin ~/ 2)));
       if (mid.isAfter(now.add(const Duration(minutes: 1)))) {
         await _schedule(
@@ -269,8 +269,24 @@ Future<void> rescheduleAll(AppStore store) async {
     );
   }
 
+  // sur la vague : une pause-corps toutes les 90 min, rien d'autre
+  if (run != null && run.flow) {
+    for (var k = 1; k <= 4; k++) {
+      final at = DateTime.fromMillisecondsSinceEpoch(run.start).add(Duration(minutes: 90 * k));
+      if (!at.isAfter(now)) continue;
+      await _schedule(
+        id: 40 + k,
+        when: at,
+        title: 'Pause-corps 🧘',
+        body: '${90 * k} min sur la vague. Lève-toi, bois, étire-toi, puis on repart.',
+        details: _dayDetails(),
+        payload: jsonEncode({'type': 'session'}),
+      );
+    }
+  }
+
   // fin du pari
-  if (run != null) {
+  if (run != null && !run.flow) {
     final due = DateTime.fromMillisecondsSinceEpoch(run.start).add(Duration(minutes: run.predictedMin + run.extraMin));
     if (due.isAfter(now)) {
       await _schedule(

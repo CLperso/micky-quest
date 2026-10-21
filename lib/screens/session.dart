@@ -520,7 +520,8 @@ class _SessionScreenState extends State<SessionScreen> {
     // avec une sous-étape en cours, l'anneau suit la sous-étape
     final elapsed = curEntry != null ? DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(curEntry.$2)) : sessionElapsed;
     final target = curEntry != null && curEntry.$3 > 0 ? curEntry.$3 : (curEntry != null ? max(10, cur!.estimateMin) : s.predictedMin + s.extraMin);
-    final frac = elapsed.inSeconds / (max(1, target) * 60);
+    // session ouverte (vague) : l'anneau fait le tour en 90 min, jusqu'à la pause-corps
+    final frac = s.flow && curEntry == null ? (sessionElapsed.inSeconds % 5400) / 5400 : elapsed.inSeconds / (max(1, target) * 60);
     final over = frac > 1;
     final mm = elapsed.inMinutes.toString().padLeft(2, '0');
     final ss = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
@@ -609,6 +610,7 @@ class _SessionScreenState extends State<SessionScreen> {
               Text('QUÊTE ${t.category.toUpperCase()}', style: K.body(12, color: t.category == 'pro' ? K.lime : K.pink, w: FontWeight.w900)),
             if (t != null && t.isBoss)
               Text('COMBAT CONTRE LE BOSS · ${t.bossProgress} % · ${store.bossMinutes(t)} min de coups', style: K.body(12, color: K.coral, w: FontWeight.w900)),
+            if (s.flow) Text('🌊 SESSION OUVERTE · PAS DE PARI', style: K.body(12, color: K.cyan, w: FontWeight.w900)),
             Text(t?.title ?? s.title, style: K.display(24)),
             if (cur != null) ...[
               const SizedBox(height: 10),
@@ -643,13 +645,18 @@ class _SessionScreenState extends State<SessionScreen> {
                 width: 260,
                 height: 260,
                 child: CustomPaint(
-                  painter: _Ring(min(1.0, frac), over ? K.coral : (inWindow ? K.gold : K.lime), over ? frac - 1 : 0),
+                  painter: s.flow && cur == null ? _Ring(frac, K.cyan, 0) : _Ring(min(1.0, frac), over ? K.coral : (inWindow ? K.gold : K.lime), over ? frac - 1 : 0),
                   child: Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text('$mm:$ss', style: K.display(52, w: FontWeight.w700)),
-                        if (cur != null)
+                        if (s.flow)
+                          Text(
+                              '${cur != null ? 'sous-étape · $target min\n' : ''}session ouverte · ${sessionElapsed.inMinutes} min\npause-corps dans ${90 - sessionElapsed.inMinutes % 90} min',
+                              textAlign: TextAlign.center,
+                              style: K.body(13, color: K.cyan))
+                        else if (cur != null)
                           Text('sous-étape · $target min\nsession ${sessionElapsed.inMinutes} / ${s.predictedMin + s.extraMin} min', textAlign: TextAlign.center, style: K.body(13, color: K.muted))
                         else
                           Text(s.extraMin > 0 ? 'pari ${s.predictedMin} min · +${s.extraMin}' : 'ton pari : ${s.predictedMin} min', style: K.body(14, color: K.muted)),
@@ -683,6 +690,7 @@ class _SessionScreenState extends State<SessionScreen> {
               ),
             ),
             const SizedBox(height: 10),
+            if (!s.flow)
             Panel(
               border: K.gold,
               child: Row(

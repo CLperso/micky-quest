@@ -231,6 +231,7 @@ class SessionRec {
   String subId; // sous-étape faite pendant cette session
   String extWhy; // pourquoi : « plus compliqué que prévu », etc.
   String subLog; // sous-étapes ajoutées en session : id|début|prévu|fin;…
+  bool flow; // session ouverte (sur la vague) : pas de pari
   int mod;
 
   static const attLabels = ['à fond', 'ça va', 'ça flotte', 'ailleurs'];
@@ -281,6 +282,7 @@ class SessionRec {
     this.subId = '',
     this.extWhy = '',
     this.subLog = '',
+    this.flow = false,
     this.mod = 0,
   }) : id = id ?? newId();
 
@@ -333,6 +335,7 @@ class SessionRec {
         subId: _s(j['sub']),
         extWhy: _s(j['extWhy']),
         subLog: _s(j['subLog']),
+        flow: _b(j['flow']),
         mod: _i(j['mod']),
       );
 
@@ -367,6 +370,7 @@ class SessionRec {
         'sub': subId,
         'extWhy': extWhy,
         'subLog': subLog,
+        'flow': flow,
         'mod': mod,
       };
 }
@@ -680,6 +684,8 @@ class DayPlan {
   String persoGoal; // objectif perso du jour (aller courir…)
   bool persoGoalDone;
   bool persoSkip; // pas de geste perso aujourd'hui, et ce n'est pas un raté
+  String mode; // '' journée normale · 'sans' jour sans · 'vague' sur la vague
+  String focus; // sur la vague : le projet du jour (mot-clé ou id de tâche)
   String spawn; // point de spawn de demain : le geste préparé ce soir
   int skin; // peau : -1 = non noté, 0 nette → 4 poussée
   String skinZones;
@@ -701,6 +707,8 @@ class DayPlan {
     this.persoGoal = '',
     this.persoGoalDone = false,
     this.persoSkip = false,
+    this.mode = '',
+    this.focus = '',
     this.spawn = '',
     this.skin = -1,
     this.skinZones = '',
@@ -725,6 +733,8 @@ class DayPlan {
         persoGoal: _s(j['persoGoal']),
         persoGoalDone: _b(j['persoDone']),
         persoSkip: _b(j['persoSkip']),
+        mode: _s(j['mode']),
+        focus: _s(j['focus']),
         spawn: _s(j['spawn']),
         skin: _i(j['skin'], -1),
         skinZones: _s(j['skinZ']),
@@ -747,6 +757,8 @@ class DayPlan {
         'persoGoal': persoGoal,
         'persoDone': persoGoalDone,
         'persoSkip': persoSkip,
+        'mode': mode,
+        'focus': focus,
         'spawn': spawn,
         'skin': skin,
         'skinZ': skinZones,

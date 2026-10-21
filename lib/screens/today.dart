@@ -13,6 +13,7 @@ import 'task_panel.dart';
 import 'timetable.dart';
 import 'tomorrow.dart';
 import 'deroule.dart';
+import 'modes.dart';
 
 String fmtH(int m) => m >= 60 ? '${m ~/ 60} h${m % 60 == 0 ? '' : ' ${(m % 60).toString().padLeft(2, '0')}'}' : '$m min';
 
@@ -80,6 +81,8 @@ class TodayScreen extends StatelessWidget {
           ),
           const SizedBox(height: 10),
         ],
+        const Padding(padding: EdgeInsets.only(bottom: 8), child: Align(alignment: Alignment.centerLeft, child: ModePill())),
+        const ModeBanner(),
         const _DayHeader(),
         const SizedBox(height: 10),
         const _DayList(),
@@ -271,8 +274,24 @@ class _DayList extends StatelessWidget {
     final now = DateTime.now();
     final endMs = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch + store.settings.workEnd * 60000;
     // ce qui commencerait après la fin de journée : du bonus, pas une dette
-    final bonus = todo.where((t) => (sched.times[t.id]?.$1 ?? 0) >= endMs && !(t.plannedAt > 0)).toList();
-    final main = todo.where((t) => !bonus.contains(t)).toList();
+    final mode = store.today.mode;
+    // jour sans : 3 tâches ; sur la vague : le projet du jour (et les ancres) ; le reste se replie
+    final aside = <Task>[];
+    if (mode == 'sans') {
+      final keep = todo.where((t) => t.plannedAt > 0 || store.isHabitTask(t)).toList();
+      for (final t in todo) {
+        if (keep.contains(t)) continue;
+        if (keep.where((x) => !(x.plannedAt > 0) && !store.isHabitTask(x)).length < 3) {
+          keep.add(t);
+        } else {
+          aside.add(t);
+        }
+      }
+    } else if (mode == 'vague') {
+      aside.addAll(todo.where((t) => !(t.plannedAt > 0) && !store.inFocus(t)));
+    }
+    final bonus = todo.where((t) => !aside.contains(t) && (sched.times[t.id]?.$1 ?? 0) >= endMs && !(t.plannedAt > 0) && mode != 'vague').toList();
+    final main = todo.where((t) => !bonus.contains(t) && !aside.contains(t)).toList();
     var fin = now.millisecondsSinceEpoch;
     for (final t in main) {
       fin = max(fin, sched.times[t.id]?.$2 ?? 0);
@@ -314,6 +333,13 @@ class _DayList extends StatelessWidget {
             ])),
           ),
         if (bonus.isNotEmpty) _BonusBlock(tasks: bonus, firstN: done.length + main.length + 1),
+        if (aside.isNotEmpty)
+          _BonusBlock(
+            tasks: aside,
+            firstN: done.length + main.length + bonus.length + 1,
+            title: mode == 'sans' ? '🌧 Mis de côté aujourd\'hui (${aside.length}) · pas une dette' : '🌊 Le reste de la journée (${aside.length}) · attend ce soir',
+            defer: mode == 'sans',
+          ),
         Row(children: [
           TextButton.icon(
             onPressed: () => newTaskSheet(context, quad: Quad.doNow),
@@ -366,7 +392,9 @@ Future<void> _pickHabit(BuildContext context, AppStore store) async {
 class _BonusBlock extends StatefulWidget {
   final List<Task> tasks;
   final int firstN;
-  const _BonusBlock({required this.tasks, required this.firstN});
+  final String title;
+  final bool defer;
+  const _BonusBlock({required this.tasks, required this.firstN, this.title = '', this.defer = true});
 
   @override
   State<_BonusBlock> createState() => _BonusBlockState();
@@ -389,10 +417,13 @@ class _BonusBlockState extends State<_BonusBlock> {
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: Row(children: [
-              const Text('✨', style: TextStyle(fontSize: 16)),
-              const SizedBox(width: 6),
+              if (widget.title.isEmpty) const Text('✨', style: TextStyle(fontSize: 16)),
+              if (widget.title.isEmpty) const SizedBox(width: 6),
               Expanded(
-                child: Text('Bonus après ${h ~/ 60} h${h % 60 == 0 ? '' : (h % 60).toString().padLeft(2, '0')} (${widget.tasks.length}) · si tu as encore de l\'énergie',
+                child: Text(
+                    widget.title.isNotEmpty
+                        ? widget.title
+                        : 'Bonus après ${h ~/ 60} h${h % 60 == 0 ? '' : (h % 60).toString().padLeft(2, '0')} (${widget.tasks.length}) · si tu as encore de l\'énergie',
                     style: K.body(13, color: K.muted, w: FontWeight.w800)),
               ),
               Icon(_open ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: K.muted),
@@ -401,6 +432,7 @@ class _BonusBlockState extends State<_BonusBlock> {
         ),
         if (_open)
           for (var i = 0; i < widget.tasks.length; i++) _SeqRow(task: widget.tasks[i], n: '${widget.firstN + i}', key: ValueKey('b${widget.tasks[i].id}')),
+        if (widget.defer)
         Align(
           alignment: Alignment.centerRight,
           child: TextButton(

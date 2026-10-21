@@ -839,19 +839,21 @@ class _EveningChest extends StatelessWidget {
     final store = AppScope.of(context);
     final crit = store.eveningCriteria(day);
     final n = crit.where((c) => c.$2).length;
+    final sans = store.modeOf(day) == 'sans';
+    final need = sans ? 2 : 3;
     final opened = store.eveningChestOpened(day);
-    final name = n >= 5 ? 'Coffre légendaire' : (n == 4 ? 'Grand coffre' : 'Coffre');
-    final col = n >= 5 ? K.gold : (n == 4 ? K.cyan : (n == 3 ? K.lime : K.muted));
+    final name = sans ? 'Petit coffre' : (n >= 5 ? 'Coffre légendaire' : (n == 4 ? 'Grand coffre' : 'Coffre'));
+    final col = sans ? (n >= 2 ? const Color(0xFF6FA8FF) : K.muted) : (n >= 5 ? K.gold : (n == 4 ? K.cyan : (n == 3 ? K.lime : K.muted)));
     return Panel(
       border: col,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Text(n >= 3 ? '🎁' : '🔒', style: const TextStyle(fontSize: 22)),
+          Text(n >= need ? '🎁' : '🔒', style: const TextStyle(fontSize: 22)),
           const SizedBox(width: 8),
           Expanded(child: Text('Coffre du soir', style: K.display(16))),
-          Text('$n / 5', style: K.display(16, color: col)),
+          Text('$n / ${crit.length}', style: K.display(16, color: col)),
         ]),
-        Text('3 critères : un coffre · 4 : grand coffre · 5 : coffre légendaire', style: K.body(11, color: K.muted)),
+        Text(sans ? 'Jour sans · 2 sur 3 : petit coffre. La série et Ma direction ne cassent pas.' : '3 critères : un coffre · 4 : grand coffre · 5 : coffre légendaire', style: K.body(11, color: K.muted)),
         const SizedBox(height: 6),
         for (final c in crit)
           Padding(
@@ -865,7 +867,7 @@ class _EveningChest extends StatelessWidget {
         const SizedBox(height: 8),
         if (opened)
           Text('Ouvert ce soir ✓', style: K.body(13, color: col, w: FontWeight.w800))
-        else if (n >= 3)
+        else if (n >= need)
           PrimaryButton(
             label: 'Ouvrir le $name'.replaceFirst('le Coffre', 'le coffre').replaceFirst('le Grand', 'le grand'),
             color: col,
@@ -876,7 +878,7 @@ class _EveningChest extends StatelessWidget {
             },
           )
         else
-          Text('Encore ${3 - n} critère${3 - n > 1 ? 's' : ''} pour l\'ouvrir.', style: K.body(12, color: K.muted)),
+          Text('Encore ${need - n} critère${need - n > 1 ? 's' : ''} pour l\'ouvrir.', style: K.body(12, color: K.muted)),
       ]),
     );
   }

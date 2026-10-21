@@ -5,6 +5,7 @@ import '../main.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
+import 'recap.dart' show RecapScreen;
 import 'task_panel.dart';
 import 'timetable.dart' show fmtMin;
 
@@ -104,6 +105,16 @@ class _DerouleViewState extends State<DerouleView> {
         isToday ? 'Si tu suis l\'ordre à partir de maintenant. Rien à placer ici : ça découle de la liste.' : 'Si tu suis l\'ordre à partir de ton heure de démarrage.',
         style: K.body(12, color: K.muted),
       ),
+      if (isToday)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            style: TextButton.styleFrom(padding: EdgeInsets.zero),
+            onPressed: () => openScreen(context, const RecapScreen()),
+            icon: const Icon(Icons.history_edu_rounded, color: K.lime, size: 18),
+            label: Text('Raconter ce que j\'ai fait', style: K.body(12, color: K.lime, w: FontWeight.w800)),
+          ),
+        ),
       const SizedBox(height: 8),
       Container(
         decoration: BoxDecoration(color: K.card, borderRadius: BorderRadius.circular(18)),

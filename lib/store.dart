@@ -1402,8 +1402,11 @@ class AppStore extends ChangeNotifier {
   DateTime weekStart(DateTime d) => DateTime(d.year, d.month, d.day).subtract(Duration(days: d.weekday - 1));
 
   /// Jour d'un pilier : 1 tenu, 2 jour minimum, 0 raté, -1 à venir.
+  String modeOf(String day) => plans[day]?.mode ?? '';
+
   int pillarStart(String day) {
     if (day.compareTo(todayKey) > 0) return -1;
+    if (modeOf(day).isNotEmpty) return -1; // jour sans / sur la vague : le démarrage ne compte pas
     final st = workStart(day);
     if (st == null) return day == todayKey ? -1 : 0;
     return st.hour * 60 + st.minute <= settings.startTarget ? 1 : 0;
@@ -1411,8 +1414,8 @@ class AppStore extends ChangeNotifier {
 
   int pillarPro(String day) {
     if (day.compareTo(todayKey) > 0) return -1;
-    final m = proMinutesOn(day);
-    final goal = plan(day).proGoalMin > 0 ? plan(day).proGoalMin : settings.dirProDefault;
+    final m = proMinutesOn(day) * (modeOf(day) == 'vague' ? 2 : 1);
+    final goal = modeOf(day) == 'sans' ? settings.dirMinPro : (plan(day).proGoalMin > 0 ? plan(day).proGoalMin : settings.dirProDefault);
     if (m >= goal) return 1;
     if (m >= settings.dirMinPro) return 2;
     return day == todayKey ? -1 : 0;
@@ -1422,7 +1425,7 @@ class AppStore extends ChangeNotifier {
     if (day.compareTo(todayKey) > 0) return -1;
     final l = habitLevel(h, day);
     if (l == 3) return -1; // pas aujourd'hui
-    if (l == 2) return 1;
+    if (l == 2 || (l == 1 && modeOf(day) == 'sans')) return 1; // jour sans : la version mini compte en entier
     if (l == 1) return 2;
     return day == todayKey ? -1 : 0;
   }
@@ -1455,7 +1458,7 @@ class AppStore extends ChangeNotifier {
   /// 0 = rien, -1 = aujourd'hui encore en cours.
   int dayKept(String day) {
     final p = pillarPro(day), st = pillarStart(day);
-    if (p == 1 && st == 1) return 1;
+    if (p == 1 && (st == 1 || modeOf(day).isNotEmpty)) return modeOf(day) == 'sans' ? 2 : 1;
     if (p >= 1 || st == 1) return 2;
     return (p == -1 || st == -1) && day == todayKey ? -1 : 0;
   }
@@ -1787,7 +1790,7 @@ class AppStore extends ChangeNotifier {
   }
 
   Future<SessionRec> startSession(String taskId, String title, int predicted,
-      {String category = '', bool silent = true, String stim = '', String target = '', bool advance = false, int predProg = -1, String subStep = ''}) async {
+      {String category = '', bool silent = true, String stim = '', String target = '', bool advance = false, int predProg = -1, String subStep = '', bool flow = false}) async {
     final tk = taskById(taskId);
     var subId = '';
     if (advance && tk != null && subStep.trim().isNotEmpty) {
@@ -1796,6 +1799,7 @@ class AppStore extends ChangeNotifier {
       subId = sub.id;
     }
     final s = SessionRec(
+      flow: flow,
       advance: advance,
       predProg: predProg,
       subId: subId,
@@ -1973,6 +1977,17 @@ class AppStore extends ChangeNotifier {
 
   /// Les cinq critères du coffre du soir : dur, mais accessible.
   List<(String, bool)> eveningCriteria(String day) {
+    if (modeOf(day) == 'sans') {
+      final hs = activeHabits;
+      final gesture = tasks.any((t) => t.done && t.category == 'perso' && t.doneAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(t.doneAt)) == day) ||
+          sessionsOn(day).any((x) => sessionCategory(x) == Act.perso) ||
+          slotsOn(day).any((x) => x.kind == 'perso');
+      return [
+        ('${settings.dirMinPro} min de pro (jour minimum)', proMinutesOn(day) >= settings.dirMinPro),
+        ('Une habitude, même mini', hs.any((h) => habitLevel(h, day) == 1 || habitLevel(h, day) == 2)),
+        ('Un geste pour toi', gesture),
+      ];
+    }
     final goal = (plans[day]?.proGoalMin ?? 0) > 0 ? plans[day]!.proGoalMin : settings.dirProDefault;
     final pro = proMinutesOn(day);
     final bets = sessionsOn(day).where((x) => !x.running && x.onTarget).length;
@@ -1981,13 +1996,45 @@ class AppStore extends ChangeNotifier {
     final done = tasks.where((t) => !t.removed && t.parentId.isEmpty && t.link != 'slot' && t.done && t.doneAt > 0 && dayKey(DateTime.fromMillisecondsSinceEpoch(t.doneAt)) == day).length;
     final left = day == todayKey ? daySequence().where((t) => !t.done && t.link != 'slot').length : 0;
     final listOk = done >= 3 && done / max(1, done + left) >= 0.8;
+    final vague = modeOf(day) == 'vague';
     return [
-      ('Objectif pro tenu (${(goal / 60).toStringAsFixed(goal % 60 == 0 ? 0 : 1)} h)', pro >= goal),
-      ('Démarré à l\'heure', xpEvents.any((e) => e.reason == 'Démarrage à l\'heure · $day')),
+      (vague ? 'Objectif pro tenu (temps ×2 sur la vague)' : 'Objectif pro tenu (${(goal / 60).toStringAsFixed(goal % 60 == 0 ? 0 : 1)} h)', (vague ? pro * 2 : pro) >= goal),
+      (vague ? 'Démarrage libre sur la vague' : 'Démarré à l\'heure', vague || xpEvents.any((e) => e.reason == 'Démarrage à l\'heure · $day')),
       ('Deux paris réussis', bets >= 2),
       ('Habitudes du jour tenues', habitsOk),
       ('Liste du jour faite à 80 %', listOk),
     ];
+  }
+
+  /// Genre de journée : '' normale, 'sans', 'vague'.
+  Future<void> setMode(String mode, {String? focus}) async {
+    today.mode = mode;
+    if (focus != null) today.focus = focus;
+    await commit();
+  }
+
+  /// Sur la vague : la tâche fait-elle partie du projet du jour ?
+  bool inFocus(Task t) {
+    final f = today.focus.trim();
+    if (f.isEmpty) return true;
+    if (t.id == f) return true;
+    final p = t.parentId.isNotEmpty ? taskById(t.parentId) : null;
+    if (p != null && p.id == f) return true;
+    final k = f.toLowerCase();
+    return t.title.toLowerCase().contains(k) || (p?.title.toLowerCase().contains(k) ?? false);
+  }
+
+  /// Projets proposés pour la vague : mots qui reviennent dans les tâches du jour, puis le boss.
+  List<String> focusIdeas() {
+    final counts = <String, int>{};
+    for (final t in daySequence().where((t) => !t.done)) {
+      for (final w in t.title.split(RegExp(r'[\s:()+,/·›-]+'))) {
+        if (w.length < 3 || w.toLowerCase() == w && w.length < 5) continue;
+        counts[w] = (counts[w] ?? 0) + 1;
+      }
+    }
+    final l = counts.entries.where((e) => e.value >= 2).toList()..sort((a, b) => b.value.compareTo(a.value));
+    return [for (final e in l.take(4)) e.key];
   }
 
   bool eveningChestOpened(String day) => xpEvents.any((e) => e.reason == 'Coffre du soir · $day');
@@ -1995,10 +2042,11 @@ class AppStore extends ChangeNotifier {
   /// Ouvre le coffre du soir : 3 critères = coffre, 4 = grand coffre, 5 = coffre légendaire.
   Future<List<String>> openEveningChest(String day) async {
     final n = eveningCriteria(day).where((c) => c.$2).length;
-    if (n < 3 || eveningChestOpened(day)) return [];
+    final sans = modeOf(day) == 'sans';
+    if (n < (sans ? 2 : 3) || eveningChestOpened(day)) return [];
     _gainXp(0, 'Coffre du soir · $day');
     final items = <String>[];
-    if (n == 3) {
+    if (sans || n == 3) {
       items.add(_openChest());
     } else if (n == 4) {
       _gainXp(30, 'Grand coffre');

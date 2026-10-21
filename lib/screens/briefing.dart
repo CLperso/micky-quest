@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'modes.dart' show ModeChooser;
 
 import '../main.dart';
 import '../models.dart';
@@ -200,8 +201,12 @@ class _BriefingScreenState extends State<BriefingScreen> {
               ),
               const SizedBox(height: 10),
             ],
+            Text('Aujourd\'hui, c\'est quel genre de journée ?', style: K.display(16)),
+            const SizedBox(height: 8),
+            const ModeChooser(),
+            const SizedBox(height: 14),
             const SkinRow(),
-            const _StartCard(),
+            if (AppScope.of(context).today.mode.isEmpty) const _StartCard(),
             const SizedBox(height: 10),
             const _ProblemAsk(),
             const _LinkedLine(),

@@ -1402,6 +1402,13 @@ Future<void> launchTask(BuildContext context, Task t) async {
     store.preferSub = t.id;
     t = store.taskById(t.parentId)!;
   }
+  // sur la vague : session ouverte, sans pari, on y va directement
+  if (store.today.mode == 'vague' && t.category != 'perso') {
+    await store.startSession(t.id, t.title, 0, category: t.category.isEmpty ? 'pro' : t.category, silent: true, flow: true);
+    await rescheduleAll(store);
+    if (context.mounted) await openScreen(context, const SessionScreen());
+    return;
+  }
   final ok = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,

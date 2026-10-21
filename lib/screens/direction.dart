@@ -460,6 +460,16 @@ class _WeekReviewScreenState extends State<WeekReviewScreen> {
                 line('💼 Pro tenu (ou jour minimum)', pr, s.dirProTgt),
                 line('🏃 Geste perso du jour', store.last7(store.pillarPerso), s.dirPersoTgt),
                 for (final h in store.activeHabits) line('🌸 ${h.name}', store.last7((d) => store.pillarHabit(h, d)), min(h.daysPerWeek, s.dirHabTgt)),
+                Builder(builder: (_) {
+                  final days = [for (var i = 1; i <= 7; i++) dayKey(DateTime.now().subtract(Duration(days: i)))];
+                  final sans = days.where((d) => store.modeOf(d) == 'sans').length;
+                  final vague = days.where((d) => store.modeOf(d) == 'vague').length;
+                  if (sans + vague == 0) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text('${sans > 0 ? '🌧 $sans jour${sans > 1 ? 's' : ''} sans' : ''}${sans > 0 && vague > 0 ? ' · ' : ''}${vague > 0 ? '🌊 $vague jour${vague > 1 ? 's' : ''} sur la vague' : ''}', style: K.body(12, color: K.muted)),
+                  );
+                }),
               ]),
             ),
             const SizedBox(height: 6),
