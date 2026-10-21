@@ -270,11 +270,14 @@ class _DayList extends StatelessWidget {
     final seq = store.daySequence();
     final done = seq.where((t) => t.done).toList();
     final todo = seq.where((t) => !t.done).toList();
-    final sched = store.schedule(seq);
+    final mode = store.today.mode;
+    // sur la vague, le projet passe devant dans le calcul des heures
+    final sched = mode == 'vague'
+        ? store.schedule([...done, ...todo.where((t) => t.plannedAt > 0 || store.inFocus(t)), ...todo.where((t) => !(t.plannedAt > 0) && !store.inFocus(t))])
+        : store.schedule(seq);
     final now = DateTime.now();
     final endMs = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch + store.settings.workEnd * 60000;
     // ce qui commencerait après la fin de journée : du bonus, pas une dette
-    final mode = store.today.mode;
     // jour sans : 3 tâches ; sur la vague : le projet du jour (et les ancres) ; le reste se replie
     final aside = <Task>[];
     if (mode == 'sans') {

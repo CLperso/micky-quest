@@ -99,6 +99,41 @@ Future<void> startFocus(BuildContext context) async {
     await openScreen(context, const SessionScreen());
     return;
   }
+  // sur la vague : le bouton ▶ propose d'abord de lancer la vague
+  if (store.today.mode == 'vague') {
+    final f = store.today.focus;
+    final ft = store.taskById(f);
+    final name = ft?.title ?? f;
+    final focusTasks = store.daySequence().where((t) => !t.done && store.inFocus(t)).toList();
+    final pick = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text('🌊 Sur la vague', style: K.display(20)),
+            Text('Session ouverte, sans pari ni check-in, pause-corps toutes les 90 min.', style: K.body(12, color: K.muted)),
+            const SizedBox(height: 12),
+            PrimaryButton(label: '▶ Lancer la vague · $name', color: K.cyan, onPressed: () => Navigator.pop(ctx, 'wave')),
+            if (focusTasks.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              SecondaryButton(label: '▶ Sur « ${focusTasks.first.title} »', onPressed: () => Navigator.pop(ctx, 'first')),
+            ],
+            TextButton(onPressed: () => Navigator.pop(ctx, 'other'), child: Text('Autre chose (session normale)', style: K.body(13, color: K.muted))),
+          ]),
+        ),
+      ),
+    );
+    if (pick == null || !context.mounted) return;
+    if (pick == 'first') return launchTask(context, focusTasks.first);
+    if (pick == 'wave') {
+      if (ft != null) return launchTask(context, ft);
+      await store.startSession('', name, 0, category: 'pro', silent: true, flow: true);
+      await rescheduleAll(store);
+      if (context.mounted) await openScreen(context, const SessionScreen());
+      return;
+    }
+  }
   final ok = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
