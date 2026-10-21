@@ -1854,12 +1854,42 @@ class AppStore extends ChangeNotifier {
   }
 
   /// « Sous-étape finie » : coche la sous-étape en cours et passe à la suivante (null s'il n'y en a plus).
+  /// Coche la sous-étape en cours ; renvoie la suivante possible, SANS la lancer (c'est toi qui choisis).
   Future<Task?> nextSub(SessionRec s) async {
     final cur = currentSub(s);
     if (cur != null) await finishSessionSub(s, cur);
-    final n = ensureSub(s, save: false);
+    final parent = taskById(s.taskId);
     await commit();
-    return n;
+    if (parent == null) return null;
+    final open = subStepsOf(parent).where((x) => !x.done).toList();
+    return open.isEmpty ? null : open.first;
+  }
+
+  /// Une session restée ouverte (oubliée) : commencée un autre jour, ou depuis plus de 8 h.
+  bool isStale(SessionRec s) {
+    if (!s.running) return false;
+    final st = DateTime.fromMillisecondsSinceEpoch(s.start);
+    return dayKey(st) != todayKey || DateTime.now().difference(st).inHours >= 8;
+  }
+
+  /// Heure de fin la plus probable d'une session oubliée : fin de la dernière sous-étape, sinon fin du pari (90 min sur la vague).
+  int likelyEnd(SessionRec s) {
+    var end = 0;
+    for (final e in s.subEntries) {
+      end = max(end, e.$4);
+    }
+    if (end > 0) return end;
+    final planned = s.predictedMin + s.extraMin;
+    return s.start + (planned > 0 ? planned : 90) * 60000;
+  }
+
+  /// Ferme une session oubliée à l'heure donnée : le temps compte, sans pari.
+  Future<void> closeSessionAt(SessionRec s, int end) async {
+    s.end = max(s.start + 60000, min(end, DateTime.now().millisecondsSinceEpoch));
+    s.finished = false;
+    s.stopWhy = 'oubliée';
+    _gainXp(min(180, s.actualMin).round(), 'Session');
+    await commit();
   }
 
   /// Termine la session. Renvoie le butin éventuel.

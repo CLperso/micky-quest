@@ -245,8 +245,22 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     });
   }
 
+  String _staleAsked = '';
+
+  /// Une session oubliée (depuis hier, ou plus de 8 h) : on ouvre l'écran pour la fermer à la bonne heure.
+  void _maybeStale(AppStore store) {
+    final s = store.runningSession;
+    if (s == null || !store.isStale(s) || _staleAsked == s.id) return;
+    _staleAsked = s.id;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = navKey.currentContext;
+      if (ctx != null) openScreen(ctx, const SessionScreen());
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    _maybeStale(AppScope.of(context));
     _maybeCelebrate(AppScope.of(context));
     _maybeCard(AppScope.of(context));
     final wide = MediaQuery.of(context).size.width >= 840;

@@ -460,7 +460,8 @@ class _SessionScreenState extends State<SessionScreen> {
     if (finished && s.taskId.isNotEmpty) {
       final t = store.taskById(s.taskId);
       // le boss et les tâches « avancer » ne se terminent pas d'un coup : c'est l'avancement, au débrief, qui décide
-      if (t != null && !t.done && !t.isBoss && !s.advance) await store.completeTask(t);
+      // une tâche découpée n'est finie que quand toutes ses sous-étapes le sont
+      if (t != null && !t.done && !t.isBoss && !s.advance && store.subStepsOf(t).every((x) => x.done)) await store.completeTask(t);
     }
     if (perso) {
       if (!mounted) return;
@@ -610,6 +611,35 @@ class _SessionScreenState extends State<SessionScreen> {
               Text('QUÊTE ${t.category.toUpperCase()}', style: K.body(12, color: t.category == 'pro' ? K.lime : K.pink, w: FontWeight.w900)),
             if (t != null && t.isBoss)
               Text('COMBAT CONTRE LE BOSS · ${t.bossProgress} % · ${store.bossMinutes(t)} min de coups', style: K.body(12, color: K.coral, w: FontWeight.w900)),
+            if (store.isStale(s)) ...[
+              Panel(
+                border: K.coral,
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Cette session tourne depuis ${DateTime.fromMillisecondsSinceEpoch(s.start).day == DateTime.now().day ? hm(DateTime.fromMillisecondsSinceEpoch(s.start)) : 'hier ${hm(DateTime.fromMillisecondsSinceEpoch(s.start))}'} : oubliée ?', style: K.body(14, w: FontWeight.w800)),
+                  const SizedBox(height: 8),
+                  PrimaryButton(
+                    label: 'Arrêtée vers ${hm(DateTime.fromMillisecondsSinceEpoch(store.likelyEnd(s)))}',
+                    color: K.coral,
+                    onPressed: () async {
+                      await store.closeSessionAt(s, store.likelyEnd(s));
+                      if (mounted) Navigator.pop(context);
+                    },
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      final st = DateTime.fromMillisecondsSinceEpoch(s.start);
+                      final t0 = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(store.likelyEnd(s))), helpText: 'ARRÊTÉE À QUELLE HEURE ?');
+                      if (t0 == null) return;
+                      final end = DateTime(st.year, st.month, st.day, t0.hour, t0.minute).millisecondsSinceEpoch;
+                      await store.closeSessionAt(s, end);
+                      if (mounted) Navigator.pop(context);
+                    },
+                    child: Text('Une autre heure…', style: K.body(13, color: K.muted)),
+                  ),
+                ]),
+              ),
+              const SizedBox(height: 12),
+            ],
             if (s.flow) Text('🌊 SESSION OUVERTE · PAS DE PARI', style: K.body(12, color: K.cyan, w: FontWeight.w900)),
             Text(t?.title ?? s.title, style: K.display(24)),
             if (cur != null) ...[
@@ -758,14 +788,37 @@ class _SessionScreenState extends State<SessionScreen> {
                     label: cur != null ? 'Sous-étape finie' : (t != null && t.isBoss ? 'Fin du coup' : (s.advance ? 'Fin de la session' : 'Étape finie')),
                     onPressed: () async {
                       if (cur == null) return _end(true);
+                      final done = cur;
                       final next = await store.nextSub(s);
                       if (!mounted) return;
                       await showPendingCard(context);
                       if (!mounted) return;
                       if (next == null) {
                         await _end(true);
+                        return;
+                      }
+                      final choice = await showModalBottomSheet<String>(
+                        context: context,
+                        builder: (ctx) => SafeArea(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+                            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text('« ${done.title} » : faite ✓', style: K.display(18)),
+                              const SizedBox(height: 4),
+                              Text('La suite : « ${next.title} »${next.estimateMin > 0 ? ' · ${next.estimateMin} min' : ''}', style: K.body(14, color: K.muted)),
+                              const SizedBox(height: 14),
+                              PrimaryButton(label: '▶ Continuer avec la suite', onPressed: () => Navigator.pop(ctx, 'go')),
+                              const SizedBox(height: 8),
+                              SecondaryButton(label: 'Une pause, je reprendrai', onPressed: () => Navigator.pop(ctx, 'stop')),
+                            ]),
+                          ),
+                        ),
+                      );
+                      if (!mounted) return;
+                      if (choice == 'go') {
+                        store.ensureSub(s);
                       } else {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Suite : ${next.title}')));
+                        await _end(true);
                       }
                     },
                   ),
