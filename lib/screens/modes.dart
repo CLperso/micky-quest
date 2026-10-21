@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../main.dart';
 import '../theme.dart';
 import 'cabin.dart';
-import 'timetable.dart' show askText;
+import '../notifications.dart';
+import 'session.dart' show SessionScreen;
+import 'timetable.dart' show askText, launchTask;
 
 const kBlue = Color(0xFF6FA8FF);
 
@@ -150,6 +152,39 @@ class ModeBanner extends StatelessWidget {
               : 'Sur la vague : une session ouverte, sans pari ni check-in. Une pause-corps toutes les 90 min. Le temps pro compte double pour le coffre du soir.',
           style: K.body(13),
         ),
+        if (m == 'vague') ...[
+          const SizedBox(height: 8),
+          Builder(builder: (context) {
+            final run = store.runningSession;
+            final f = store.today.focus;
+            final ft = store.taskById(f);
+            final name = ft?.title ?? f;
+            final matches = store.daySequence().where((t) => !t.done && store.inFocus(t)).length;
+            if (run != null) {
+              final min = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(run.start)).inMinutes;
+              return PrimaryButton(label: '🌊 En cours : ${run.title} · $min min', color: K.cyan, onPressed: () => openScreen(context, const SessionScreen()));
+            }
+            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              PrimaryButton(
+                label: '▶ Lancer la vague · $name',
+                color: K.cyan,
+                onPressed: () async {
+                  if (ft != null) return launchTask(context, ft);
+                  await store.startSession('', name, 0, category: 'pro', silent: true, flow: true);
+                  await rescheduleAll(store);
+                  if (context.mounted) await openScreen(context, const SessionScreen());
+                },
+              ),
+              const SizedBox(height: 4),
+              Text(
+                matches == 0
+                    ? 'Aucune tâche du jour ne contient « $name » : la vague se lance sur le projet lui-même. Chaque minute compte en pro.'
+                    : 'Ou ▶ sur une tâche du projet ci-dessous. Chaque minute de la session compte en pro, en direct.',
+                style: K.body(11, color: K.muted),
+              ),
+            ]);
+          }),
+        ],
         if (m == 'sans')
           TextButton(
             style: TextButton.styleFrom(padding: EdgeInsets.zero, alignment: Alignment.centerLeft),
