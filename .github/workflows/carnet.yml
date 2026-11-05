@@ -80,7 +80,7 @@ jobs:
         with:
           tag_name: carnet-v1.0.${{ github.run_number }}
           name: Carnet Micky v1.0.${{ github.run_number }}
-          body: Télécharge carnet-micky.apk depuis la tablette pour l'installer ou le mettre à jour. Version PC : https://clperso.github.io/micky-quest/
+          body: "Télécharge carnet-micky.apk depuis la tablette pour l’installer ou le mettre à jour. Version PC sur https://clperso.github.io/micky-quest/"
           files: |
             carnet/carnet-micky.apk
           make_latest: false
