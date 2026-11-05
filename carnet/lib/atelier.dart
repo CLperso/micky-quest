@@ -130,7 +130,7 @@ class _AtelierState extends State<Atelier> {
                         y: 360,
                         w: f == 'polaroid' ? 200 : 300,
                         h: f == 'polaroid' ? 240 : (f == 'tag' ? 70 : 180),
-                        style: {'pattern': f, 'color': pal.acc.toARGB32()})),
+                        style: {'pattern': f, 'color': pal.acc.value})),
                 child: Column(children: [
                   CustomPaint(size: const Size(80, 56), painter: FramePainter(f, pal.acc, null)),
                   const SizedBox(height: 4),
@@ -152,7 +152,7 @@ class _AtelierState extends State<Atelier> {
               onTap: () async {
                 final t = await askText(context, 'Ton texte', hint: 'Novembre ✨');
                 if (t == null || t.isEmpty) return;
-                await _place(store, desk, Deco(page: page, type: 'text', x: 300, y: 120, w: 260, h: 70, style: {'text': t, 'font': font, 'color': pal.acc.toARGB32()}));
+                await _place(store, desk, Deco(page: page, type: 'text', x: 300, y: 120, w: 260, h: 70, style: {'text': t, 'font': font, 'color': pal.acc.value}));
               },
             ),
         ]);
@@ -213,7 +213,7 @@ class _AtelierState extends State<Atelier> {
                 selected: store.settings.theme == t.id,
                 onSelected: (_) async {
                   store.settings.theme = t.id;
-                  await store.setPaper('default', color: t.paper.toARGB32());
+                  await store.setPaper('default', color: t.paper.value);
                   await store.touchSettings();
                 },
               ),

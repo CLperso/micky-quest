@@ -535,7 +535,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               selected: store.settings.theme == t.id,
               onSelected: (_) async {
                 store.settings.theme = t.id;
-                await store.setPaper('default', color: t.paper.toARGB32());
+                await store.setPaper('default', color: t.paper.value);
                 await store.touchSettings();
               },
             ),
