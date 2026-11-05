@@ -1,0 +1,26 @@
+name: carnet_micky
+description: Carnet Micky, un bullet journal à décorer.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.6.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  shared_preferences: ^2.3.3
+  http: ^1.2.2
+  google_fonts: ^6.2.1
+  image_picker: ^1.1.2
+  google_mlkit_digital_ink_recognition: '>=0.11.0 <0.17.0'
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/micky/

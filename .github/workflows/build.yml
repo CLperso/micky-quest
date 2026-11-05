@@ -3,6 +3,7 @@ name: Construire l'APK
 on:
   push:
     branches: [main]
+    paths-ignore: ['carnet/**', '.github/workflows/carnet.yml']
   workflow_dispatch:
 
 permissions:
