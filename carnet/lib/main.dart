@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -457,11 +458,17 @@ class _Planner extends StatelessWidget {
     if (right == null) {
       pages = Center(child: left);
     } else if (wide) {
-      pages = Row(children: [
-        Expanded(child: Align(alignment: Alignment.centerRight, child: left)),
-        const _Spiral(),
-        Expanded(child: Align(alignment: Alignment.centerLeft, child: right)),
-      ]);
+      pages = LayoutBuilder(builder: (context, b) {
+        final ph = min(b.maxHeight, (b.maxWidth - 40) / 2 * pageH / pageW);
+        final pw = ph * pageW / pageH;
+        return Center(
+          child: SizedBox(
+            height: ph,
+            width: pw * 2 + 40,
+            child: Row(children: [SizedBox(width: pw, child: left), const _Spiral(), SizedBox(width: pw, child: right)]),
+          ),
+        );
+      });
     } else {
       pages = Column(children: [
         SegmentedButton<int>(
