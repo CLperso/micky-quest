@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'atelier.dart';
 import 'canvas.dart';
@@ -42,7 +41,7 @@ class CarnetApp extends StatelessWidget {
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: pal.acc, brightness: pal.dark ? Brightness.dark : Brightness.light),
         scaffoldBackgroundColor: pal.desk,
-        textTheme: GoogleFonts.nunitoTextTheme(pal.dark ? ThemeData.dark().textTheme : ThemeData.light().textTheme),
+        fontFamily: 'Nunito',
       ),
       home: const Shell(),
     );

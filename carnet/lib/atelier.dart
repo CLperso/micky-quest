@@ -144,7 +144,7 @@ class _AtelierState extends State<Atelier> {
         content = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Des titres décoratifs, posés où tu veux.', style: body(13, pal.soft)),
           const SizedBox(height: 8),
-          for (final (label, font) in [('Écriture manuscrite', 'hand'), ('Titre rond', 'title')])
+          for (final (label, font) in [('Écriture manuscrite', 'hand'), ('Titre', 'title')])
             ListTile(
               contentPadding: EdgeInsets.zero,
               title: Text(label, style: font == 'hand' ? hand(26, pal.ink) : titleFont(20, pal.ink)),

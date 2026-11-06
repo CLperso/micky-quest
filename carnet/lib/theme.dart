@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 /// Une ambiance de carnet.
 class Pal {
@@ -100,20 +99,20 @@ const coverStyles = {
 /// Style des titres, choisi dans « Mon style ».
 String gTitleStyle = 'elegant';
 
-TextStyle hand(double size, Color c, {FontWeight w = FontWeight.w400}) => GoogleFonts.patrickHand(fontSize: size * 0.86, color: c, height: 1.2);
-TextStyle script(double size, Color c) => GoogleFonts.dancingScript(fontSize: size, color: c, fontWeight: FontWeight.w600, height: 1.05);
+TextStyle hand(double size, Color c, {FontWeight w = FontWeight.w400}) => TextStyle(fontFamily: 'PatrickHand', fontSize: size * 0.86, color: c, height: 1.2);
+TextStyle script(double size, Color c) => TextStyle(fontFamily: 'DancingScript', fontSize: size, color: c, fontWeight: FontWeight.w600, height: 1.05);
 TextStyle titleFont(double size, Color c) {
   switch (gTitleStyle) {
     case 'lettering':
-      return GoogleFonts.dancingScript(fontSize: size * 1.05, color: c, fontWeight: FontWeight.w700, height: 1.05);
+      return TextStyle(fontFamily: 'DancingScript', fontSize: size * 1.05, color: c, fontWeight: FontWeight.w700, height: 1.05);
     case 'manuscrit':
-      return GoogleFonts.patrickHand(fontSize: size * 0.95, color: c, height: 1.1);
+      return TextStyle(fontFamily: 'PatrickHand', fontSize: size * 0.95, color: c, height: 1.1);
     default:
-      return GoogleFonts.cormorantGaramond(fontSize: size * 1.12, color: c, fontWeight: FontWeight.w500, fontStyle: FontStyle.italic, height: 1.0);
+      return TextStyle(fontFamily: 'Cormorant', fontSize: size * 1.12, color: c, fontWeight: FontWeight.w500, fontStyle: FontStyle.italic, height: 1.0);
   }
 }
 
-TextStyle body(double size, Color c, {FontWeight w = FontWeight.w700}) => GoogleFonts.nunito(fontSize: size, color: c, fontWeight: w);
+TextStyle body(double size, Color c, {FontWeight w = FontWeight.w700}) => TextStyle(fontFamily: 'Nunito', fontSize: size, color: c, fontWeight: w);
 
 /// Petit libellé en capitales (« CE QUI COMPTE »).
 class Label extends StatelessWidget {
