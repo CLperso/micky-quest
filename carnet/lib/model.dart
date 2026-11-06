@@ -311,18 +311,42 @@ class Deco {
 class Stroke {
   int color;
   double width;
-  bool hl;
-  List<double> pts;
-  Stroke({required this.color, required this.width, this.hl = false, List<double>? pts}) : pts = pts ?? [];
+  String tool; // stylo, plume, feutre, pinceau, crayon, surligneur
+  List<double> pts; // x, y, pression (triplets)
+  Stroke({required this.color, required this.width, String? tool, bool hl = false, List<double>? pts})
+      : tool = tool ?? (hl ? 'surligneur' : 'stylo'),
+        pts = pts ?? [];
+
+  bool get hl => tool == 'surligneur';
 
   factory Stroke.fromJson(Map<String, dynamic> j) => Stroke(
         color: _i(j['c'], 0xFF3B3346),
         width: _d(j['w'], 2.4),
-        hl: _b(j['h']),
+        tool: j['t'] is String ? j['t'] as String : (_b(j['h']) ? 'surligneur' : 'stylo'),
         pts: j['p'] is List ? (j['p'] as List).map((e) => (e as num).toDouble()).toList() : [],
       );
 
-  Map<String, dynamic> toJson() => {'c': color, 'w': width, 'h': hl, 'p': pts.map((e) => (e * 10).roundToDouble() / 10).toList()};
+  Map<String, dynamic> toJson() => {'c': color, 'w': width, 't': tool, 'h': hl, 'p': pts.map((e) => (e * 10).roundToDouble() / 10).toList()};
+
+  Stroke copy() => Stroke(color: color, width: width, tool: tool, pts: [...pts]);
+}
+
+/// Une page libre du carnet (journal, dessin, mind map…).
+class FreePage {
+  String id;
+  String title;
+  String paper; // dots, grid, lines, plain
+  double order;
+  int mod;
+  bool del;
+  FreePage({String? id, this.title = '', this.paper = 'dots', double? order, int? mod, this.del = false})
+      : id = id ?? newId(),
+        order = order ?? nowMs().toDouble(),
+        mod = mod ?? nowMs();
+
+  factory FreePage.fromJson(Map<String, dynamic> j) =>
+      FreePage(id: _s(j['id']), title: _s(j['title']), paper: _s(j['paper'], 'dots'), order: _d(j['order']), mod: _i(j['mod']), del: _b(j['del']));
+  Map<String, dynamic> toJson() => {'id': id, 'title': title, 'paper': paper, 'order': order, 'mod': mod, 'del': del};
 }
 
 /// L'encre d'une page.
@@ -349,9 +373,9 @@ class PaperStyle {
   int color;
   String pattern; // dots, lines, grid, plain
   int mod;
-  PaperStyle({required this.id, this.color = 0xFFFBF7EF, this.pattern = 'dots', int? mod}) : mod = mod ?? nowMs();
+  PaperStyle({required this.id, this.color = 0, this.pattern = 'dots', int? mod}) : mod = mod ?? nowMs();
 
-  factory PaperStyle.fromJson(Map<String, dynamic> j) => PaperStyle(id: _s(j['id']), color: _i(j['color'], 0xFFFBF7EF), pattern: _s(j['pat'], 'dots'), mod: _i(j['mod']));
+  factory PaperStyle.fromJson(Map<String, dynamic> j) => PaperStyle(id: _s(j['id']), color: _i(j['color'], 0), pattern: _s(j['pat'], 'dots'), mod: _i(j['mod']));
   Map<String, dynamic> toJson() => {'id': id, 'color': color, 'pat': pattern, 'mod': mod};
 }
 
@@ -380,30 +404,78 @@ class DecoTemplate {
 }
 
 class Settings {
-  String theme; // creme, nuit, sauge, rose
+  String theme; // rose, sauge, lavande, nuit
   List<int> palette;
   String syncRepo;
   String syncToken;
   int lastSync;
   bool stylusOnly;
+  String titleStyle; // elegant, lettering, manuscrit
+  double decoLevel; // 0 épuré · 1 doux · 2 kawaii
+  String coverTitle, coverSub, coverStyle;
+  String mickyTone; // discrete, douce, taquine, coach
   int mod;
 
-  Settings({this.theme = 'creme', List<int>? palette, this.syncRepo = '', this.syncToken = '', this.lastSync = 0, this.stylusOnly = true, int? mod})
-      : palette = palette ?? [0xFF3B3346, 0xFFE8896B, 0xFF7FA99B, 0xFFE9B949, 0xFFB9A7FF, 0xFFD9667A, 0xFF6FA8FF, 0xFFFFFFFF],
+  static const defaultPalette = [0xFF4A3F3C, 0xFFB0707A, 0xFFD7A6A8, 0xFF7E9471, 0xFFA9B8A0, 0xFF8E7BA0, 0xFFC6A26A, 0xFF7C93AE, 0xFFE3B7A0, 0xFFFFFFFF];
+
+  Settings(
+      {this.theme = 'rose',
+      List<int>? palette,
+      this.syncRepo = '',
+      this.syncToken = '',
+      this.lastSync = 0,
+      this.stylusOnly = true,
+      this.titleStyle = 'elegant',
+      this.decoLevel = 1,
+      this.coverTitle = '2026 — 2027',
+      this.coverSub = 'thèse, kannada & le reste',
+      this.coverStyle = 'rose',
+      this.mickyTone = 'taquine',
+      int? mod})
+      : palette = palette ?? [...defaultPalette],
         mod = mod ?? 0;
 
   factory Settings.fromJson(Map<String, dynamic> j) => Settings(
-        theme: _s(j['theme'], 'creme'),
-        palette: j['pal'] is List ? (j['pal'] as List).map((e) => (e as num).toInt()).toList() : null,
+        theme: const ['rose', 'sauge', 'lavande', 'nuit'].contains(j['theme']) ? j['theme'] as String : 'rose',
+        palette: j['pal'] is List && (j['pal'] as List).length >= 10 ? (j['pal'] as List).map((e) => (e as num).toInt()).toList() : null,
         syncRepo: _s(j['repo']),
         syncToken: _s(j['tok']),
         lastSync: _i(j['last']),
         stylusOnly: j['stylus'] == null ? true : _b(j['stylus']),
+        titleStyle: _s(j['ts'], 'elegant'),
+        decoLevel: _d(j['deco'], 1),
+        coverTitle: _s(j['ct'], '2026 — 2027'),
+        coverSub: _s(j['cs'], 'thèse, kannada & le reste'),
+        coverStyle: _s(j['cv'], 'rose'),
+        mickyTone: _s(j['mt'], 'taquine'),
         mod: _i(j['mod']),
       );
 
-  Map<String, dynamic> toJson() => {'theme': theme, 'pal': palette, 'repo': syncRepo, 'tok': syncToken, 'last': lastSync, 'stylus': stylusOnly, 'mod': mod};
+  Map<String, dynamic> toJson() => {...syncJson(), 'repo': syncRepo, 'tok': syncToken, 'last': lastSync, 'stylus': stylusOnly};
 
   /// Ce qui se synchronise (pas le jeton ni l'état local).
-  Map<String, dynamic> syncJson() => {'theme': theme, 'pal': palette, 'mod': mod};
+  Map<String, dynamic> syncJson() => {
+        'theme': theme,
+        'pal': palette,
+        'ts': titleStyle,
+        'deco': decoLevel,
+        'ct': coverTitle,
+        'cs': coverSub,
+        'cv': coverStyle,
+        'mt': mickyTone,
+        'mod': mod,
+      };
+
+  void applySync(Map<String, dynamic> j) {
+    final s = Settings.fromJson({...toJson(), ...j});
+    theme = s.theme;
+    palette = s.palette;
+    titleStyle = s.titleStyle;
+    decoLevel = s.decoLevel;
+    coverTitle = s.coverTitle;
+    coverSub = s.coverSub;
+    coverStyle = s.coverStyle;
+    mickyTone = s.mickyTone;
+    mod = s.mod;
+  }
 }

@@ -4,7 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 /// Une ambiance de carnet.
 class Pal {
   final String id, name;
-  final Color desk, paper, ink, soft, line, dot, acc, acc2, acc3, card;
+  final Color desk, paper, ink, soft, line, dot, acc, acc2, acc3, card, cover, tint;
   final bool dark;
   const Pal(this.id, this.name,
       {required this.desk,
@@ -17,60 +17,102 @@ class Pal {
       required this.acc2,
       required this.acc3,
       required this.card,
+      required this.cover,
+      required this.tint,
       this.dark = false});
 
-  static const creme = Pal('creme', 'Crème',
-      desk: Color(0xFFE9E1D3),
-      paper: Color(0xFFFBF7EF),
-      ink: Color(0xFF3B3346),
-      soft: Color(0xFF8B8197),
-      line: Color(0xFFE6DCCB),
-      dot: Color(0xFFD9CFC0),
-      acc: Color(0xFFE8896B),
-      acc2: Color(0xFF7FA99B),
-      acc3: Color(0xFFE9B949),
-      card: Colors.white);
-  static const nuit = Pal('nuit', 'Nuit',
-      desk: Color(0xFF0F0C1E),
-      paper: Color(0xFF1B1733),
-      ink: Color(0xFFF2EEFF),
-      soft: Color(0xFF9A93BC),
-      line: Color(0xFF2E2852),
-      dot: Color(0xFF2E2852),
-      acc: Color(0xFFB8FF3C),
-      acc2: Color(0xFF4FE3FF),
-      acc3: Color(0xFFFF7AB6),
-      card: Color(0xFF241F45),
+  static const rose = Pal('rose', 'Rose poudré',
+      desk: Color(0xFFEDE4DD),
+      paper: Color(0xFFFCF8F3),
+      ink: Color(0xFF4A3F3C),
+      soft: Color(0xFF8F817C),
+      line: Color(0xFFEADFD6),
+      dot: Color(0xFFDDD0C6),
+      acc: Color(0xFFB0707A),
+      acc2: Color(0xFF8FA383),
+      acc3: Color(0xFFC6A26A),
+      card: Colors.white,
+      cover: Color(0xFFD9B8B4),
+      tint: Color(0xFFF1DEDD));
+  static const sauge = Pal('sauge', 'Sauge & lin',
+      desk: Color(0xFFE6E8DF),
+      paper: Color(0xFFFAFAF5),
+      ink: Color(0xFF3E4639),
+      soft: Color(0xFF7F877A),
+      line: Color(0xFFDDE2D5),
+      dot: Color(0xFFCCD3C4),
+      acc: Color(0xFF5E7254),
+      acc2: Color(0xFFC08A72),
+      acc3: Color(0xFFC6A26A),
+      card: Colors.white,
+      cover: Color(0xFFC7CFBC),
+      tint: Color(0xFFE6ECDF));
+  static const lavande = Pal('lavande', 'Lavande brume',
+      desk: Color(0xFFE9E5EE),
+      paper: Color(0xFFFBF9FC),
+      ink: Color(0xFF443C4E),
+      soft: Color(0xFF8A8296),
+      line: Color(0xFFE4DEEA),
+      dot: Color(0xFFD6CFDF),
+      acc: Color(0xFF7D6A92),
+      acc2: Color(0xFFC08A96),
+      acc3: Color(0xFFC6A26A),
+      card: Colors.white,
+      cover: Color(0xFFD4CDE2),
+      tint: Color(0xFFECE6F2));
+  static const nuit = Pal('nuit', 'Nuit douce',
+      desk: Color(0xFF1E1B26),
+      paper: Color(0xFF2B2735),
+      ink: Color(0xFFF1E9E4),
+      soft: Color(0xFFA79DB0),
+      line: Color(0xFF3E3849),
+      dot: Color(0xFF443D51),
+      acc: Color(0xFFE3A9AE),
+      acc2: Color(0xFFA9BFA4),
+      acc3: Color(0xFFE9D3A0),
+      card: Color(0xFF36313F),
+      cover: Color(0xFF4A4258),
+      tint: Color(0xFF3B3446),
       dark: true);
-  static const sauge = Pal('sauge', 'Sauge',
-      desk: Color(0xFFDCE4D8),
-      paper: Color(0xFFF4F7F1),
-      ink: Color(0xFF34413A),
-      soft: Color(0xFF7D8C82),
-      line: Color(0xFFD7E0D3),
-      dot: Color(0xFFC9D4C4),
-      acc: Color(0xFF6E9C7E),
-      acc2: Color(0xFFC98E6B),
-      acc3: Color(0xFFD9B44A),
-      card: Colors.white);
-  static const rose = Pal('rose', 'Rose',
-      desk: Color(0xFFF0DDE2),
-      paper: Color(0xFFFDF4F6),
-      ink: Color(0xFF4A3540),
-      soft: Color(0xFF9A7F8B),
-      line: Color(0xFFEFDCE2),
-      dot: Color(0xFFE5CDD4),
-      acc: Color(0xFFD9667A),
-      acc2: Color(0xFF8AA9C9),
-      acc3: Color(0xFFE9B949),
-      card: Colors.white);
 
-  static const all = [creme, nuit, sauge, rose];
-  static Pal byId(String id) => all.firstWhere((p) => p.id == id, orElse: () => creme);
+  static const all = [rose, sauge, lavande, nuit];
+  static Pal byId(String id) => all.firstWhere((p) => p.id == id, orElse: () => rose);
+
+  List<Color> get tabs => dark
+      ? const [Color(0xFF6E5F6C), Color(0xFF6B6250), Color(0xFF55644F), Color(0xFF7A5A63), Color(0xFF5E557A), Color(0xFF4E6466), Color(0xFF6E5466)]
+      : const [Color(0xFFE2D2C8), Color(0xFFECE0C4), Color(0xFFCFDCCB), Color(0xFFDDB3B6), Color(0xFFD4CDE2), Color(0xFFC9D9D6), Color(0xFFE5CAD3)];
 }
 
-TextStyle hand(double size, Color c, {FontWeight w = FontWeight.w700}) => GoogleFonts.caveat(fontSize: size, color: c, fontWeight: w, height: 1.1);
-TextStyle titleFont(double size, Color c) => GoogleFonts.fredoka(fontSize: size, color: c, fontWeight: FontWeight.w500, height: 1.1);
+const monthTabColors = [
+  Color(0xFFE3C9C5), Color(0xFFE9D3C1), Color(0xFFECE0C4), Color(0xFFDCE2C9), Color(0xFFCFDCCB), Color(0xFFC9D9D6),
+  Color(0xFFCBD3E1), Color(0xFFD4CDE2), Color(0xFFDCCCDF), Color(0xFFE5CAD3), Color(0xFFD7A6A8), Color(0xFFE2D2C8),
+];
+
+const coverStyles = {
+  'rose': Color(0xFFD9B8B4),
+  'sauge': Color(0xFFC7CFBC),
+  'lavande': Color(0xFFD4CDE2),
+  'cuir': Color(0xFF8C6F62),
+  'nuit': Color(0xFF2B2735),
+  'vichy': Color(0xFFF1DEDD),
+};
+
+/// Style des titres, choisi dans « Mon style ».
+String gTitleStyle = 'elegant';
+
+TextStyle hand(double size, Color c, {FontWeight w = FontWeight.w400}) => GoogleFonts.patrickHand(fontSize: size * 0.86, color: c, height: 1.2);
+TextStyle script(double size, Color c) => GoogleFonts.dancingScript(fontSize: size, color: c, fontWeight: FontWeight.w600, height: 1.05);
+TextStyle titleFont(double size, Color c) {
+  switch (gTitleStyle) {
+    case 'lettering':
+      return GoogleFonts.dancingScript(fontSize: size * 1.05, color: c, fontWeight: FontWeight.w700, height: 1.05);
+    case 'manuscrit':
+      return GoogleFonts.patrickHand(fontSize: size * 0.95, color: c, height: 1.1);
+    default:
+      return GoogleFonts.cormorantGaramond(fontSize: size * 1.12, color: c, fontWeight: FontWeight.w500, fontStyle: FontStyle.italic, height: 1.0);
+  }
+}
+
 TextStyle body(double size, Color c, {FontWeight w = FontWeight.w700}) => GoogleFonts.nunito(fontSize: size, color: c, fontWeight: w);
 
 /// Petit libellé en capitales (« CE QUI COMPTE »).
@@ -81,7 +123,7 @@ class Label extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(top: 14, bottom: 4),
-        child: Text(text.toUpperCase(), style: body(11, color, w: FontWeight.w800).copyWith(letterSpacing: 1.5)),
+        child: Text(text.toUpperCase(), style: body(10.5, color, w: FontWeight.w800).copyWith(letterSpacing: 2.2)),
       );
 }
 
@@ -107,12 +149,12 @@ const frameNames = {
 };
 
 const colorChoices = [
-  0xFF3B3346, 0xFF8B8197, 0xFFFFFFFF, 0xFF000000,
-  0xFFE8896B, 0xFFD9667A, 0xFFF2A7B5, 0xFFFFC9D6,
-  0xFFE9B949, 0xFFF6D776, 0xFFFFF1B8, 0xFFC98E6B,
-  0xFF7FA99B, 0xFF6E9C7E, 0xFFBFD8C9, 0xFFDCE4D8,
-  0xFF6FA8FF, 0xFF8AA9C9, 0xFFBFD7F2, 0xFF4FE3FF,
-  0xFFB9A7FF, 0xFF8A6FD1, 0xFFE3DAF7, 0xFFFBF7EF,
+  0xFF4A3F3C, 0xFF8F817C, 0xFFFFFFFF, 0xFF000000,
+  0xFFB0707A, 0xFFD7A6A8, 0xFFF1DEDD, 0xFFE3B7A0,
+  0xFFC6A26A, 0xFFE9D3A0, 0xFFF4ECE1, 0xFFC08A72,
+  0xFF5E7254, 0xFF8FA383, 0xFFA9B8A0, 0xFFE3E9DD,
+  0xFF7C93AE, 0xFFA9BCD3, 0xFFDDE5EF, 0xFF6E8E8E,
+  0xFF7D6A92, 0xFFB9A7C2, 0xFFECE5F0, 0xFFFCF8F3,
 ];
 
-const paperColors = [0xFFFBF7EF, 0xFFFFFFFF, 0xFFF4F7F1, 0xFFFDF4F6, 0xFFF1F4FB, 0xFFFFF8E1, 0xFFF3ECE3, 0xFF1B1733, 0xFF22303A];
+const paperColors = [0xFFFCF8F3, 0xFFFFFFFF, 0xFFFAFAF5, 0xFFFBF9FC, 0xFFF4ECE1, 0xFFF1DEDD, 0xFFE6ECDF, 0xFFD8C3A5, 0xFF2B2735, 0xFF22303A];

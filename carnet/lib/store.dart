@@ -22,6 +22,7 @@ class Store extends ChangeNotifier {
   final Map<String, InkPage> inks = {};
   final Map<String, PaperStyle> papers = {};
   final Map<String, DecoTemplate> templates = {};
+  final Map<String, FreePage> freePages = {};
   final Map<String, String> images = {}; // id → base64 (jpeg)
   final Map<String, int> imageMod = {};
   int timerStart = 0; // session de travail en cours (local)
@@ -70,6 +71,7 @@ class Store extends ChangeNotifier {
         'inks': inks.values.map((e) => e.toJson()).toList(),
         'papers': papers.values.map((e) => e.toJson()).toList(),
         'tpl': templates.values.map((e) => e.toJson()).toList(),
+        'free': freePages.values.map((e) => e.toJson()).toList(),
         if (withImages) 'imgs': {for (final k in images.keys) k: {'d': images[k], 'mod': imageMod[k] ?? 0}},
         if (withImages) 'settings': settings.syncJson(),
       };
@@ -96,6 +98,7 @@ class Store extends ChangeNotifier {
     merge<InkPage>(inks, _list(j, 'inks'), InkPage.fromJson, (e) => e.id, (e) => e.mod);
     merge<PaperStyle>(papers, _list(j, 'papers'), PaperStyle.fromJson, (e) => e.id, (e) => e.mod);
     merge<DecoTemplate>(templates, _list(j, 'tpl'), DecoTemplate.fromJson, (e) => e.id, (e) => e.mod);
+    merge<FreePage>(freePages, _list(j, 'free'), FreePage.fromJson, (e) => e.id, (e) => e.mod);
     if (j['imgs'] is Map) {
       for (final e in (j['imgs'] as Map).entries) {
         final v = e.value as Map;
@@ -109,11 +112,7 @@ class Store extends ChangeNotifier {
     if (j['settings'] is Map) {
       final s = Map<String, dynamic>.from(j['settings'] as Map);
       final m = (s['mod'] as num?)?.toInt() ?? 0;
-      if (m > settings.mod) {
-        settings.theme = (s['theme'] as String?) ?? settings.theme;
-        if (s['pal'] is List) settings.palette = (s['pal'] as List).map((e) => (e as num).toInt()).toList();
-        settings.mod = m;
-      }
+      if (m > settings.mod) settings.applySync(s);
     }
   }
 
@@ -358,6 +357,33 @@ class Store extends ChangeNotifier {
     await saveImages();
     notifyListeners();
     return id;
+  }
+
+  // ---------- pages libres ----------
+  List<FreePage> get activeFree => freePages.values.where((p) => !p.del).toList()..sort((a, b) => a.order.compareTo(b.order));
+
+  Future<FreePage> addFreePage({String title = '', String paper = 'dots'}) async {
+    final p = FreePage(title: title, paper: paper);
+    freePages[p.id] = p;
+    await setPaper('free:${p.id}', pattern: paper);
+    return p;
+  }
+
+  Future<void> touchFree(FreePage p) async {
+    p.mod = nowMs();
+    await commit();
+  }
+
+  Future<void> moveFree(FreePage p, int dir) async {
+    final l = activeFree;
+    final i = l.indexOf(p);
+    final j = i + dir;
+    if (i < 0 || j < 0 || j >= l.length) return;
+    final o = l[j].order;
+    l[j].order = p.order;
+    p.order = o;
+    l[j].mod = nowMs();
+    await touchFree(p);
   }
 
   // ---------- encre ----------

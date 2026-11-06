@@ -7,13 +7,17 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'atelier.dart';
 import 'canvas.dart';
+import 'ink.dart';
 import 'model.dart';
+import 'pages/cover.dart';
 import 'pages/day.dart';
+import 'pages/free.dart';
 import 'pages/future.dart';
 import 'pages/goals.dart';
 import 'pages/month.dart';
 import 'pages/week.dart';
 import 'store.dart';
+import 'style_panel.dart';
 import 'sync.dart';
 import 'theme.dart';
 
@@ -30,6 +34,7 @@ class CarnetApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = StoreScope.of(context);
     final pal = Pal.byId(store.settings.theme);
+    gTitleStyle = store.settings.titleStyle;
     return MaterialApp(
       title: 'Carnet Micky',
       debugShowCheckedModeBanner: false,
@@ -44,6 +49,10 @@ class CarnetApp extends StatelessWidget {
   }
 }
 
+// onglets de l'agenda
+const tCover = 0, tDay = 1, tWeek = 2, tMonth = 3, tFuture = 4, tGoals = 5, tColls = 6, tPages = 7;
+const tabNames = ['Couverture', 'Jour', 'Semaine', 'Mois', 'Futur', 'Objectifs', 'Collections', 'Pages'];
+
 class Shell extends StatefulWidget {
   const Shell({super.key});
   @override
@@ -52,17 +61,17 @@ class Shell extends StatefulWidget {
 
 class _ShellState extends State<Shell> with WidgetsBindingObserver {
   final desk = Desk();
-  int tab = 0;
+  int tab = tDay;
   DateTime day = dateOnly(DateTime.now());
   DateTime monday = mondayOf(DateTime.now());
   DateTime month = DateTime(DateTime.now().year, DateTime.now().month, 1);
   String goalSel = '';
   String collSel = '';
+  String freeSel = '';
   int narrowPage = 0;
+  bool styleOpen = false;
   Timer? _tick, _syncTick;
   String? _syncMsg;
-
-  static const tabs = ['Aujourd’hui', 'Semaine', 'Mois', 'Futur', 'Objectifs', 'Collections'];
 
   @override
   void initState() {
@@ -102,46 +111,75 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   }
 
   void openDay(String k) => setState(() {
-        tab = 0;
+        tab = tDay;
         day = parseDay(k);
         narrowPage = 0;
       });
 
-  (String, Widget, String, Widget, String, String) _spread(Store store) {
+  void _setTab(int i) => setState(() {
+        tab = i;
+        narrowPage = 0;
+        desk.select('');
+        desk.clearSel(notify: false);
+      });
+
+  (String, Widget, String, Widget?, String, String) _spread(Store store) {
     switch (tab) {
-      case 1:
+      case tCover:
+        return ('cover', const CoverPage(), '', null, 'Couverture', '');
+      case tWeek:
         final k = dayKey(monday);
         return ('week:$k:L', WeekGrid(monday: monday, onOpenDay: openDay), 'week:$k:R', WeekList(monday: monday, onOpenDay: openDay), 'Trackers', 'Jours');
-      case 2:
+      case tMonth:
         final m = monthKey(month);
         return ('month:$m:L', MonthCalendar(month: m, onOpenDay: openDay), 'month:$m:R', MonthList(month: m), 'Calendrier', 'Liste');
-      case 3:
+      case tFuture:
         return ('future:L', const FuturePage(fromOffset: 1, count: 3), 'future:R', const FuturePage(fromOffset: 4, count: 3, withSomeday: true), '3 mois', 'Plus loin');
-      case 4:
+      case tGoals:
         final sel = goalSel.isNotEmpty ? goalSel : (store.activeGoals.isEmpty ? '' : store.activeGoals.first.id);
         return (
           'goals:L',
-          GoalsIndex(selected: sel, onSelect: (id) => setState(() {
-                goalSel = id;
-                narrowPage = 1;
-              })),
+          GoalsIndex(
+              selected: sel,
+              onSelect: (id) => setState(() {
+                    goalSel = id;
+                    narrowPage = 1;
+                  })),
           'goal:$sel',
           GoalDetail(goalId: sel),
           'Objectifs',
           'Détail'
         );
-      case 5:
+      case tColls:
         final sel = collSel.isNotEmpty ? collSel : (store.activeColls.isEmpty ? '' : store.activeColls.first.id);
         return (
           'colls:L',
-          CollIndex(selected: sel, onSelect: (id) => setState(() {
-                collSel = id;
-                narrowPage = 1;
-              })),
+          CollIndex(
+              selected: sel,
+              onSelect: (id) => setState(() {
+                    collSel = id;
+                    narrowPage = 1;
+                  })),
           'coll:$sel',
           CollPage(collId: sel),
           'Index',
           'Collection'
+        );
+      case tPages:
+        final free = store.activeFree;
+        final sel = free.any((p) => p.id == freeSel) ? freeSel : (free.isEmpty ? '' : free.first.id);
+        return (
+          'pages:L',
+          FreeIndex(
+              selected: sel,
+              onSelect: (id) => setState(() {
+                    freeSel = id;
+                    narrowPage = 1;
+                  })),
+          'free:$sel',
+          FreePageView(id: sel),
+          'Index',
+          'Page'
         );
       default:
         final k = dayKey(day);
@@ -179,10 +217,26 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _recognize() async {
+    final store = StoreScope.read(context);
+    final page = desk.focusPage;
+    final lines = await recognizeInk(store, desk, page);
+    if (!mounted) return;
+    if (lines == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reconnaissance indisponible pour l’instant (modèle à télécharger, connexion ?)')));
+      return;
+    }
+    if (lines.isEmpty) return;
+    await _inkTo(page, lines);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${lines.length} ligne${lines.length > 1 ? 's' : ''} ajoutée${lines.length > 1 ? 's' : ''}')));
+    }
+  }
+
   void _nav(int dir) => setState(() {
-        if (tab == 0) day = day.add(Duration(days: dir));
-        if (tab == 1) monday = monday.add(Duration(days: 7 * dir));
-        if (tab == 2) month = DateTime(month.year, month.month + dir, 1);
+        if (tab == tDay) day = day.add(Duration(days: dir));
+        if (tab == tWeek) monday = monday.add(Duration(days: 7 * dir));
+        if (tab == tMonth) month = DateTime(month.year, month.month + dir, 1);
       });
 
   void _home() => setState(() {
@@ -192,7 +246,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
       });
 
   String _navLabel() {
-    if (tab == 0) {
+    if (tab == tDay) {
       final t = dateOnly(DateTime.now());
       final diff = day.difference(t).inDays;
       if (diff == 0) return 'Aujourd’hui';
@@ -200,7 +254,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
       if (diff == 1) return 'Demain';
       return '${dayNames[day.weekday - 1]} ${day.day} ${monthNames[day.month - 1]}';
     }
-    if (tab == 1) return 'Sem. ${isoWeek(monday)}';
+    if (tab == tWeek) return 'Sem. ${isoWeek(monday)}';
     return niceMonth(monthKey(month));
   }
 
@@ -210,46 +264,39 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     final pal = Pal.byId(store.settings.theme);
     final (lk, lw, rk, rw, ln, rn) = _spread(store);
     if (desk.focusPage != lk && desk.focusPage != rk) desk.focusPage = lk;
-    final tabColors = [pal.acc, pal.acc2, pal.acc3, const Color(0xFFB9A7FF), const Color(0xFFE8896B), const Color(0xFF7FA99B)];
+    final android = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
-    final header = Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 8, 0),
-      child: Row(children: [
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              for (var i = 0; i < tabs.length; i++)
-                GestureDetector(
-                  onTap: () => setState(() {
-                    tab = i;
-                    narrowPage = 0;
-                    desk.select('');
-                  }),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    margin: const EdgeInsets.only(right: 6),
-                    padding: EdgeInsets.fromLTRB(14, tab == i ? 14 : 8, 14, 9),
-                    decoration: BoxDecoration(
-                      color: tabColors[i].withValues(alpha: tab == i ? 1 : 0.55),
-                      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
-                    ),
-                    child: Text(tabs[i], style: body(13, pal.dark ? const Color(0xFF15112B) : Colors.white, w: FontWeight.w900)),
-                  ),
-                ),
-            ]),
+    Widget modeBtn(String tip, IconData icon, bool on, VoidCallback? f) => Tooltip(
+          message: tip,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(999),
+            onTap: f,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 140),
+              width: 42,
+              height: 38,
+              decoration: BoxDecoration(color: on ? pal.acc : Colors.transparent, borderRadius: BorderRadius.circular(999)),
+              child: Icon(icon, size: 20, color: on ? Colors.white : (f == null ? pal.line : pal.ink)),
+            ),
           ),
-        ),
-        if (tab <= 2) ...[
+        );
+
+    final header = SizedBox(
+      height: 50,
+      child: Row(children: [
+        const SizedBox(width: 14),
+        if (tab == tDay || tab == tWeek || tab == tMonth) ...[
           IconButton(onPressed: () => _nav(-1), icon: Icon(Icons.chevron_left_rounded, color: pal.ink)),
-          GestureDetector(onTap: _home, child: Text(_navLabel(), style: body(14, pal.ink, w: FontWeight.w800))),
+          GestureDetector(onTap: _home, child: Text(_navLabel(), style: titleFont(22, pal.ink))),
           IconButton(onPressed: () => _nav(1), icon: Icon(Icons.chevron_right_rounded, color: pal.ink)),
-        ],
+        ] else
+          Text(tabNames[tab], style: titleFont(22, pal.ink)),
+        const Spacer(),
         if (store.timerStart != 0)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: ActionChip(
-              avatar: const Text('⏱'),
+              avatar: const Icon(Icons.timer_outlined, size: 18),
               label: Text('${store.timerMinutes} min'),
               onPressed: () async {
                 final m = await store.stopTimer();
@@ -257,12 +304,29 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
               },
             ),
           ),
+        Container(
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(color: pal.card, borderRadius: BorderRadius.circular(999), boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 8, offset: Offset(0, 2))]),
+          child: Row(children: [
+            modeBtn('Utiliser', Icons.touch_app_outlined, desk.mode == Mode.use, () => desk.setMode(Mode.use)),
+            modeBtn('Écrire et dessiner', Icons.edit_outlined, desk.mode == Mode.pen, () => desk.setMode(Mode.pen)),
+            modeBtn('Décorer', Icons.auto_awesome_outlined, desk.mode == Mode.deco, () => desk.setMode(Mode.deco)),
+            modeBtn('Annuler', Icons.undo_rounded, false, store.canUndo ? () => store.undo() : null),
+          ]),
+        ),
+        const SizedBox(width: 6),
+        IconButton(
+          tooltip: 'Mon style',
+          onPressed: () => setState(() => styleOpen = !styleOpen),
+          icon: Icon(Icons.palette_outlined, color: styleOpen ? pal.acc : pal.soft),
+        ),
         IconButton(
           tooltip: _syncMsg ?? (store.settings.lastSync == 0 ? 'Synchroniser' : 'Synchronisé'),
           onPressed: () => _sync(manual: true),
           icon: Icon(_syncMsg == null ? Icons.cloud_done_outlined : Icons.cloud_off_outlined, color: _syncMsg == null ? pal.soft : pal.acc),
         ),
         IconButton(onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsScreen())), icon: Icon(Icons.tune_rounded, color: pal.soft)),
+        const SizedBox(width: 6),
       ]),
     );
 
@@ -277,7 +341,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
           autofocus: true,
           child: Scaffold(
             backgroundColor: pal.desk,
-            floatingActionButton: desk.mode == Mode.use
+            floatingActionButton: desk.mode == Mode.use && !styleOpen
                 ? FloatingActionButton(
                     tooltip: 'Noter vite (Ctrl + K)',
                     backgroundColor: pal.acc,
@@ -292,46 +356,37 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
                 Expanded(
                   child: LayoutBuilder(builder: (context, box) {
                     final wide = box.maxWidth >= 900;
-                    final page = (String k, Widget w, double tilt) => PageSheet(
-                          pageKey: k,
-                          tilt: tilt,
-                          onInkLines: (l) => _inkTo(k, l),
-                          child: w,
-                        );
-                    Widget spread;
-                    if (wide) {
-                      spread = Row(children: [
-                        Expanded(child: Center(child: page(lk, lw, -0.3))),
-                        const SizedBox(width: 14),
-                        Expanded(child: Center(child: page(rk, rw, 0.3))),
-                      ]);
-                    } else {
-                      spread = Column(children: [
-                        SegmentedButton<int>(
-                          segments: [ButtonSegment(value: 0, label: Text(ln)), ButtonSegment(value: 1, label: Text(rn))],
-                          selected: {narrowPage},
-                          onSelectionChanged: (v) => setState(() {
-                            narrowPage = v.first;
-                            desk.focus(narrowPage == 0 ? lk : rk);
-                          }),
-                        ),
-                        const SizedBox(height: 8),
-                        Expanded(child: Center(child: narrowPage == 0 ? page(lk, lw, 0) : page(rk, rw, 0))),
-                      ]);
-                    }
-                    spread = Padding(padding: const EdgeInsets.fromLTRB(14, 10, 6, 14), child: spread);
-                    final bar = ModeBar(vertical: wide, onInk: (k, l) => _inkTo(k, l));
+                    final side = desk.mode == Mode.deco ? const Atelier() : (styleOpen ? StylePanel(onClose: () => setState(() => styleOpen = false)) : null);
+                    final planner = _Planner(
+                      wide: wide,
+                      tab: tab,
+                      month: month.month,
+                      onTab: _setTab,
+                      onMonth: (m) => setState(() {
+                        month = DateTime(month.year, m, 1);
+                        tab = tMonth;
+                      }),
+                      left: PageSheet(pageKey: lk, flat: true, bare: tab == tCover, paperOverride: tab == tCover ? (coverStyles[store.settings.coverStyle] ?? pal.cover) : null, onInkLines: (l) => _inkTo(lk, l), child: lw),
+                      right: rw == null ? null : PageSheet(pageKey: rk, flat: true, onInkLines: (l) => _inkTo(rk, l), child: rw),
+                      leftName: ln,
+                      rightName: rn,
+                      narrowPage: narrowPage,
+                      onNarrow: (i) => setState(() {
+                        narrowPage = i;
+                        desk.focus(i == 0 ? lk : rk);
+                      }),
+                      penBar: desk.mode == Mode.pen ? PenBar(onRecognize: android ? _recognize : null) : null,
+                      zoom: desk.mode == Mode.pen,
+                    );
                     if (wide) {
                       return Row(children: [
-                        Expanded(child: spread),
-                        Padding(padding: const EdgeInsets.only(right: 8), child: Center(child: bar)),
-                        if (desk.mode == Mode.deco) const SizedBox(width: 330, child: Atelier()),
+                        Expanded(child: planner),
+                        if (side != null) Padding(padding: const EdgeInsets.fromLTRB(0, 6, 12, 12), child: SizedBox(width: 340, child: side)),
                       ]);
                     }
                     return Column(children: [
-                      Expanded(child: spread),
-                      bar,
-                      if (desk.mode == Mode.deco) const SizedBox(height: 300, child: Atelier()),
+                      Expanded(child: planner),
+                      if (side != null) SizedBox(height: 320, child: side),
                     ]);
                   }),
                 ),
@@ -344,89 +399,171 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   }
 }
 
-/// La barre des modes : utiliser, écrire à la main, décorer, annuler.
-class ModeBar extends StatelessWidget {
-  final bool vertical;
-  final Future<void> Function(String page, List<String> lines) onInk;
-  const ModeBar({super.key, required this.vertical, required this.onInk});
+/// L'agenda : la couverture autour, les onglets, la spirale entre les deux pages.
+class _Planner extends StatelessWidget {
+  final bool wide;
+  final int tab, month;
+  final ValueChanged<int> onTab, onMonth;
+  final Widget left;
+  final Widget? right;
+  final String leftName, rightName;
+  final int narrowPage;
+  final ValueChanged<int> onNarrow;
+  final Widget? penBar;
+  final bool zoom;
+  const _Planner(
+      {required this.wide,
+      required this.tab,
+      required this.month,
+      required this.onTab,
+      required this.onMonth,
+      required this.left,
+      required this.right,
+      required this.leftName,
+      required this.rightName,
+      required this.narrowPage,
+      required this.onNarrow,
+      required this.penBar,
+      required this.zoom});
 
   @override
   Widget build(BuildContext context) {
     final store = StoreScope.of(context);
-    final desk = DeskScope.of(context);
     final pal = Pal.byId(store.settings.theme);
-    Widget btn(String tip, IconData icon, bool on, VoidCallback? f, {Color? color}) => Padding(
-          padding: const EdgeInsets.all(4),
-          child: Tooltip(
-            message: tip,
-            child: Material(
-              color: on ? pal.acc : pal.card,
-              shape: const CircleBorder(),
-              elevation: 2,
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: f,
-                child: SizedBox(width: 44, height: 44, child: Icon(icon, size: 22, color: on ? Colors.white : (color ?? pal.ink))),
-              ),
-            ),
-          ),
-        );
-    final android = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
-    final items = <Widget>[
-      btn('Utiliser', Icons.touch_app_rounded, desk.mode == Mode.use, () => desk.setMode(Mode.use)),
-      btn('Écrire à la main', Icons.edit_rounded, desk.mode == Mode.pen, () => desk.setMode(Mode.pen)),
-      btn('Décorer', Icons.palette_rounded, desk.mode == Mode.deco, () => desk.setMode(Mode.deco)),
-      btn('Annuler', Icons.undo_rounded, false, store.canUndo ? () => store.undo() : null, color: store.canUndo ? pal.ink : pal.line),
-      if (desk.mode == Mode.pen) ...[
-        const SizedBox(width: 8, height: 8),
-        for (final c in store.settings.palette.take(6))
+    final cover = coverStyles[store.settings.coverStyle] ?? pal.cover;
+    final tabs = pal.tabs;
+    final sideW = wide ? 34.0 : 0.0;
+
+    final topTabs = SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        for (var i = 0; i < tabNames.length; i++)
           GestureDetector(
-            onTap: () {
-              desk.penColor = c;
-              desk.eraser = false;
-              desk.set();
-            },
-            child: Container(
-              width: 30,
-              height: 30,
-              margin: const EdgeInsets.all(5),
+            onTap: () => onTab(i),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              margin: const EdgeInsets.only(right: 4),
+              padding: EdgeInsets.fromLTRB(14, tab == i ? 10 : 6, 14, 8),
               decoration: BoxDecoration(
-                color: Color(c),
-                shape: BoxShape.circle,
-                border: Border.all(color: desk.penColor == c && !desk.eraser ? pal.acc : pal.line, width: 3),
+                color: (i == tCover ? cover : tabs[(i - 1) % tabs.length]).withValues(alpha: tab == i ? 1 : 0.8),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
               ),
+              child: Text(tabNames[i], style: body(12, pal.dark ? Colors.white : pal.ink, w: FontWeight.w800)),
             ),
           ),
-        btn('Fin / épais', desk.penWidth > 3 ? Icons.line_weight_rounded : Icons.horizontal_rule_rounded, false, () {
-          desk.penWidth = desk.penWidth > 3 ? 1.8 : (desk.penWidth > 2 ? 4.2 : 2.6);
-          desk.set();
-        }),
-        btn('Surligneur', Icons.highlight_rounded, desk.highlighter, () {
-          desk.highlighter = !desk.highlighter;
-          desk.eraser = false;
-          desk.set();
-        }),
-        btn('Gomme', Icons.auto_fix_normal_rounded, desk.eraser, () {
-          desk.eraser = !desk.eraser;
-          desk.set();
-        }),
-        if (android)
-          btn('Mon écriture → lignes', Icons.text_fields_rounded, false, () async {
-            final page = desk.focusPage;
-            final lines = await recognizeInk(store, desk, page);
-            if (!context.mounted) return;
-            if (lines == null) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reconnaissance indisponible pour l’instant (modèle à télécharger, connexion ?)')));
-              return;
-            }
-            if (lines.isEmpty) return;
-            await onInk(page, lines);
-            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${lines.length} ligne${lines.length > 1 ? 's' : ''} ajoutée${lines.length > 1 ? 's' : ''}')));
-          }),
-      ],
-    ];
-    if (vertical) return SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: items));
-    return SizedBox(height: 56, child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8), children: items));
+      ]),
+    );
+
+    Widget pages;
+    if (right == null) {
+      pages = Center(child: left);
+    } else if (wide) {
+      pages = Row(children: [
+        Expanded(child: Align(alignment: Alignment.centerRight, child: left)),
+        const _Spiral(),
+        Expanded(child: Align(alignment: Alignment.centerLeft, child: right)),
+      ]);
+    } else {
+      pages = Column(children: [
+        SegmentedButton<int>(
+          segments: [ButtonSegment(value: 0, label: Text(leftName)), ButtonSegment(value: 1, label: Text(rightName))],
+          selected: {narrowPage},
+          onSelectionChanged: (v) => onNarrow(v.first),
+        ),
+        const SizedBox(height: 8),
+        Expanded(child: Center(child: narrowPage == 0 ? left : right!)),
+      ]);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+      child: Stack(children: [
+        // la couverture qui dépasse autour des pages
+        Positioned.fill(
+          top: 30,
+          right: sideW,
+          child: Container(
+            decoration: BoxDecoration(
+              color: cover,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 30, offset: Offset(0, 12))],
+            ),
+          ),
+        ),
+        Positioned(left: 22, right: sideW + 22, top: 0, height: 34, child: topTabs),
+        if (wide)
+          Positioned(
+            right: 0,
+            top: 76,
+            bottom: 20,
+            child: SingleChildScrollView(
+              child: Column(children: [
+                for (var m = 1; m <= 12; m++)
+                  GestureDetector(
+                    onTap: () => onMonth(m),
+                    child: Container(
+                      width: m == month && tab == tMonth ? 40 : 34,
+                      height: 44,
+                      margin: const EdgeInsets.only(bottom: 3),
+                      decoration: BoxDecoration(
+                        color: pal.dark ? monthTabColors[m - 1].withValues(alpha: .55) : monthTabColors[m - 1],
+                        borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                      ),
+                      child: Center(
+                        child: RotatedBox(
+                          quarterTurns: 1,
+                          child: Text(monthNames[m - 1].substring(0, m == 6 || m == 7 ? 4 : 3).toUpperCase(), style: body(10, pal.dark ? Colors.white : pal.ink, w: FontWeight.w800).copyWith(letterSpacing: 1.2)),
+                        ),
+                      ),
+                    ),
+                  ),
+              ]),
+            ),
+          ),
+        Positioned.fill(
+          top: penBar != null ? 128 : 44,
+          left: 14,
+          right: sideW + 14,
+          bottom: 14,
+          child: ZoomBox(enabled: zoom, child: pages),
+        ),
+        if (penBar != null)
+          Positioned(
+            top: 42,
+            left: 30,
+            right: sideW + 30,
+            child: Center(child: penBar!),
+          ),
+      ]),
+    );
+  }
+}
+
+/// Les anneaux de la spirale.
+class _Spiral extends StatelessWidget {
+  const _Spiral();
+  @override
+  Widget build(BuildContext context) {
+    final pal = Pal.byId(StoreScope.of(context).settings.theme);
+    return SizedBox(
+      width: 40,
+      child: LayoutBuilder(builder: (context, box) {
+        final n = ((box.maxHeight - 30) / 27).floor().clamp(4, 40).toInt();
+        return Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          for (var i = 0; i < n; i++)
+            Container(
+              width: 38,
+              height: 11,
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: pal.dark ? const Color(0xFF7A7084) : const Color(0xFFBDB0A8), width: 2.5),
+                gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: pal.dark ? const [Color(0xFF6A6274), Color(0xFF443D51)] : const [Color(0xFFF6F0EC), Color(0xFFD3C7C0)]),
+              ),
+            ),
+        ]);
+      }),
+    );
   }
 }
 
@@ -527,30 +664,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       backgroundColor: pal.paper,
       appBar: AppBar(title: const Text('Réglages'), backgroundColor: pal.paper),
       body: ListView(padding: const EdgeInsets.all(20), children: [
-        Label('Ambiance', pal.soft),
-        Wrap(spacing: 8, children: [
-          for (final t in Pal.all)
-            ChoiceChip(
-              label: Text(t.name),
-              selected: store.settings.theme == t.id,
-              onSelected: (_) async {
-                store.settings.theme = t.id;
-                await store.setPaper('default', color: t.paper.value);
-                await store.touchSettings();
-              },
-            ),
-        ]),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Écrire seulement au stylet'),
-          subtitle: const Text('Le doigt ne dessine pas (utile pour poser la main sur l’écran).'),
-          value: store.settings.stylusOnly,
-          onChanged: (v) {
-            store.settings.stylusOnly = v;
-            store.save();
-            setState(() {});
-          },
-        ),
         Label('Habitudes suivies au feu de camp', pal.soft),
         for (final h in store.activeHabits)
           ListTile(

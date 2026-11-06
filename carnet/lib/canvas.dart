@@ -6,6 +6,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_digital_ink_recognition/google_mlkit_digital_ink_recognition.dart' as mk;
 
+import 'ink.dart';
 import 'model.dart';
 import 'store.dart';
 import 'theme.dart';
@@ -21,16 +22,22 @@ class Desk extends ChangeNotifier {
   String selected = '';
   String focusPage = '';
   Map<String, dynamic>? washi; // rouleau armé : on le tire sur la page
-  int penColor = 0xFF3B3346;
-  double penWidth = 2.6;
-  bool highlighter = false;
-  bool eraser = false;
+  String tool = 'stylo'; // une pointe, ou gomme, lasso, forme
+  String shape = 'ligne';
+  int penColor = 0xFF4A3F3C;
+  final Map<String, double> _widths = {};
+  double eraserSize = 12;
+  bool eraseWhole = false;
   final Map<String, int> inkFrom = {}; // page → premier trait pas encore converti en texte
+  String selPage = '';
+  List<Stroke> sel = [];
+  Rect? _selBox;
 
   void setMode(Mode m) {
     mode = m;
     selected = '';
     washi = null;
+    clearSel(notify: false);
     notifyListeners();
   }
 
@@ -49,6 +56,60 @@ class Desk extends ChangeNotifier {
     washi = w;
     selected = '';
     notifyListeners();
+  }
+
+  void setTool(String t) {
+    tool = t;
+    if (t != 'lasso') clearSel(notify: false);
+    notifyListeners();
+  }
+
+  void setShape(String s) {
+    shape = s;
+    notifyListeners();
+  }
+
+  void setColor(int c) {
+    penColor = c;
+    if (tool == 'gomme' || tool == 'lasso') tool = 'stylo';
+    notifyListeners();
+  }
+
+  double widthOf(String nib) => _widths[nib] ?? nibOf(nib).width;
+  void setWidth(String nib, double w) {
+    _widths[nib] = w;
+    notifyListeners();
+  }
+
+  void setEraser(double v) {
+    eraserSize = v;
+    notifyListeners();
+  }
+
+  void toggleEraseWhole() {
+    eraseWhole = !eraseWhole;
+    notifyListeners();
+  }
+
+  void setSel(String page, List<Stroke> l) {
+    selPage = page;
+    sel = l;
+    _selBox = l.isEmpty ? null : strokesBounds(l);
+    notifyListeners();
+  }
+
+  void refreshSel() {
+    _selBox = sel.isEmpty ? null : strokesBounds(sel);
+    notifyListeners();
+  }
+
+  Rect? selBox(String page) => page == selPage ? _selBox : null;
+
+  void clearSel({bool notify = true}) {
+    sel = [];
+    selPage = '';
+    _selBox = null;
+    if (notify) notifyListeners();
   }
 
   void set() => notifyListeners();
@@ -73,82 +134,19 @@ class PageSheet extends StatefulWidget {
   final Widget child;
   final double tilt;
   final void Function(List<String> lines)? onInkLines;
-  const PageSheet({super.key, required this.pageKey, required this.child, this.tilt = 0, this.onInkLines});
+  final bool flat; // dans l'agenda : pas d'ombre, coins discrets
+  final bool ornaments;
+  final bool bare; // sans marges (couverture)
+  final Color? paperOverride;
+  const PageSheet(
+      {super.key, required this.pageKey, required this.child, this.tilt = 0, this.onInkLines, this.flat = false, this.ornaments = true, this.bare = false, this.paperOverride});
 
   @override
   State<PageSheet> createState() => _PageSheetState();
 }
 
 class _PageSheetState extends State<PageSheet> {
-  Stroke? _cur;
-  bool _erasing = false;
   Offset? _washiA, _washiB;
-
-  bool _acceptPen(PointerEvent e, Store store) {
-    final stylus = e.kind == PointerDeviceKind.stylus || e.kind == PointerDeviceKind.invertedStylus;
-    if (stylus || e.kind == PointerDeviceKind.mouse) return true;
-    return !store.settings.stylusOnly;
-  }
-
-  void _down(PointerDownEvent e, Store store, Desk desk) {
-    if (!_acceptPen(e, store)) return;
-    desk.focus(widget.pageKey);
-    store.snapshot(widget.pageKey);
-    final erase = desk.eraser || e.kind == PointerDeviceKind.invertedStylus || (e.buttons & kSecondaryButton) != 0;
-    if (erase) {
-      _erasing = true;
-      _eraseAt(e.localPosition, store);
-      return;
-    }
-    _erasing = false;
-    final c = desk.highlighter ? (desk.penColor & 0x00FFFFFF) | 0x55000000 : desk.penColor;
-    _cur = Stroke(color: c, width: desk.highlighter ? 16 : desk.penWidth, hl: desk.highlighter);
-    _add(e);
-  }
-
-  void _add(PointerEvent e) {
-    final p = e.kind == PointerDeviceKind.stylus && e.pressure > 0 ? e.pressure : 0.5;
-    setState(() => _cur!.pts.addAll([e.localPosition.dx, e.localPosition.dy, p.clamp(0.1, 1.0)]));
-  }
-
-  void _move(PointerMoveEvent e, Store store) {
-    if (!_acceptPen(e, store)) return;
-    if (_erasing) {
-      _eraseAt(e.localPosition, store);
-      return;
-    }
-    if (_cur != null) _add(e);
-  }
-
-  void _up(Store store) {
-    if (_cur != null && _cur!.pts.length >= 6) {
-      store.ink(widget.pageKey).strokes.add(_cur!);
-      store.touchInk(widget.pageKey);
-    }
-    if (_erasing) store.touchInk(widget.pageKey);
-    setState(() {
-      _cur = null;
-      _erasing = false;
-    });
-  }
-
-  void _eraseAt(Offset o, Store store) {
-    final ink = store.ink(widget.pageKey);
-    const r = 14.0;
-    final before = ink.strokes.length;
-    ink.strokes.removeWhere((s) {
-      for (var i = 0; i + 1 < s.pts.length; i += 3) {
-        final dx = s.pts[i] - o.dx, dy = s.pts[i + 1] - o.dy;
-        if (dx * dx + dy * dy < r * r) return true;
-      }
-      return false;
-    });
-    if (ink.strokes.length != before) {
-      final from = DeskScope.of(context).inkFrom[widget.pageKey];
-      if (from != null && from > ink.strokes.length) DeskScope.of(context).inkFrom[widget.pageKey] = ink.strokes.length;
-      setState(() {});
-    }
-  }
 
   Future<void> _endWashi(Store store, Desk desk) async {
     final a = _washiA, b = _washiB, w = desk.washi;
@@ -180,9 +178,9 @@ class _PageSheetState extends State<PageSheet> {
     final pal = Pal.byId(store.settings.theme);
     final paper = store.paper(widget.pageKey);
     final decos = store.pageDecos(widget.pageKey);
-    final strokes = store.inks[widget.pageKey]?.strokes ?? const <Stroke>[];
     final focused = desk.focusPage == widget.pageKey && desk.mode != Mode.use;
-    final paperColor = Color(paper.color);
+    final paperColor = widget.paperOverride ?? (paper.color == 0 ? pal.paper : Color(paper.color));
+    final right = widget.pageKey.endsWith(':R');
     final darkPaper = paperColor.computeLuminance() < 0.3;
 
     final sheet = Stack(clipBehavior: Clip.none, children: [
@@ -191,23 +189,26 @@ class _PageSheetState extends State<PageSheet> {
         child: Container(
           decoration: BoxDecoration(
             color: paperColor,
-            borderRadius: BorderRadius.circular(12),
-            border: focused ? Border.all(color: pal.acc.withValues(alpha: 0.6), width: 3) : null,
-            boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 22, offset: Offset(0, 6))],
+            borderRadius: BorderRadius.circular(widget.flat ? 8 : 12),
+            border: focused ? Border.all(color: pal.acc.withValues(alpha: 0.45), width: 2.5) : null,
+            boxShadow: widget.flat ? null : const [BoxShadow(color: Color(0x33000000), blurRadius: 22, offset: Offset(0, 6))],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: CustomPaint(painter: _PaperPainter(paper.pattern, darkPaper ? pal.line : Color.alphaBlend(const Color(0x22000000), paperColor))),
+            borderRadius: BorderRadius.circular(widget.flat ? 8 : 12),
+            child: CustomPaint(painter: _PaperPainter(paper.pattern, darkPaper ? pal.line : (paper.color == 0 ? pal.dot : Color.alphaBlend(const Color(0x22000000), paperColor)))),
           ),
         ),
       ),
+      // petits ornements selon le niveau de déco
+      if (widget.ornaments && !widget.bare && store.settings.decoLevel > 0.3)
+        Positioned.fill(child: IgnorePointer(child: CustomPaint(painter: Ornaments(store.settings.decoLevel, pal, right)))),
       // contenu
       Positioned.fill(
         child: IgnorePointer(
           ignoring: desk.mode != Mode.use,
           child: Listener(
             onPointerDown: (_) => desk.focus(widget.pageKey),
-            child: Padding(padding: const EdgeInsets.fromLTRB(34, 30, 34, 26), child: widget.child),
+            child: widget.bare ? widget.child : Padding(padding: const EdgeInsets.fromLTRB(34, 30, 34, 26), child: widget.child),
           ),
         ),
       ),
@@ -247,19 +248,7 @@ class _PageSheetState extends State<PageSheet> {
           );
         }),
       // encre
-      Positioned.fill(
-        child: IgnorePointer(
-          ignoring: desk.mode != Mode.pen,
-          child: Listener(
-            behavior: HitTestBehavior.opaque,
-            onPointerDown: (e) => _down(e, store, desk),
-            onPointerMove: (e) => _move(e, store),
-            onPointerUp: (_) => _up(store),
-            onPointerCancel: (_) => _up(store),
-            child: CustomPaint(painter: InkPainter(strokes, _cur, strokes.length)),
-          ),
-        ),
-      ),
+      Positioned.fill(child: InkLayer(pageKey: widget.pageKey)),
       // barre de l'élément sélectionné
       if (desk.mode == Mode.deco && desk.selected.isNotEmpty && decos.any((d) => d.id == desk.selected))
         Positioned(top: 8, left: 0, right: 0, child: Center(child: _DecoBar(deco: decos.firstWhere((d) => d.id == desk.selected)))),
@@ -355,6 +344,114 @@ Future<List<String>?> recognizeInk(Store store, Desk desk, String page) async {
   }
 }
 
+/// Étoiles, lune, feuillage et nœud dessinés sur la page (niveau de déco).
+class Ornaments extends CustomPainter {
+  final double level;
+  final Pal pal;
+  final bool right;
+  Ornaments(this.level, this.pal, this.right);
+
+  void _spark(Canvas c, Offset o, double s, Paint p) {
+    final path = Path()
+      ..moveTo(o.dx, o.dy - s)
+      ..quadraticBezierTo(o.dx + s * .15, o.dy - s * .15, o.dx + s, o.dy)
+      ..quadraticBezierTo(o.dx + s * .15, o.dy + s * .15, o.dx, o.dy + s)
+      ..quadraticBezierTo(o.dx - s * .15, o.dy + s * .15, o.dx - s, o.dy)
+      ..quadraticBezierTo(o.dx - s * .15, o.dy - s * .15, o.dx, o.dy - s)
+      ..close();
+    c.drawPath(path, p);
+  }
+
+  void _vine(Canvas c, Offset a, double len, Paint stem, Paint leaf) {
+    final path = Path()
+      ..moveTo(a.dx, a.dy)
+      ..cubicTo(a.dx + len * .3, a.dy - 8, a.dx + len * .6, a.dy + 8, a.dx + len, a.dy);
+    c.drawPath(path, stem);
+    for (var i = 1; i < 7; i++) {
+      final x = a.dx + len * i / 7;
+      final d = i.isOdd ? -1.0 : 1.0;
+      final l = Path()
+        ..moveTo(x, a.dy)
+        ..quadraticBezierTo(x + 6, a.dy - 10 * d, x + 13, a.dy - 11 * d)
+        ..quadraticBezierTo(x + 5, a.dy - 3 * d, x, a.dy)
+        ..close();
+      c.drawPath(l, leaf);
+      c.drawPath(l, stem);
+    }
+  }
+
+  void _bow(Canvas c, Offset o, double k, Paint fill, Paint line) {
+    for (final sgn in [-1.0, 1.0]) {
+      final w = Path()
+        ..moveTo(o.dx, o.dy)
+        ..cubicTo(o.dx + sgn * 14 * k, o.dy - 14 * k, o.dx + sgn * 28 * k, o.dy - 8 * k, o.dx + sgn * 24 * k, o.dy + 2 * k)
+        ..cubicTo(o.dx + sgn * 20 * k, o.dy + 12 * k, o.dx + sgn * 8 * k, o.dy + 6 * k, o.dx, o.dy)
+        ..close();
+      c.drawPath(w, fill);
+      c.drawPath(w, line);
+      final t = Path()
+        ..moveTo(o.dx + sgn * 2 * k, o.dy + 2 * k)
+        ..lineTo(o.dx + sgn * 10 * k, o.dy + 20 * k)
+        ..lineTo(o.dx + sgn * 5 * k, o.dy + 18 * k)
+        ..lineTo(o.dx + sgn * 3 * k, o.dy + 24 * k)
+        ..close();
+      c.drawPath(t, fill);
+      c.drawPath(t, line);
+    }
+    c.drawCircle(o.translate(0, 1), 5 * k, fill);
+    c.drawCircle(o.translate(0, 1), 5 * k, line);
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final gold = Paint()
+      ..color = pal.acc3
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4;
+    final goldFill = Paint()..color = pal.acc3;
+    final stem = Paint()
+      ..color = pal.soft.withValues(alpha: .8)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1;
+    final leaf = Paint()..color = pal.acc2.withValues(alpha: .55);
+    final w = size.width, h = size.height;
+    if (!right) {
+      _spark(canvas, Offset(w - 92, 40), 8, gold);
+      _spark(canvas, Offset(w - 70, 60), 4, goldFill);
+      final moon = Path()
+        ..addArc(Rect.fromCircle(center: Offset(w - 46, 38), radius: 9), -pi / 2.2, pi * 1.3);
+      canvas.drawPath(moon, gold);
+      _vine(canvas, Offset(w * .2, h - 34), w * .6, stem, leaf);
+    } else {
+      _spark(canvas, Offset(w - 54, 46), 7, gold);
+      _spark(canvas, Offset(w - 36, 66), 3.5, goldFill);
+      _vine(canvas, Offset(w * .25, h - 30), w * .5, stem, leaf);
+    }
+    if (level > 1.4) {
+      final fill = Paint()..color = pal.tint;
+      final line = Paint()
+        ..color = pal.acc
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.3;
+      _bow(canvas, Offset(right ? w - 40 : 44, right ? h - 70 : h - 72), 1.0, fill, line);
+      for (var i = 0; i < 3; i++) {
+        final o = Offset((right ? 36.0 : w - 110) + i * 22, 22);
+        final heart = Path()
+          ..moveTo(o.dx, o.dy + 6)
+          ..cubicTo(o.dx - 7, o.dy + 1, o.dx - 8, o.dy - 4, o.dx - 4.5, o.dy - 5.5)
+          ..cubicTo(o.dx - 2, o.dy - 7, o.dx, o.dy - 4.5, o.dx, o.dy - 3)
+          ..cubicTo(o.dx, o.dy - 4.5, o.dx + 2, o.dy - 7, o.dx + 4.5, o.dy - 5.5)
+          ..cubicTo(o.dx + 8, o.dy - 4, o.dx + 7, o.dy + 1, o.dx, o.dy + 6)
+          ..close();
+        canvas.drawPath(heart, Paint()..color = (i.isEven ? pal.acc : pal.tint));
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(Ornaments o) => o.level != level || o.pal != pal || o.right != right;
+}
+
 class _PaperPainter extends CustomPainter {
   final String pattern;
   final Color c;
@@ -387,91 +484,6 @@ class _PaperPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_PaperPainter o) => o.pattern != pattern || o.c != c;
-}
-
-class InkPainter extends CustomPainter {
-  final List<Stroke> strokes;
-  final Stroke? cur;
-  final int n;
-  InkPainter(this.strokes, this.cur, this.n);
-
-  void _draw(Canvas canvas, Stroke s) {
-    if (s.pts.length < 6) return;
-    final paint = Paint()
-      ..color = Color(s.color)
-      ..style = PaintingStyle.stroke
-      ..strokeCap = s.hl ? StrokeCap.square : StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    if (s.hl) {
-      final path = Path()..moveTo(s.pts[0], s.pts[1]);
-      for (var i = 3; i + 1 < s.pts.length; i += 3) {
-        path.lineTo(s.pts[i], s.pts[i + 1]);
-      }
-      paint.strokeWidth = s.width;
-      canvas.drawPath(path, paint);
-      return;
-    }
-    // trait lissé à épaisseur variable (pression), dessiné comme une forme pleine
-    final pts = <Offset>[];
-    final ws = <double>[];
-    var sp = Offset(s.pts[0], s.pts[1]);
-    var sw = s.pts[2];
-    for (var i = 0; i + 2 < s.pts.length; i += 3) {
-      final o = Offset(s.pts[i], s.pts[i + 1]);
-      sp = Offset.lerp(sp, o, 0.55)!; // lissage des tremblements
-      sw = sw * 0.7 + s.pts[i + 2] * 0.3;
-      if (pts.isNotEmpty && (sp - pts.last).distance < 0.8) continue;
-      pts.add(sp);
-      ws.add(s.width * (0.45 + 0.9 * sw) / 2);
-    }
-    final fill = Paint()
-      ..color = Color(s.color)
-      ..style = PaintingStyle.fill
-      ..isAntiAlias = true;
-    if (pts.length < 2) {
-      canvas.drawCircle(pts.first, ws.first, fill);
-      return;
-    }
-    final left = <Offset>[], right = <Offset>[];
-    for (var i = 0; i < pts.length; i++) {
-      final a = pts[max(0, i - 1)], b = pts[min(pts.length - 1, i + 1)];
-      var dir = b - a;
-      if (dir.distance == 0) dir = const Offset(1, 0);
-      final n = Offset(-dir.dy, dir.dx) / dir.distance;
-      // affinage aux extrémités, comme une vraie pointe
-      final t = min(1.0, min(i, pts.length - 1 - i) / 3 + 0.35);
-      left.add(pts[i] + n * ws[i] * t);
-      right.add(pts[i] - n * ws[i] * t);
-    }
-    final path = Path()..moveTo(left.first.dx, left.first.dy);
-    void smooth(List<Offset> l) {
-      for (var i = 1; i < l.length - 1; i++) {
-        final m = (l[i] + l[i + 1]) / 2;
-        path.quadraticBezierTo(l[i].dx, l[i].dy, m.dx, m.dy);
-      }
-      path.lineTo(l.last.dx, l.last.dy);
-    }
-
-    smooth(left);
-    final r = right.reversed.toList();
-    path.lineTo(r.first.dx, r.first.dy);
-    smooth(r);
-    path.close();
-    canvas.drawPath(path, fill);
-    canvas.drawCircle(pts.first, ws.first * 0.5, fill);
-    canvas.drawCircle(pts.last, ws.last * 0.5, fill);
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    for (final s in strokes) {
-      _draw(canvas, s);
-    }
-    if (cur != null) _draw(canvas, cur!);
-  }
-
-  @override
-  bool shouldRepaint(InkPainter o) => true;
 }
 
 /// Dessin d'un élément de décoration à sa taille.

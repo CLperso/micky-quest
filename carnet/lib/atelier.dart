@@ -162,13 +162,14 @@ class _AtelierState extends State<Atelier> {
         content = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           section('Couleur du papier'),
           Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final c in paperColors)
+            for (final c in [0, ...paperColors])
               GestureDetector(
                 onTap: () => store.setPaper(page, color: c),
                 child: Container(
                   width: 44,
                   height: 44,
-                  decoration: BoxDecoration(color: Color(c), borderRadius: BorderRadius.circular(10), border: Border.all(color: p.color == c ? pal.acc : pal.line, width: 3)),
+                  child: c == 0 ? Icon(Icons.auto_awesome, size: 16, color: pal.soft) : null,
+                  decoration: BoxDecoration(color: c == 0 ? pal.paper : Color(c), borderRadius: BorderRadius.circular(10), border: Border.all(color: p.color == c ? pal.acc : pal.line, width: 3)),
                 ),
               ),
           ]),
@@ -213,7 +214,7 @@ class _AtelierState extends State<Atelier> {
                 selected: store.settings.theme == t.id,
                 onSelected: (_) async {
                   store.settings.theme = t.id;
-                  await store.setPaper('default', color: t.paper.value);
+                  await store.setPaper('default', color: 0);
                   await store.touchSettings();
                 },
               ),
