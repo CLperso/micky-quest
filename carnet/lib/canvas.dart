@@ -231,10 +231,7 @@ class _PageSheetState extends State<PageSheet> {
         ),
       // décoration
       for (final d in decos)
-        IgnorePointer(
-          ignoring: desk.mode != Mode.deco || desk.washi != null,
-          child: _DecoView(key: ValueKey(d.id), deco: d, selected: desk.mode == Mode.deco && desk.selected == d.id),
-        ),
+        _DecoView(key: ValueKey(d.id), deco: d, locked: desk.mode != Mode.deco || desk.washi != null, selected: desk.mode == Mode.deco && desk.selected == d.id),
       // washi en train d'être tiré
       if (_washiA != null && _washiB != null && desk.washi != null)
         Builder(builder: (_) {
@@ -414,10 +411,55 @@ class InkPainter extends CustomPainter {
       canvas.drawPath(path, paint);
       return;
     }
-    for (var i = 3; i + 2 < s.pts.length; i += 3) {
-      paint.strokeWidth = s.width * (0.55 + s.pts[i + 2]);
-      canvas.drawLine(Offset(s.pts[i - 3], s.pts[i - 2]), Offset(s.pts[i], s.pts[i + 1]), paint);
+    // trait lissé à épaisseur variable (pression), dessiné comme une forme pleine
+    final pts = <Offset>[];
+    final ws = <double>[];
+    var sp = Offset(s.pts[0], s.pts[1]);
+    var sw = s.pts[2];
+    for (var i = 0; i + 2 < s.pts.length; i += 3) {
+      final o = Offset(s.pts[i], s.pts[i + 1]);
+      sp = Offset.lerp(sp, o, 0.55)!; // lissage des tremblements
+      sw = sw * 0.7 + s.pts[i + 2] * 0.3;
+      if (pts.isNotEmpty && (sp - pts.last).distance < 0.8) continue;
+      pts.add(sp);
+      ws.add(s.width * (0.45 + 0.9 * sw) / 2);
     }
+    final fill = Paint()
+      ..color = Color(s.color)
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true;
+    if (pts.length < 2) {
+      canvas.drawCircle(pts.first, ws.first, fill);
+      return;
+    }
+    final left = <Offset>[], right = <Offset>[];
+    for (var i = 0; i < pts.length; i++) {
+      final a = pts[max(0, i - 1)], b = pts[min(pts.length - 1, i + 1)];
+      var dir = b - a;
+      if (dir.distance == 0) dir = const Offset(1, 0);
+      final n = Offset(-dir.dy, dir.dx) / dir.distance;
+      // affinage aux extrémités, comme une vraie pointe
+      final t = min(1.0, min(i, pts.length - 1 - i) / 3 + 0.35);
+      left.add(pts[i] + n * ws[i] * t);
+      right.add(pts[i] - n * ws[i] * t);
+    }
+    final path = Path()..moveTo(left.first.dx, left.first.dy);
+    void smooth(List<Offset> l) {
+      for (var i = 1; i < l.length - 1; i++) {
+        final m = (l[i] + l[i + 1]) / 2;
+        path.quadraticBezierTo(l[i].dx, l[i].dy, m.dx, m.dy);
+      }
+      path.lineTo(l.last.dx, l.last.dy);
+    }
+
+    smooth(left);
+    final r = right.reversed.toList();
+    path.lineTo(r.first.dx, r.first.dy);
+    smooth(r);
+    path.close();
+    canvas.drawPath(path, fill);
+    canvas.drawCircle(pts.first, ws.first * 0.5, fill);
+    canvas.drawCircle(pts.last, ws.last * 0.5, fill);
   }
 
   @override
@@ -665,8 +707,8 @@ class FramePainter extends CustomPainter {
 /// Un élément posé : déplacer, tourner, agrandir (aux doigts ou avec les poignées).
 class _DecoView extends StatefulWidget {
   final Deco deco;
-  final bool selected;
-  const _DecoView({super.key, required this.deco, required this.selected});
+  final bool selected, locked;
+  const _DecoView({super.key, required this.deco, required this.selected, this.locked = false});
   @override
   State<_DecoView> createState() => _DecoViewState();
 }
@@ -697,7 +739,9 @@ class _DecoViewState extends State<_DecoView> {
       top: d.y - d.h / 2 - m,
       width: d.w + 2 * m,
       height: d.h + 2 * m,
-      child: Transform.rotate(
+      child: IgnorePointer(
+        ignoring: widget.locked,
+        child: Transform.rotate(
         angle: d.rot,
         child: Stack(clipBehavior: Clip.none, children: [
           Positioned(
@@ -784,7 +828,7 @@ class _DecoViewState extends State<_DecoView> {
             ),
           ],
         ]),
-      ),
+      )),
     );
   }
 
