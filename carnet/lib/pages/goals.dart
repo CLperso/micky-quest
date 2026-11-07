@@ -22,7 +22,7 @@ class GoalsIndex extends StatelessWidget {
     final monday = mondayOf(DateTime.now());
     return SingleChildScrollView(
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const PageTitle(over: 'ce qui compte pour moi', title: 'Mes objectifs'),
+        const PageTitle(id: 'goals', over: '', title: 'Objectifs'),
         const SizedBox(height: 10),
         for (final g in store.activeGoals)
           Padding(
@@ -98,7 +98,7 @@ class GoalDetail extends StatelessWidget {
           Tile('${store.goalStepsBetween(g.id, mondayOf(now), 7)}/${g.perWeek}', 'cette semaine', Color(g.color)),
           Tile('${store.goalStepsBetween(g.id, first, now.day)}', 'pas ce mois-ci', Color(g.color)),
         ]),
-        Label('Les prochains pas', pal.soft),
+        const ELabel('goal.steps', 'Prochains pas'),
         BulletList(
           items: store.goalEntries(g.id).where((e) => !e.del).toList(),
           showWhen: true,
@@ -196,7 +196,7 @@ class CollIndex extends StatelessWidget {
     final pal = palOf(context);
     return SingleChildScrollView(
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const PageTitle(over: 'mes pages à moi', title: 'Collections'),
+        const PageTitle(id: 'colls', over: '', title: 'Collections'),
         const SizedBox(height: 10),
         GridView.count(
           crossAxisCount: 2,
@@ -259,7 +259,7 @@ class CollPage extends StatelessWidget {
         PageTitle(over: 'collection', title: '${c.emoji} ${c.title}'),
         const SizedBox(height: 8),
         BulletList(items: store.collEntries(c.id), showWhen: true, onAdd: (t, k) async => store.addEntry(t, coll: c.id, kind: k)),
-        Label('Notes en vrac', pal.soft),
+        const ELabel('coll.notes', 'Notes'),
         HandField(
           value: c.note,
           hint: 'tout ce qui ne rentre pas ailleurs…',

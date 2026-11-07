@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import 'canvas.dart';
+import 'guides.dart';
 import 'model.dart';
 import 'store.dart';
 import 'theme.dart';
@@ -727,6 +728,10 @@ class PenBar extends StatelessWidget {
               desk.setTool('forme');
             }
           }),
+          tool('calque', Icons.layers_outlined, 'Calque', onTap: () => showGuideSheet(context, desk.focusPage)),
+          if (hasGuide(store, desk.focusPage))
+            tool('oeil', store.guide(desk.focusPage)!.visible ? Icons.visibility_outlined : Icons.visibility_off_outlined, store.guide(desk.focusPage)!.visible ? 'Cacher' : 'Montrer',
+                onTap: () => toggleGuide(store, desk.focusPage)),
           tool('undo', Icons.undo_rounded, 'Annuler', onTap: () {
             if (store.canUndo) store.undo();
           }),

@@ -331,6 +331,52 @@ class Stroke {
   Stroke copy() => Stroke(color: color, width: width, tool: tool, pts: [...pts]);
 }
 
+/// Un calque d'aide posé sur une page (calligraphie, lettrage, grille, image…), qu'on peut cacher ou retirer.
+class Guide {
+  String page;
+  String type; // calligraphie, lettrage, grille, iso, points, mandala, image
+  double opacity;
+  bool visible;
+  String text, font; // lettrage
+  double size, y, angle, spacing; // taille du lettrage / position / pente / interligne
+  String img;
+  int mod;
+  bool del;
+  Guide(
+      {required this.page,
+      this.type = 'calligraphie',
+      this.opacity = 0.35,
+      this.visible = true,
+      this.text = 'Bonjour',
+      this.font = 'script',
+      this.size = 110,
+      this.y = 0.3,
+      this.angle = 55,
+      this.spacing = 1,
+      this.img = '',
+      int? mod,
+      this.del = false})
+      : mod = mod ?? nowMs();
+
+  factory Guide.fromJson(Map<String, dynamic> j) => Guide(
+        page: _s(j['page']),
+        type: _s(j['type'], 'calligraphie'),
+        opacity: _d(j['op'], 0.35),
+        visible: j['vis'] == null ? true : _b(j['vis']),
+        text: _s(j['text'], 'Bonjour'),
+        font: _s(j['font'], 'script'),
+        size: _d(j['size'], 110),
+        y: _d(j['y'], 0.3),
+        angle: _d(j['angle'], 55),
+        spacing: _d(j['sp'], 1),
+        img: _s(j['img']),
+        mod: _i(j['mod']),
+        del: _b(j['del']),
+      );
+  Map<String, dynamic> toJson() =>
+      {'page': page, 'type': type, 'op': opacity, 'vis': visible, 'text': text, 'font': font, 'size': size, 'y': y, 'angle': angle, 'sp': spacing, 'img': img, 'mod': mod, 'del': del};
+}
+
 /// Une page libre du carnet (journal, dessin, mind map…).
 class FreePage {
   String id;
@@ -414,6 +460,9 @@ class Settings {
   double decoLevel; // 0 épuré · 1 doux · 2 kawaii
   String coverTitle, coverSub, coverStyle;
   String mickyTone; // discrete, douce, taquine, coach
+  String labelStyle; // étiquettes des jours : tag, washi, souligne, cadre
+  Map<String, String> labels; // textes personnalisés (titres, sous-titres…)
+  List<String> hidden; // parties masquées
   int mod;
 
   static const defaultPalette = [0xFF4A3F3C, 0xFFB0707A, 0xFFD7A6A8, 0xFF7E9471, 0xFFA9B8A0, 0xFF8E7BA0, 0xFFC6A26A, 0xFF7C93AE, 0xFFE3B7A0, 0xFFFFFFFF];
@@ -431,8 +480,13 @@ class Settings {
       this.coverSub = 'thèse, kannada & le reste',
       this.coverStyle = 'rose',
       this.mickyTone = 'taquine',
+      this.labelStyle = 'tag',
+      Map<String, String>? labels,
+      List<String>? hidden,
       int? mod})
-      : palette = palette ?? [...defaultPalette],
+      : labels = labels ?? {},
+        hidden = hidden ?? [],
+        palette = palette ?? [...defaultPalette],
         mod = mod ?? 0;
 
   factory Settings.fromJson(Map<String, dynamic> j) => Settings(
@@ -448,6 +502,9 @@ class Settings {
         coverSub: _s(j['cs'], 'thèse, kannada & le reste'),
         coverStyle: _s(j['cv'], 'rose'),
         mickyTone: _s(j['mt'], 'taquine'),
+        labelStyle: _s(j['ls'], 'tag'),
+        labels: j['lb'] is Map ? (j['lb'] as Map).map((k, v) => MapEntry('$k', '$v')) : null,
+        hidden: j['hd'] is List ? (j['hd'] as List).map((e) => '$e').toList() : null,
         mod: _i(j['mod']),
       );
 
@@ -463,6 +520,9 @@ class Settings {
         'cs': coverSub,
         'cv': coverStyle,
         'mt': mickyTone,
+        'ls': labelStyle,
+        'lb': labels,
+        'hd': hidden,
         'mod': mod,
       };
 
@@ -476,6 +536,9 @@ class Settings {
     coverSub = s.coverSub;
     coverStyle = s.coverStyle;
     mickyTone = s.mickyTone;
+    labelStyle = s.labelStyle;
+    labels = s.labels;
+    hidden = s.hidden;
     mod = s.mod;
   }
 }

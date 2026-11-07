@@ -140,16 +140,47 @@ class StylePanel extends StatelessWidget {
                   ),
                 ),
             ]),
-            TextButton.icon(
-              onPressed: () async {
-                final t = await askText(context, 'Titre de la couverture', initial: st.coverTitle);
-                if (t == null) return;
-                st.coverTitle = t;
-                await save();
-              },
-              icon: const Icon(Icons.edit_outlined, size: 18),
-              label: const Text('Changer le titre'),
-            ),
+            Text('Pour changer les textes de la couverture, touche l’étiquette sur la couverture.', style: body(11.5, pal.soft, w: FontWeight.w600)),
+            lab('Étiquettes des jours (semaine)'),
+            Wrap(children: [
+              for (final (k, n) in [('tag', 'Étiquette'), ('washi', 'Washi'), ('souligne', 'Souligné'), ('cadre', 'Encadré'), ('script', 'Lettering')])
+                chip(n, st.labelStyle == k, () {
+                  st.labelStyle = k;
+                  save();
+                }),
+            ]),
+            lab('Textes et parties'),
+            Text('Touche n’importe quel titre ou rubrique d’une page pour le renommer, le cacher ou masquer toute la partie.', style: body(11.5, pal.soft, w: FontWeight.w600)),
+            if (st.hidden.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('Parties masquées (touche pour les remettre) :', style: body(12, pal.ink, w: FontWeight.w800)),
+              const SizedBox(height: 6),
+              Wrap(children: [
+                for (final h in [...st.hidden])
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6, bottom: 6),
+                    child: InputChip(
+                      label: Text(st.labels[h]?.isNotEmpty == true ? st.labels[h]! : partName(h)),
+                      onDeleted: () {
+                        st.hidden.remove(h);
+                        save();
+                      },
+                      onPressed: () {
+                        st.hidden.remove(h);
+                        save();
+                      },
+                    ),
+                  ),
+              ]),
+            ],
+            if (st.labels.isNotEmpty)
+              TextButton(
+                onPressed: () {
+                  st.labels.clear();
+                  save();
+                },
+                child: const Text('Remettre tous les textes par défaut'),
+              ),
             lab('Ton de Micky'),
             Wrap(children: [
               for (final (k, n) in [('discrete', 'Discrète'), ('douce', 'Douce'), ('taquine', 'Taquine'), ('coach', 'Coach')])
@@ -176,3 +207,20 @@ class StylePanel extends StatelessWidget {
     );
   }
 }
+
+String partName(String id) => const {
+      'day.intention': 'Intention',
+      'day.goals': 'Objectifs du jour',
+      'day.win': 'Victoire',
+      'day.journal': 'Journal',
+      'month.pro': 'Temps de travail du mois',
+      'month.stats': 'Bilan du mois',
+      'trk.period': 'Règles',
+      'trk.mood': 'Humeur',
+      'trk.energy': 'Énergie',
+      'trk.pro': 'Temps de travail',
+      'cover.card': 'Étiquette de la couverture',
+      'week.focus': 'Cette semaine',
+      'week.trackers': 'Trackers de la semaine',
+    }[id] ??
+    (id.startsWith('trk.') ? 'Un tracker' : id);

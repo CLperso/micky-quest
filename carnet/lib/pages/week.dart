@@ -154,3 +154,295 @@ class WeekList extends StatelessWidget {
     );
   }
 }
+
+// ============================================================ semaine façon bullet journal
+
+Map<String, String> weekVars(DateTime monday) {
+  final sunday = monday.add(const Duration(days: 6));
+  return {
+    'semaine': '${isoWeek(monday)}',
+    'Mois': cap(monthNames[monday.month - 1]),
+    'mois': monthNames[monday.month - 1],
+    'du': '${monday.day}',
+    'au': '${sunday.day} ${monthNames[sunday.month - 1]}',
+    'annee': '${monday.year}',
+  };
+}
+
+/// Cadre « dessiné à la main ».
+class SketchBox extends CustomPainter {
+  final Color c;
+  SketchBox(this.c);
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..style = PaintingStyle.stroke
+      ..color = c.withValues(alpha: 0.75)
+      ..strokeWidth = 1.4;
+    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(1, 1, size.width - 2, size.height - 2), const Radius.circular(6)), p);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(Rect.fromLTWH(2.5, 0.2, size.width - 4, size.height - 1.5), const Radius.circular(8)),
+        p
+          ..strokeWidth = 0.7
+          ..color = c.withValues(alpha: 0.3));
+  }
+
+  @override
+  bool shouldRepaint(SketchBox o) => o.c != c;
+}
+
+/// L'étiquette d'un jour, dans le style choisi.
+class DayTag extends StatelessWidget {
+  final String text;
+  final Color color;
+  const DayTag(this.text, this.color, {super.key});
+  @override
+  Widget build(BuildContext context) {
+    final store = StoreScope.of(context);
+    final pal = palOf(context);
+    final caps = body(11.5, pal.ink, w: FontWeight.w800).copyWith(letterSpacing: 2.2);
+    switch (store.settings.labelStyle) {
+      case 'washi':
+        return Transform.rotate(
+          angle: -0.03,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.75),
+              gradient: LinearGradient(colors: [color.withValues(alpha: .85), color.withValues(alpha: .55), color.withValues(alpha: .85)], stops: const [0, .5, 1]),
+            ),
+            child: Text(text.toUpperCase(), style: caps),
+          ),
+        );
+      case 'souligne':
+        return Container(
+          padding: const EdgeInsets.only(bottom: 2),
+          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: color, width: 3))),
+          child: Text(text.toUpperCase(), style: caps),
+        );
+      case 'cadre':
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+          decoration: BoxDecoration(color: pal.paper, borderRadius: BorderRadius.circular(999), border: Border.all(color: color, width: 1.8)),
+          child: Text(text.toUpperCase(), style: caps),
+        );
+      case 'script':
+        return Container(color: pal.paper, padding: const EdgeInsets.symmetric(horizontal: 4), child: Text(text, style: script(26, pal.ink)));
+      default:
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          color: color,
+          child: Text(text.toUpperCase(), style: caps.copyWith(color: pal.dark ? pal.ink : Colors.white)),
+        );
+    }
+  }
+}
+
+/// Une case de jour : étiquette, date, lignes du jour.
+class DayBox extends StatelessWidget {
+  final DateTime date;
+  final Color color;
+  final void Function(String day) onOpenDay;
+  const DayBox({super.key, required this.date, required this.color, required this.onOpenDay});
+
+  @override
+  Widget build(BuildContext context) {
+    final store = StoreScope.of(context);
+    final pal = palOf(context);
+    final k = dayKey(date);
+    final items = store.dayEntries(k);
+    final isToday = k == store.todayKey;
+    final name = store.text('week.day.${date.weekday}', dayNames[date.weekday - 1]);
+    return Stack(clipBehavior: Clip.none, children: [
+      Positioned.fill(child: CustomPaint(painter: SketchBox(isToday ? pal.acc : pal.ink))),
+      Positioned(
+        left: 10,
+        right: 34,
+        top: 30,
+        bottom: 4,
+        child: ListView(padding: EdgeInsets.zero, children: [
+          for (final e in items)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => entryMenu(context, e),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 1),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  GestureDetector(
+                    onTap: () => store.toggleDone(e),
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 2, right: 6),
+                      child: Text(e.done ? '×' : (e.kind == 'event' ? '○' : (e.kind == 'note' ? '–' : '•')), style: hand(22, e.done ? pal.acc : pal.ink)),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(e.text,
+                        style: hand(21, e.done ? pal.soft : pal.ink).copyWith(decoration: e.done ? TextDecoration.lineThrough : null, decorationColor: pal.acc)),
+                  ),
+                ]),
+              ),
+            ),
+          AddLine(hint: '', onAdd: (t, kind) async => store.addEntry(t, when: k, kind: kind)),
+        ]),
+      ),
+      Positioned(
+        left: -6,
+        top: -12,
+        child: GestureDetector(
+          onTap: () => onOpenDay(k),
+          onLongPress: () => editTexts(context, [('week.day.${date.weekday}', 'Nom du jour', dayNames[date.weekday - 1])]),
+          child: DayTag(name, color),
+        ),
+      ),
+      Positioned(
+        right: 8,
+        top: 6,
+        child: Container(
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: isToday ? pal.acc : pal.tint),
+          child: Center(child: Text('${date.day}', style: hand(18, isToday ? Colors.white : pal.ink))),
+        ),
+      ),
+    ]);
+  }
+}
+
+class WeekLeft extends StatelessWidget {
+  final DateTime monday;
+  final void Function(String day) onOpenDay;
+  const WeekLeft({super.key, required this.monday, required this.onOpenDay});
+
+  @override
+  Widget build(BuildContext context) {
+    final store = StoreScope.of(context);
+    final pal = palOf(context);
+    final tabs = pal.tabs;
+    DateTime d(int i) => monday.add(Duration(days: i));
+    final note = store.log('w:${dayKey(monday)}');
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      PageTitle(id: 'week.L', over: 'semaine {semaine} · {du} – {au}', title: '{Mois}', vars: weekVars(monday)),
+      const SizedBox(height: 22),
+      Expanded(
+        child: Row(children: [
+          Expanded(child: DayBox(date: d(0), color: tabs[0], onOpenDay: onOpenDay)),
+          const SizedBox(width: 14),
+          Expanded(child: DayBox(date: d(1), color: tabs[1], onOpenDay: onOpenDay)),
+        ]),
+      ),
+      const SizedBox(height: 22),
+      Expanded(child: DayBox(date: d(2), color: tabs[2], onOpenDay: onOpenDay)),
+      if (!store.isHidden('week.focus')) ...[
+        const SizedBox(height: 16),
+        Expanded(
+          child: Stack(children: [
+            Positioned.fill(child: CustomPaint(painter: SketchBox(pal.acc2))),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 6),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                const ELabel('week.focus', 'Cette semaine', part: 'week.focus'),
+                Expanded(
+                  child: HandField(
+                    value: note.journal,
+                    hint: '…',
+                    size: 23,
+                    maxLines: 8,
+                    onChanged: (v) {
+                      note.journal = v;
+                      store.touchLog(note);
+                    },
+                  ),
+                ),
+              ]),
+            ),
+          ]),
+        ),
+      ],
+    ]);
+  }
+}
+
+class WeekRight extends StatelessWidget {
+  final DateTime monday;
+  final void Function(String day) onOpenDay;
+  const WeekRight({super.key, required this.monday, required this.onOpenDay});
+
+  @override
+  Widget build(BuildContext context) {
+    final store = StoreScope.of(context);
+    final pal = palOf(context);
+    final tabs = pal.tabs;
+    DateTime d(int i) => monday.add(Duration(days: i));
+    final days = [for (var i = 0; i < 7; i++) dayKey(d(i))];
+    final logs = [for (final k in days) store.logs[k]];
+
+    Widget dot(bool on, Color c) => Container(
+          width: 15,
+          height: 15,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: on ? c : Colors.transparent, border: Border.all(color: on ? c : pal.ink.withValues(alpha: .35), width: 1.2)),
+        );
+    final rows = <(String, List<bool>, Color)>[
+      if (!store.isHidden('trk.mood')) (store.text('trk.mood', 'Humeur'), [for (final l in logs) (l?.mood ?? 0) >= 4], pal.acc),
+      if (!store.isHidden('trk.energy')) (store.text('trk.energy', 'Énergie'), [for (final l in logs) (l?.energy ?? 0) >= 3], pal.acc3),
+      if (!store.isHidden('trk.pro')) (store.text('trk.pro', 'Travail'), [for (final l in logs) (l?.proMin ?? 0) > 0], pal.acc2),
+      for (final h in store.activeHabits)
+        if (!store.isHidden('trk.h.${h.id}')) (store.text('trk.h.${h.id}', '${h.emoji} ${h.name}'), [for (final l in logs) l?.habits.contains(h.id) ?? false], pal.acc),
+      for (final g in store.activeGoals.where((g) => g.kind == 'perso'))
+        if (!store.isHidden('trk.g.${g.id}')) (store.text('trk.g.${g.id}', '${g.emoji} ${g.title}'), [for (final l in logs) l?.goals.contains(g.id) ?? false], Color(g.color)),
+    ];
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      PageTitle(id: 'week.R', over: '', title: '', vars: weekVars(monday)),
+      const SizedBox(height: 22),
+      Expanded(
+        child: Row(children: [
+          Expanded(child: DayBox(date: d(3), color: tabs[3], onOpenDay: onOpenDay)),
+          const SizedBox(width: 14),
+          Expanded(child: DayBox(date: d(4), color: tabs[4], onOpenDay: onOpenDay)),
+        ]),
+      ),
+      const SizedBox(height: 22),
+      Expanded(
+        child: Row(children: [
+          Expanded(child: DayBox(date: d(5), color: tabs[5], onOpenDay: onOpenDay)),
+          const SizedBox(width: 14),
+          Expanded(child: DayBox(date: d(6), color: tabs[6], onOpenDay: onOpenDay)),
+        ]),
+      ),
+      if (!store.isHidden('week.trackers')) ...[
+        const SizedBox(height: 16),
+        Expanded(
+          child: Stack(children: [
+            Positioned.fill(child: CustomPaint(painter: SketchBox(pal.ink))),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 6),
+              child: SingleChildScrollView(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  const ELabel('week.trackers', 'Trackers', part: 'week.trackers'),
+                  Row(children: [
+                    const SizedBox(width: 120),
+                    for (var i = 0; i < 7; i++)
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => onOpenDay(days[i]),
+                          child: Center(child: Text(dayShort[i].substring(0, 1).toUpperCase(), style: body(11, pal.soft, w: FontWeight.w800))),
+                        ),
+                      ),
+                  ]),
+                  for (final r in rows)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      child: Row(children: [
+                        SizedBox(width: 120, child: Text(r.$1, overflow: TextOverflow.ellipsis, style: hand(19, pal.ink))),
+                        for (final on in r.$2) Expanded(child: Center(child: dot(on, r.$3))),
+                      ]),
+                    ),
+                ]),
+              ),
+            ),
+          ]),
+        ),
+      ],
+    ]);
+  }
+}

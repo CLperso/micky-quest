@@ -21,11 +21,12 @@ class DayMorning extends StatelessWidget {
     final monthOpen = isToday ? store.monthOpen(monthKey(d)) : <Entry>[];
     return SingleChildScrollView(
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        PageTitle(over: '${niceDay(d)} · matin', title: 'Briefing'),
-        Label('Aujourd’hui je veux surtout…', pal.soft),
+        PageTitle(id: 'day.L', over: '{mois} {annee}', title: '{jour} {n}', vars: dayVars(d)),
+        Part('day.intention', Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        ELabel('day.intention', 'Intention', part: 'day.intention'),
         HandField(
           value: log.intention,
-          hint: 'une intention, une envie…',
+          hint: '…',
           size: 32,
           color: pal.acc,
           onChanged: (v) {
@@ -33,6 +34,7 @@ class DayMorning extends StatelessWidget {
             store.touchLog(log);
           },
         ),
+        ])),
         if (left.isNotEmpty || monthOpen.isNotEmpty) ...[
           const SizedBox(height: 10),
           Wrap(spacing: 8, runSpacing: 6, children: [
@@ -50,7 +52,7 @@ class DayMorning extends StatelessWidget {
               ),
           ]),
         ],
-        Label('Ce qui compte', pal.soft),
+        ELabel('day.list', 'À faire'),
         BulletList(
           items: store.dayEntries(day),
           onAdd: (t, k) async {
@@ -143,10 +145,11 @@ class DayEvening extends StatelessWidget {
 
     return SingleChildScrollView(
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        PageTitle(over: '${niceDay(d)} · soir', title: 'Feu de camp'),
-        Label('Mes trackers', pal.soft),
+        PageTitle(id: 'day.R', over: '', title: 'Bilan', vars: dayVars(d)),
+        ELabel('day.trackers', 'Suivi'),
         TrackRow(
-          '🩸 Règles',
+          id: 'trk.period',
+          'Règles',
           Dots(
               value: log.period,
               n: 3,
@@ -158,6 +161,7 @@ class DayEvening extends StatelessWidget {
           note: cycle == null ? null : 'jour $cycle',
         ),
         TrackRow(
+          id: 'trk.mood',
           'Humeur',
           Faces(
               value: log.mood,
@@ -167,6 +171,7 @@ class DayEvening extends StatelessWidget {
               }),
         ),
         TrackRow(
+          id: 'trk.energy',
           'Énergie',
           Dots(
               value: log.energy,
@@ -177,7 +182,8 @@ class DayEvening extends StatelessWidget {
               }),
         ),
         TrackRow(
-          'Temps pro',
+          id: 'trk.pro',
+          'Temps de travail',
           Row(children: [
             Expanded(
               child: ClipRRect(
@@ -214,6 +220,7 @@ class DayEvening extends StatelessWidget {
         ),
         for (final h in store.activeHabits)
           TrackRow(
+            id: 'trk.h.${h.id}',
             '${h.emoji} ${h.name}',
             Align(
               alignment: Alignment.centerLeft,
@@ -230,6 +237,7 @@ class DayEvening extends StatelessWidget {
           ),
         for (final g in perso)
           TrackRow(
+            id: 'trk.g.${g.id}',
             '${g.emoji} ${g.title}',
             Align(
               alignment: Alignment.centerLeft,
@@ -244,8 +252,8 @@ class DayEvening extends StatelessWidget {
             ),
             note: '${store.goalStepsBetween(g.id, monday, 7)}/${g.perWeek} cette sem.',
           ),
-        if (pro.isNotEmpty) ...[
-          Label('Un pas vers mes objectifs ?', pal.soft),
+        if (pro.isNotEmpty && !store.isHidden('day.goals')) ...[
+          ELabel('day.goals', 'Objectifs', part: 'day.goals'),
           Wrap(spacing: 8, runSpacing: 6, children: [
             for (final g in pro)
               FilterChip(
@@ -259,20 +267,23 @@ class DayEvening extends StatelessWidget {
               ),
           ]),
         ],
-        Label('Victoire du jour', pal.soft),
+        Part('day.win', Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        ELabel('day.win', 'Victoire', part: 'day.win'),
         HandField(
           value: log.win,
-          hint: 'même petite…',
+          hint: '…',
           size: 28,
           onChanged: (v) {
             log.win = v;
             save();
           },
         ),
-        Label('Une ligne de journal', pal.soft),
+        ])),
+        Part('day.journal', Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        ELabel('day.journal', 'Journal', part: 'day.journal'),
         HandField(
           value: log.journal,
-          hint: 'ce que je veux garder de ce jour',
+          hint: '…',
           size: 24,
           color: pal.soft,
           maxLines: 8,
@@ -281,6 +292,7 @@ class DayEvening extends StatelessWidget {
             save();
           },
         ),
+        ])),
       ]),
     );
   }

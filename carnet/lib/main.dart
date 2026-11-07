@@ -129,7 +129,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
         return ('cover', const CoverPage(), '', null, 'Couverture', '');
       case tWeek:
         final k = dayKey(monday);
-        return ('week:$k:L', WeekGrid(monday: monday, onOpenDay: openDay), 'week:$k:R', WeekList(monday: monday, onOpenDay: openDay), 'Trackers', 'Jours');
+        return ('week:$k:L', WeekLeft(monday: monday, onOpenDay: openDay), 'week:$k:R', WeekRight(monday: monday, onOpenDay: openDay), 'Lun – Mer', 'Jeu – Dim');
       case tMonth:
         final m = monthKey(month);
         return ('month:$m:L', MonthCalendar(month: m, onOpenDay: openDay), 'month:$m:R', MonthList(month: m), 'Calendrier', 'Liste');

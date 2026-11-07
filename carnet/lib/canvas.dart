@@ -6,6 +6,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_digital_ink_recognition/google_mlkit_digital_ink_recognition.dart' as mk;
 
+import 'guides.dart';
 import 'ink.dart';
 import 'model.dart';
 import 'store.dart';
@@ -247,6 +248,8 @@ class _PageSheetState extends State<PageSheet> {
             child: IgnorePointer(child: Transform.rotate(angle: atan2(b.dy - a.dy, b.dx - a.dx), child: renderDeco(Deco(page: '', type: 'washi', w: len, h: h, style: desk.washi), store))),
           );
         }),
+      // calque d'aide, sous l'encre
+      Positioned.fill(child: GuideLayer(page: widget.pageKey)),
       // encre
       Positioned.fill(child: InkLayer(pageKey: widget.pageKey)),
       // barre de l'élément sélectionné

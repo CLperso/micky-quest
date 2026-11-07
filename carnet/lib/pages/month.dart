@@ -67,7 +67,7 @@ class MonthCalendar extends StatelessWidget {
 
     return SingleChildScrollView(
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        PageTitle(over: '${first.year}', title: niceMonth(month)),
+        PageTitle(id: 'month.L', over: '{annee}', title: '{Mois}', vars: dayVars(first)),
         const SizedBox(height: 8),
         GridView.count(
           crossAxisCount: 7,
@@ -85,8 +85,8 @@ class MonthCalendar extends StatelessWidget {
           Container(width: 6, height: 6, decoration: BoxDecoration(color: pal.acc2, shape: BoxShape.circle)),
           Text(' rendez-vous', style: body(11, pal.soft)),
         ]),
-        Label('Temps pro par semaine', pal.soft),
-        SizedBox(
+        if (!store.isHidden('month.pro')) ELabel('month.pro', 'Temps de travail', part: 'month.pro'),
+        if (!store.isHidden('month.pro')) SizedBox(
           height: 110,
           child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
             for (final w in weeks)
@@ -121,7 +121,7 @@ class MonthList extends StatelessWidget {
     final first = parseMonth(month);
     final n = DateTime(first.year, first.month + 1, 0).day;
     final tiles = <Widget>[
-      Tile(fmtMin(store.proBetween(first, n)), 'de pro', pal.acc2),
+      Tile(fmtMin(store.proBetween(first, n)), 'de travail', pal.acc2),
       for (final h in store.activeHabits) Tile('${store.habitDaysBetween(h.id, first, n)}', '${h.emoji} ${h.name}', pal.acc),
       for (final g in store.activeGoals) Tile('${store.goalStepsBetween(g.id, first, n)}', '${g.emoji} pas · ${g.title}', Color(g.color)),
     ];
@@ -135,12 +135,10 @@ class MonthList extends StatelessWidget {
 
     return SingleChildScrollView(
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        PageTitle(over: 'ce mois-ci', title: 'À faire, à vivre'),
-        Text('ce qui est pour ce mois, sans jour précis', style: hand(20, pal.soft)),
+        PageTitle(id: 'month.R', over: '', title: 'Ce mois-ci', vars: dayVars(first)),
         const SizedBox(height: 6),
         BulletList(items: store.monthEntries(month), onAdd: (t, k) async => store.addEntry(t, when: month, kind: k)),
-        Label('Ce mois-ci', pal.soft),
-        Wrap(spacing: 8, runSpacing: 8, children: tiles),
+        Part('month.stats', Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [ELabel('month.stats', 'Bilan', part: 'month.stats'), Wrap(spacing: 8, runSpacing: 8, children: tiles)])),
       ]),
     );
   }

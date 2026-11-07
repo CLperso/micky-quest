@@ -21,8 +21,8 @@ class FreeIndex extends StatelessWidget {
     final pages = store.activeFree;
     return SingleChildScrollView(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const PageTitle(over: 'mes pages', title: 'Pages libres'),
-        Text('journal, dessin, mind map… appui long pour renommer, déplacer, supprimer', style: hand(20, pal.soft)),
+        const PageTitle(id: 'pages', over: '', title: 'Pages'),
+        Text('appui long sur une page : renommer, déplacer, supprimer', style: body(11.5, pal.soft, w: FontWeight.w600)),
         const SizedBox(height: 14),
         Wrap(spacing: 12, runSpacing: 14, children: [
           for (final p in pages)

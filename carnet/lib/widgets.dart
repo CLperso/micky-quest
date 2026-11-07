@@ -7,24 +7,116 @@ import 'theme.dart';
 
 Pal palOf(BuildContext c) => Pal.byId(StoreScope.of(c).settings.theme);
 
-/// Titre de page.
+/// Remplace {jour} {n} {mois} {annee} {semaine}… par leur valeur.
+String fillVars(String t, Map<String, String> vars) => t.replaceAllMapped(RegExp(r'\{(\w+)\}'), (m) => vars[m[1]] ?? m[0]!);
+
+Map<String, String> dayVars(DateTime d) => {
+      'jour': cap(dayNames[d.weekday - 1]),
+      'n': '${d.day}',
+      'mois': monthNames[d.month - 1],
+      'Mois': cap(monthNames[d.month - 1]),
+      'annee': '${d.year}',
+    };
+
+bool _editable(BuildContext context) => DeskScope.of(context).mode == Mode.use;
+
+/// Modifier un ou plusieurs textes de la page ; vide = caché. Possibilité de masquer toute la partie.
+Future<void> editTexts(BuildContext context, List<(String id, String name, String def)> items, {String? part, Map<String, String> vars = const {}}) async {
+  final store = StoreScope.read(context);
+  final ctrls = [for (final it in items) TextEditingController(text: store.text(it.$1, it.$3))];
+  final r = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Personnaliser'),
+      content: SizedBox(
+        width: 420,
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          for (var i = 0; i < items.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: TextField(controller: ctrls[i], autofocus: i == 0, decoration: InputDecoration(labelText: items[i].$2, helperText: i == items.length - 1 ? 'Laisse vide pour cacher le texte.' : null)),
+            ),
+          if (vars.isNotEmpty)
+            Text('À glisser dans le texte : ${vars.keys.map((k) => '{$k}').join('  ')}', style: const TextStyle(fontSize: 12, color: Colors.black54)),
+        ]),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, 'reset'), child: const Text('Par défaut')),
+        if (part != null) TextButton(onPressed: () => Navigator.pop(ctx, 'hide'), child: const Text('Masquer cette partie')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, 'ok'), child: const Text('OK')),
+      ],
+    ),
+  );
+  if (r == null) return;
+  for (var i = 0; i < items.length; i++) {
+    final id = items[i].$1;
+    if (r == 'reset' || ctrls[i].text == items[i].$3) {
+      store.settings.labels.remove(id);
+    } else if (r == 'ok') {
+      store.settings.labels[id] = ctrls[i].text;
+    }
+  }
+  if (r == 'hide' && part != null && !store.settings.hidden.contains(part)) store.settings.hidden.add(part);
+  await store.touchSettings();
+}
+
+/// Une partie de page qu'on peut masquer (et retrouver dans « Mon style »).
+class Part extends StatelessWidget {
+  final String id;
+  final Widget child;
+  const Part(this.id, this.child, {super.key});
+  @override
+  Widget build(BuildContext context) => StoreScope.of(context).isHidden(id) ? const SizedBox.shrink() : child;
+}
+
+/// Petit titre de rubrique, modifiable d'un toucher.
+class ELabel extends StatelessWidget {
+  final String id, def;
+  final String? part;
+  final Map<String, String> vars;
+  const ELabel(this.id, this.def, {super.key, this.part, this.vars = const {}});
+  @override
+  Widget build(BuildContext context) {
+    final store = StoreScope.of(context);
+    final t = fillVars(store.text(id, def), vars);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _editable(context) ? () => editTexts(context, [(id, 'Texte', def)], part: part, vars: vars) : null,
+      child: t.isEmpty ? const SizedBox(height: 14) : Label(t, palOf(context).soft),
+    );
+  }
+}
+
+/// Titre de page. Avec un [id], le titre et le sous-titre se modifient d'un toucher.
 class PageTitle extends StatelessWidget {
   final String over;
   final String title;
   final Widget? trailing;
-  const PageTitle({super.key, this.over = '', required this.title, this.trailing});
+  final String? id;
+  final Map<String, String> vars;
+  const PageTitle({super.key, this.over = '', required this.title, this.trailing, this.id, this.vars = const {}});
   @override
   Widget build(BuildContext context) {
     final pal = palOf(context);
-    return Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+    final store = StoreScope.of(context);
+    final o = id == null ? over : fillVars(store.text('$id.over', over), vars);
+    final t = id == null ? title : fillVars(store.text('$id.title', title), vars);
+    final w = Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          if (over.isNotEmpty) Text(over.toUpperCase(), style: body(11, pal.soft, w: FontWeight.w800).copyWith(letterSpacing: 1.5)),
-          Text(title, style: titleFont(32, pal.ink)),
+          if (o.isNotEmpty) Text(o.toUpperCase(), style: body(11, pal.soft, w: FontWeight.w800).copyWith(letterSpacing: 2)),
+          if (t.isNotEmpty) Text(t, style: titleFont(32, pal.ink)),
+          if (t.isEmpty && o.isEmpty) const SizedBox(height: 20),
         ]),
       ),
       if (trailing != null) trailing!,
     ]);
+    if (id == null) return w;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _editable(context) ? () => editTexts(context, [('$id.over', 'Petit titre', over), ('$id.title', 'Titre', title)], vars: vars) : null,
+      child: w,
+    );
   }
 }
 
@@ -348,19 +440,30 @@ Future<void> entryMenu(BuildContext context, Entry e) async {
   }
 }
 
-/// Ligne de tracker : nom à gauche, contrôle à droite.
+/// Ligne de tracker : nom à gauche, contrôle à droite. Avec un [id], le nom se renomme et la ligne se masque.
 class TrackRow extends StatelessWidget {
   final String name;
   final Widget child;
   final String? note;
-  const TrackRow(this.name, this.child, {super.key, this.note});
+  final String? id;
+  const TrackRow(this.name, this.child, {super.key, this.note, this.id});
   @override
   Widget build(BuildContext context) {
     final pal = palOf(context);
+    final store = StoreScope.of(context);
+    if (id != null && store.isHidden(id!)) return const SizedBox.shrink();
+    final n = id == null ? name : store.text(id!, name);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(children: [
-        SizedBox(width: 128, child: Text(name, style: body(14, pal.ink, w: FontWeight.w800))),
+        SizedBox(
+          width: 128,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: id != null && _editable(context) ? () => editTexts(context, [(id!, 'Nom', name)], part: id) : null,
+            child: Text(n, style: body(14, pal.ink, w: FontWeight.w800)),
+          ),
+        ),
         Expanded(child: child),
         if (note != null) Text(note!, style: hand(20, pal.soft)),
       ]),
