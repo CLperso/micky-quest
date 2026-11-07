@@ -1,3 +1,4 @@
+import 'dart:ui' show Offset;
 import 'dart:math';
 
 String newId() => DateTime.now().microsecondsSinceEpoch.toRadixString(36) + Random().nextInt(1 << 30).toRadixString(36);
@@ -340,6 +341,8 @@ class Guide {
   String text, font; // lettrage
   double size, y, angle, spacing; // taille du lettrage / position / pente / interligne
   String img;
+  String motif; // dessin : marguerite, tulipe, rose, branche, couronne, feuilles, construction, chat, coeur
+  double x;
   int mod;
   bool del;
   Guide(
@@ -354,6 +357,8 @@ class Guide {
       this.angle = 55,
       this.spacing = 1,
       this.img = '',
+      this.motif = 'marguerite',
+      this.x = 0.5,
       int? mod,
       this.del = false})
       : mod = mod ?? nowMs();
@@ -370,11 +375,13 @@ class Guide {
         angle: _d(j['angle'], 55),
         spacing: _d(j['sp'], 1),
         img: _s(j['img']),
+        motif: _s(j['motif'], 'marguerite'),
+        x: _d(j['x'], 0.5),
         mod: _i(j['mod']),
         del: _b(j['del']),
       );
   Map<String, dynamic> toJson() =>
-      {'page': page, 'type': type, 'op': opacity, 'vis': visible, 'text': text, 'font': font, 'size': size, 'y': y, 'angle': angle, 'sp': spacing, 'img': img, 'mod': mod, 'del': del};
+      {'page': page, 'type': type, 'op': opacity, 'vis': visible, 'text': text, 'font': font, 'size': size, 'y': y, 'angle': angle, 'sp': spacing, 'img': img, 'motif': motif, 'x': x, 'mod': mod, 'del': del};
 }
 
 /// Une page libre du carnet (journal, dessin, mind map…).
@@ -399,18 +406,38 @@ class FreePage {
 class InkPage {
   String id; // la clé de page
   List<Stroke> strokes;
+  List<Fill> fills;
   int mod;
-  InkPage({required this.id, List<Stroke>? strokes, int? mod})
+  InkPage({required this.id, List<Stroke>? strokes, List<Fill>? fills, int? mod})
       : strokes = strokes ?? [],
+        fills = fills ?? [],
         mod = mod ?? nowMs();
 
   factory InkPage.fromJson(Map<String, dynamic> j) => InkPage(
         id: _s(j['id']),
         strokes: j['s'] is List ? (j['s'] as List).map((e) => Stroke.fromJson(Map<String, dynamic>.from(e as Map))).toList() : [],
+        fills: j['f'] is List ? (j['f'] as List).map((e) => Fill.fromJson(Map<String, dynamic>.from(e as Map))).toList() : [],
         mod: _i(j['mod']),
       );
 
-  Map<String, dynamic> toJson() => {'id': id, 's': strokes.map((e) => e.toJson()).toList(), 'mod': mod};
+  Map<String, dynamic> toJson() => {'id': id, 's': strokes.map((e) => e.toJson()).toList(), 'f': fills.map((e) => e.toJson()).toList(), 'mod': mod};
+}
+
+/// Une zone remplie au pot de peinture : des segments horizontaux (y, x0, x1).
+class Fill {
+  int color;
+  List<int> runs;
+  Fill({required this.color, required this.runs});
+  factory Fill.fromJson(Map<String, dynamic> j) => Fill(color: _i(j['c'], 0xFFD7A6A8), runs: j['r'] is List ? (j['r'] as List).map((e) => (e as num).toInt()).toList() : []);
+  Map<String, dynamic> toJson() => {'c': color, 'r': runs};
+
+  bool contains(Offset o) {
+    final y = o.dy.floor(), x = o.dx;
+    for (var i = 0; i + 2 < runs.length; i += 3) {
+      if (runs[i] == y && x >= runs[i + 1] && x <= runs[i + 2]) return true;
+    }
+    return false;
+  }
 }
 
 /// Le papier d'une page (couleur et motif), ou « default ».

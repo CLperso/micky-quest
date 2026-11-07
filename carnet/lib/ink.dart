@@ -1,4 +1,6 @@
 import 'dart:math';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -17,16 +19,19 @@ class Nib {
   final double streamline; // lissage des tremblements
   final double taperStart, taperEnd; // affinage aux extrémités (en px)
   final double alpha;
-  const Nib(this.id, this.name, {required this.width, this.thinning = 0.5, this.streamline = 0.5, this.taperStart = 0, this.taperEnd = 0, this.alpha = 1});
+  final bool multiply; // repasser dessus fonce la couleur
+  const Nib(this.id, this.name,
+      {required this.width, this.thinning = 0.5, this.streamline = 0.5, this.taperStart = 0, this.taperEnd = 0, this.alpha = 1, this.multiply = false});
 }
 
 const nibs = [
   Nib('stylo', 'Stylo', width: 2.6, thinning: 0.45, streamline: 0.5, taperStart: 2, taperEnd: 8),
   Nib('plume', 'Plume', width: 5, thinning: 0.3, streamline: 0.55),
-  Nib('feutre', 'Feutre', width: 4, thinning: 0, streamline: 0.45),
-  Nib('pinceau', 'Pinceau', width: 10, thinning: 0.8, streamline: 0.6, taperStart: 18, taperEnd: 40),
+  Nib('feutre', 'Feutre', width: 4, thinning: 0, streamline: 0.15, multiply: true),
+  Nib('pinceau', 'Pinceau', width: 10, thinning: 0.8, streamline: 0.5, taperStart: 18, taperEnd: 40, alpha: 0.9, multiply: true),
+  Nib('aquarelle', 'Aquarelle', width: 16, thinning: 0.5, streamline: 0.45, taperStart: 10, taperEnd: 24, alpha: 0.42, multiply: true),
   Nib('crayon', 'Crayon', width: 2.2, thinning: 0.3, streamline: 0.4, alpha: 0.72),
-  Nib('surligneur', 'Surligneur', width: 18, thinning: 0, streamline: 0.6, alpha: 0.38),
+  Nib('surligneur', 'Surligneur', width: 18, thinning: 0, streamline: 0.4, alpha: 0.38, multiply: true),
 ];
 
 Nib nibOf(String id) => nibs.firstWhere((n) => n.id == id, orElse: () => nibs.first);
@@ -61,7 +66,8 @@ Path _outline(Stroke s) {
   // 1. lissage (streamline) et points trop proches
   final pts = <Offset>[raw.first];
   final ps = <double>[pr.first];
-  final t = 0.15 + (1 - nib.streamline) * 0.85;
+  // lissage léger : le trait reste collé à la pointe
+  final t = 0.4 + (1 - nib.streamline) * 0.6;
   for (var i = 1; i < raw.length; i++) {
     final q = Offset.lerp(pts.last, raw[i], t)!;
     if ((q - pts.last).distance < 0.6 && i != raw.length - 1) continue;
@@ -151,38 +157,120 @@ Path _outline(Stroke s) {
   return path;
 }
 
-void paintStroke(Canvas canvas, Stroke s) {
+void paintStroke(Canvas canvas, Stroke s, {bool dark = false}) {
   final nib = nibOf(s.tool);
   final c = Color(s.color);
   final paint = Paint()
     ..isAntiAlias = true
     ..style = PaintingStyle.fill
     ..color = c.withValues(alpha: c.a * nib.alpha);
-  if (s.tool == 'surligneur') paint.blendMode = BlendMode.multiply;
+  if (nib.multiply) paint.blendMode = dark ? BlendMode.screen : BlendMode.multiply;
   if (s.tool == 'crayon') paint.maskFilter = const MaskFilter.blur(BlurStyle.normal, 0.45);
+  if (s.tool == 'aquarelle') paint.maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.6);
   canvas.drawPath(strokeOutline(s), paint);
+}
+
+final _fillCache = Expando<Path>();
+Path fillPath(Fill f) {
+  final c = _fillCache[f];
+  if (c != null) return c;
+  final p = Path();
+  for (var i = 0; i + 2 < f.runs.length; i += 3) {
+    p.addRect(Rect.fromLTRB(f.runs[i + 1].toDouble(), f.runs[i].toDouble(), f.runs[i + 2] + 1.0, f.runs[i] + 1.0));
+  }
+  _fillCache[f] = p;
+  return p;
+}
+
+/// Pot de peinture : remplit la zone fermée autour de [at], en s'arrêtant sur les traits.
+Future<Fill?> computeFill(List<Stroke> strokes, Size size, Offset at, int color) async {
+  final w = size.width.ceil(), h = size.height.ceil();
+  if (w <= 0 || h <= 0) return null;
+  final rec = ui.PictureRecorder();
+  final c = Canvas(rec);
+  final p = Paint()..color = const Color(0xFF000000);
+  for (final s in strokes) {
+    if (!s.hl) c.drawPath(strokeOutline(s), p);
+  }
+  final img = await rec.endRecording().toImage(w, h);
+  final bd = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
+  img.dispose();
+  if (bd == null) return null;
+  final px = bd.buffer.asUint8List();
+  final x0 = at.dx.floor(), y0 = at.dy.floor();
+  if (x0 < 0 || y0 < 0 || x0 >= w || y0 >= h) return null;
+  bool wall(int i) => px[i * 4 + 3] > 90;
+  if (wall(y0 * w + x0)) return null;
+  final mark = Uint8List(w * h);
+  final q = Int32List(w * h);
+  var head = 0, tail = 0;
+  q[tail++] = y0 * w + x0;
+  mark[y0 * w + x0] = 1;
+  while (head < tail) {
+    final i = q[head++];
+    final x = i % w, y = i ~/ w;
+    for (final n in [if (x > 0) i - 1, if (x < w - 1) i + 1, if (y > 0) i - w, if (y < h - 1) i + w]) {
+      if (mark[n] == 0 && !wall(n)) {
+        mark[n] = 1;
+        q[tail++] = n;
+      }
+    }
+  }
+  // on déborde un peu sous les traits pour ne laisser aucun liseré blanc
+  for (var pass = 0; pass < 2; pass++) {
+    final add = <int>[];
+    for (var i = 0; i < w * h; i++) {
+      if (mark[i] != 0) continue;
+      final x = i % w, y = i ~/ w;
+      if ((x > 0 && mark[i - 1] == 1) || (x < w - 1 && mark[i + 1] == 1) || (y > 0 && mark[i - w] == 1) || (y < h - 1 && mark[i + w] == 1)) add.add(i);
+    }
+    for (final i in add) {
+      mark[i] = 1;
+    }
+  }
+  final runs = <int>[];
+  for (var y = 0; y < h; y++) {
+    var x = 0;
+    while (x < w) {
+      if (mark[y * w + x] == 1) {
+        final s = x;
+        while (x < w && mark[y * w + x] == 1) {
+          x++;
+        }
+        runs.addAll([y, s, x - 1]);
+      } else {
+        x++;
+      }
+    }
+  }
+  return runs.isEmpty ? null : Fill(color: color, runs: runs);
 }
 
 class InkPainter extends CustomPainter {
   final List<Stroke> strokes;
+  final List<Fill> fills;
   final Stroke? cur;
   final int version;
   final Rect? selBox;
   final List<Offset>? lasso;
   final Color accent;
-  InkPainter(this.strokes, this.cur, this.version, {this.selBox, this.lasso, this.accent = const Color(0xFFB0707A)});
+  final bool dark;
+  InkPainter(this.strokes, this.cur, this.version, {this.fills = const [], this.selBox, this.lasso, this.accent = const Color(0xFFB0707A), this.dark = false});
 
   @override
   void paint(Canvas canvas, Size size) {
     canvas.saveLayer(Offset.zero & size, Paint());
-    for (final s in strokes) {
-      if (s.hl) paintStroke(canvas, s);
+    for (final f in fills) {
+      canvas.drawPath(fillPath(f), Paint()..color = Color(f.color));
     }
-    if (cur != null && cur!.hl) paintStroke(canvas, cur!);
     for (final s in strokes) {
-      if (!s.hl) paintStroke(canvas, s);
+      if (s.hl) paintStroke(canvas, s, dark: dark);
     }
-    if (cur != null && !cur!.hl) paintStroke(canvas, cur!);
+    if (cur != null && cur!.hl) paintStroke(canvas, cur!, dark: dark);
+    for (final s in strokes) {
+      if (!s.hl) paintStroke(canvas, s, dark: dark);
+    }
+    if (cur != null && !cur!.hl) paintStroke(canvas, cur!, dark: dark);
     canvas.restore();
     final dash = Paint()
       ..color = accent
@@ -343,6 +431,11 @@ class _InkLayerState extends State<InkLayer> {
       setState(() => _lasso = [pos]);
       return;
     }
+    if (desk.tool == 'pot') {
+      _pointer = null;
+      _paintBucket(pos, store, desk);
+      return;
+    }
     if (desk.tool == 'forme') {
       setState(() {
         _shapeA = pos;
@@ -474,6 +567,21 @@ class _InkLayerState extends State<InkLayer> {
     }
   }
 
+  Future<void> _paintBucket(Offset pos, Store store, Desk desk) async {
+    final size = context.size;
+    if (size == null) return;
+    final page = widget.pageKey;
+    final ink = store.ink(page);
+    final f = await computeFill(ink.strokes, size, pos, desk.penColor);
+    if (f == null) return;
+    store.snapshot(page);
+    // un nouveau remplissage au même endroit remplace l'ancien
+    ink.fills.removeWhere((x) => x.contains(pos));
+    ink.fills.add(f);
+    await store.touchInk(page);
+    if (mounted) setState(() => _version++);
+  }
+
   void _eraseAt(Offset o, Store store, Desk desk) {
     final strokes = _strokes(store);
     final r = desk.eraserSize;
@@ -504,6 +612,13 @@ class _InkLayerState extends State<InkLayer> {
         }
       }
       if (run.length >= 6) out.add(Stroke(color: s.color, width: s.width, tool: s.tool, pts: run));
+    }
+    if (!changed) {
+      // la gomme sur une zone remplie l'efface
+      final fills = store.ink(widget.pageKey).fills;
+      final n = fills.length;
+      fills.removeWhere((f) => f.contains(o));
+      if (fills.length != n) setState(() => _version++);
     }
     if (changed) {
       strokes
@@ -540,7 +655,8 @@ class _InkLayerState extends State<InkLayer> {
             onPointerCancel: (e) => _up(e, store, desk),
             child: RepaintBoundary(
               child: CustomPaint(
-                painter: InkPainter(strokes, preview, _version + strokes.length, selBox: box, lasso: _lasso, accent: pal.acc),
+                painter: InkPainter(strokes, preview, _version + strokes.length,
+                    fills: store.inks[widget.pageKey]?.fills ?? const [], selBox: box, lasso: _lasso, accent: pal.acc, dark: pal.dark),
                 size: Size.infinite,
               ),
             ),
@@ -718,6 +834,7 @@ class PenBar extends StatelessWidget {
               ),
           ]),
           _sep(pal),
+          tool('pot', Icons.format_color_fill_rounded, 'Remplir'),
           tool('gomme', Icons.auto_fix_normal_outlined, 'Gomme'),
           tool('lasso', Icons.gesture_rounded, 'Lasso'),
           tool('forme', _shapeIcon(desk.shape), 'Formes', onTap: () {
@@ -768,6 +885,9 @@ class _NibIcon extends CustomPainter {
     switch (id) {
       case 'surligneur':
         tip.addRect(Rect.fromLTRB(w * .25, 2, w * .75, 15));
+        break;
+      case 'aquarelle':
+        tip.addOval(Rect.fromLTRB(w * .22, 0, w * .78, 17));
         break;
       case 'pinceau':
         tip.moveTo(w * .2, 15);

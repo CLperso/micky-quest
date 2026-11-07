@@ -33,6 +33,8 @@ void main() {
     await tester.tap(find.text('Calligraphie'));
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Transparence'), findsOneWidget);
+    await tester.tap(find.text('Motifs à dessiner'));
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.text('Lettrage'));
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tapAt(const Offset(5, 5));
