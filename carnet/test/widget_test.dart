@@ -32,7 +32,7 @@ void main() {
     await tester.pumpAndSettle(const Duration(milliseconds: 100));
     await tester.tap(find.text('Calligraphie'));
     await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('Retirer le calque'), findsOneWidget);
+    expect(find.text('Transparence'), findsOneWidget);
     await tester.tap(find.text('Lettrage'));
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tapAt(const Offset(5, 5));

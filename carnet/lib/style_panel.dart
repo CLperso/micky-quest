@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'canvas.dart';
 import 'pages/free.dart';
 import 'store.dart';
 import 'theme.dart';
