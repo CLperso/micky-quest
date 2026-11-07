@@ -232,7 +232,7 @@ class DayTag extends StatelessWidget {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           color: color,
-          child: Text(text.toUpperCase(), style: caps.copyWith(color: pal.dark ? pal.ink : Colors.white)),
+          child: Text(text.toUpperCase(), style: caps),
         );
     }
   }
