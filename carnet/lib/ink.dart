@@ -380,6 +380,8 @@ class _InkLayerState extends State<InkLayer> {
   Rect _dragBox0 = Rect.zero;
   List<List<double>> _dragPts0 = [];
   int _version = 0;
+  Offset? _guideStart;
+  double _guideX0 = 0.5, _guideY0 = 0.3;
 
   bool _accept(PointerEvent e, Store store) {
     final stylus = e.kind == PointerDeviceKind.stylus || e.kind == PointerDeviceKind.invertedStylus;
@@ -431,6 +433,14 @@ class _InkLayerState extends State<InkLayer> {
       setState(() => _lasso = [pos]);
       return;
     }
+    if (desk.tool == 'placer') {
+      final g = store.guide(widget.pageKey);
+      if (g == null) return;
+      _guideStart = pos;
+      _guideX0 = g.x;
+      _guideY0 = g.y;
+      return;
+    }
     if (desk.tool == 'pot') {
       _pointer = null;
       _paintBucket(pos, store, desk);
@@ -469,6 +479,16 @@ class _InkLayerState extends State<InkLayer> {
   void _move(PointerMoveEvent e, Store store, Desk desk) {
     if (e.pointer != _pointer) return;
     final pos = e.localPosition;
+    if (_guideStart != null) {
+      final g = store.guide(widget.pageKey);
+      final sz = context.size;
+      if (g != null && sz != null) {
+        g.x = (_guideX0 + (pos.dx - _guideStart!.dx) / sz.width).clamp(-0.5, 1.5);
+        g.y = (_guideY0 + (pos.dy - _guideStart!.dy) / sz.height).clamp(-0.5, 1.5);
+        store.refresh();
+      }
+      return;
+    }
     if (_erasing) {
       _eraseAt(pos, store, desk);
       return;
@@ -517,6 +537,12 @@ class _InkLayerState extends State<InkLayer> {
     if (e.pointer != _pointer) return;
     _pointer = null;
     final page = widget.pageKey;
+    if (_guideStart != null) {
+      _guideStart = null;
+      final g = store.guide(page);
+      if (g != null) await store.touchGuide(g);
+      return;
+    }
     if (_erasing) {
       _erasing = false;
       await store.touchInk(page);
@@ -808,6 +834,35 @@ class PenBar extends StatelessWidget {
                 ),
               ),
             ]),
+            if (desk.tool == 'placer' && store.guide(desk.focusPage) != null)
+              Builder(builder: (context) {
+                final g = store.guide(desk.focusPage)!;
+                final big = const ['dessin', 'lettrage', 'image'].contains(g.type);
+                return SizedBox(
+                  width: 290,
+                  height: 30,
+                  child: Row(children: [
+                    Text('TAILLE DU CALQUE', style: body(9.5, pal.soft, w: FontWeight.w800)),
+                    Expanded(
+                      child: Slider(
+                        value: big ? g.size.clamp(40, 500) : g.spacing.clamp(0.5, 2.5),
+                        min: big ? 40 : 0.5,
+                        max: big ? 500 : 2.5,
+                        activeColor: pal.acc,
+                        onChanged: (v) {
+                          if (big) {
+                            g.size = v;
+                          } else {
+                            g.spacing = v;
+                          }
+                          store.refresh();
+                        },
+                        onChangeEnd: (_) => store.touchGuide(g),
+                      ),
+                    ),
+                  ]),
+                );
+              }),
             if (isPen || desk.tool == 'gomme')
               SizedBox(
                 width: 290,
@@ -846,6 +901,7 @@ class PenBar extends StatelessWidget {
             }
           }),
           tool('calque', Icons.layers_outlined, 'Calque', onTap: () => showGuideSheet(context, desk.focusPage)),
+          if (hasGuide(store, desk.focusPage)) tool('placer', Icons.open_with_rounded, 'Placer'),
           if (hasGuide(store, desk.focusPage))
             tool('oeil', store.guide(desk.focusPage)!.visible ? Icons.visibility_outlined : Icons.visibility_off_outlined, store.guide(desk.focusPage)!.visible ? 'Cacher' : 'Montrer',
                 onTap: () => toggleGuide(store, desk.focusPage)),

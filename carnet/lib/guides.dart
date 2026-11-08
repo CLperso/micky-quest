@@ -56,13 +56,13 @@ class GuideLayer extends StatelessWidget {
         child = b == null
             ? const SizedBox.shrink()
             : Align(
-                alignment: Alignment(0, g.y * 2 - 1),
+                alignment: Alignment(g.x * 2 - 1, g.y * 2 - 1),
                 child: FractionallySizedBox(widthFactor: (g.size / 240).clamp(0.2, 1.0), child: Image.memory(b, fit: BoxFit.contain, gaplessPlayback: true)),
               );
         break;
       case 'lettrage':
         child = Align(
-          alignment: Alignment(0, g.y * 2 - 1),
+          alignment: Alignment(g.x * 2 - 1, g.y * 2 - 1),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Stack(children: [
@@ -85,6 +85,8 @@ class GuideLayer extends StatelessWidget {
   }
 }
 
+double _start(double off, double step) => step <= 0 ? 0 : (off % step) - step;
+
 class GuidePainter extends CustomPainter {
   final Guide g;
   final Pal pal;
@@ -106,43 +108,45 @@ class GuidePainter extends CustomPainter {
       ..color = pal.soft.withValues(alpha: 0.6)
       ..strokeWidth = 0.7;
     final k = g.spacing.clamp(0.4, 3.0);
+    // décalage choisi en glissant le calque
+    final ox = (g.x - 0.5) * w, oy = (g.y - 0.3) * h;
     switch (g.type) {
       case 'calligraphie':
         final u = 24 * k; // hauteur d'x
-        var y = 30.0;
-        while (y + 3 * u < h) {
+        final row = 3.6 * u;
+        for (var y = _start(30 + oy, row); y < h; y += row) {
           canvas.drawLine(Offset(0, y), Offset(w, y), light); // ascendante
           canvas.drawLine(Offset(0, y + u), Offset(w, y + u), mid); // hauteur d'x
           canvas.drawLine(Offset(0, y + 2 * u), Offset(w, y + 2 * u), strong); // ligne de base
           canvas.drawLine(Offset(0, y + 3 * u), Offset(w, y + 3 * u), light); // descendante
-          y += 3.6 * u;
         }
         // obliques de pente
         final a = g.angle.clamp(30, 89) * pi / 180;
         final dx = h / tan(a);
-        for (var x = -dx; x < w; x += 1.4 * u) {
+        for (var x = _start(ox, 1.4 * u) - dx; x < w; x += 1.4 * u) {
           canvas.drawLine(Offset(x, h), Offset(x + dx, 0), light);
         }
         break;
       case 'lignes':
-        for (var y = 40.0; y < h; y += 34 * k) {
+        final st = 34 * k;
+        for (var y = _start(40 + oy, st); y < h; y += st) {
           canvas.drawLine(Offset(0, y), Offset(w, y), mid);
         }
         break;
       case 'grille':
         final s = 14 * k;
-        for (var x = s; x < w; x += s) {
-          canvas.drawLine(Offset(x, 0), Offset(x, h), (x / s).round() % 5 == 0 ? mid : light);
+        for (var i = 0, x = _start(ox, s * 5); x < w; x += s, i++) {
+          canvas.drawLine(Offset(x, 0), Offset(x, h), i % 5 == 0 ? mid : light);
         }
-        for (var y = s; y < h; y += s) {
-          canvas.drawLine(Offset(0, y), Offset(w, y), (y / s).round() % 5 == 0 ? mid : light);
+        for (var i = 0, y = _start(oy, s * 5); y < h; y += s, i++) {
+          canvas.drawLine(Offset(0, y), Offset(w, y), i % 5 == 0 ? mid : light);
         }
         break;
       case 'points':
         final s = 12 * k;
         final p = Paint()..color = pal.ink.withValues(alpha: 0.6);
-        for (var x = s; x < w; x += s) {
-          for (var y = s; y < h; y += s) {
+        for (var x = _start(ox, s); x < w; x += s) {
+          for (var y = _start(oy, s); y < h; y += s) {
             canvas.drawCircle(Offset(x, y), 1, p);
           }
         }
@@ -151,10 +155,10 @@ class GuidePainter extends CustomPainter {
         final s = 22 * k;
         final t = tan(pi / 6);
         final sx = s * cos(pi / 6);
-        for (var x = 0.0; x < w; x += sx) {
+        for (var x = _start(ox, sx); x < w; x += sx) {
           canvas.drawLine(Offset(x, 0), Offset(x, h), light);
         }
-        for (var c = -w * t; c < h + w * t; c += s) {
+        for (var c = _start(oy, s) - w * t; c < h + w * t; c += s) {
           canvas.drawLine(Offset(0, c), Offset(w, c + w * t), light);
           canvas.drawLine(Offset(0, c + w * t), Offset(w, c), light);
         }
@@ -162,7 +166,7 @@ class GuidePainter extends CustomPainter {
       case 'dessin':
         final k2 = g.size / 100;
         canvas.save();
-        canvas.translate(w * g.x.clamp(0.0, 1.0), h * g.y.clamp(0.0, 1.0));
+        canvas.translate(w * g.x, h * g.y);
         canvas.scale(k2, k2);
         final ink = Paint()
           ..style = PaintingStyle.stroke
@@ -178,7 +182,7 @@ class GuidePainter extends CustomPainter {
         canvas.restore();
         break;
       case 'mandala':
-        final c = Offset(w / 2, h * g.y.clamp(0.1, 0.9));
+        final c = Offset(w * g.x, h * g.y);
         for (var r = 20 * k; r < max(w, h); r += 30 * k) {
           canvas.drawCircle(c, r, (r ~/ (30 * k)) % 3 == 0 ? mid : light);
         }
