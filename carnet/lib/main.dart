@@ -233,6 +233,14 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     }
   }
 
+  void _deleteSelected() {
+    if (desk.mode != Mode.deco || desk.selected.isEmpty) return;
+    final store = StoreScope.read(context);
+    final d = store.decos[desk.selected];
+    desk.select('');
+    if (d != null) store.removeDeco(d);
+  }
+
   void _nav(int dir) => setState(() {
         if (tab == tDay) day = day.add(Duration(days: dir));
         if (tab == tWeek) monday = monday.add(Duration(days: 7 * dir));
@@ -336,6 +344,10 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
         bindings: {
           const SingleActivator(LogicalKeyboardKey.keyK, control: true): () => quickCapture(context),
           const SingleActivator(LogicalKeyboardKey.space, control: true): () => quickCapture(context),
+          if (desk.mode == Mode.deco && desk.selected.isNotEmpty) ...{
+            const SingleActivator(LogicalKeyboardKey.delete): _deleteSelected,
+            const SingleActivator(LogicalKeyboardKey.backspace): _deleteSelected,
+          },
         },
         child: Focus(
           autofocus: true,

@@ -233,7 +233,7 @@ class _PageSheetState extends State<PageSheet> {
         ),
       // décoration
       for (final d in decos)
-        _DecoView(key: ValueKey(d.id), deco: d, locked: desk.mode != Mode.deco || desk.washi != null, selected: desk.mode == Mode.deco && desk.selected == d.id),
+        _DecoView(key: ValueKey(d.id), deco: d, locked: desk.mode != Mode.deco, selected: desk.mode == Mode.deco && desk.selected == d.id),
       // washi en train d'être tiré
       if (_washiA != null && _washiB != null && desk.washi != null)
         Builder(builder: (_) {
@@ -738,6 +738,9 @@ class _DecoViewState extends State<_DecoView> {
     final store = StoreScope.of(context);
     final desk = DeskScope.of(context);
     final d = widget.deco;
+    // un élément sorti de la page revient au bord, pour qu'on puisse toujours le toucher
+    d.x = d.x.clamp(8.0, pageW - 8);
+    d.y = d.y.clamp(8.0, pageH - 8);
     final scale = _Scale.of(context);
     final pal = Pal.byId(store.settings.theme);
 
@@ -767,10 +770,29 @@ class _DecoViewState extends State<_DecoView> {
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () {
+                if (desk.washi != null) desk.arm(null);
                 desk.focus(d.page);
                 desk.select(d.id);
               },
+              onLongPress: () async {
+                desk.select(d.id);
+                final ok = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Enlever cet élément ?'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Garder')),
+                      FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Enlever')),
+                    ],
+                  ),
+                );
+                if (ok == true) {
+                  desk.select('');
+                  await store.removeDeco(d);
+                }
+              },
               onScaleStart: (e) {
+                if (desk.washi != null) desk.arm(null);
                 desk.focus(d.page);
                 if (desk.selected != d.id) desk.select(d.id);
                 _last = e.focalPoint;
@@ -784,8 +806,8 @@ class _DecoViewState extends State<_DecoView> {
                 final last = _last ?? e.focalPoint;
                 final delta = (e.focalPoint - last) / scale;
                 _last = e.focalPoint;
-                d.x = (d.x + delta.dx).clamp(-100.0, pageW + 100);
-                d.y = (d.y + delta.dy).clamp(-100.0, pageH + 100);
+                d.x = (d.x + delta.dx).clamp(8.0, pageW - 8);
+                d.y = (d.y + delta.dy).clamp(8.0, pageH - 8);
                 if (e.pointerCount >= 2) {
                   d.w = max(20, _w0 * e.scale);
                   d.h = d.type == 'washi' ? _h0 : max(20, _h0 * e.scale);
