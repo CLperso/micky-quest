@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'atelier.dart';
 import 'canvas.dart';
@@ -21,8 +23,26 @@ import 'style_panel.dart';
 import 'sync.dart';
 import 'theme.dart';
 
+/// Garde les dernières erreurs pour pouvoir les retrouver dans les Réglages.
+Future<void> logError(Object e, StackTrace? st) async {
+  try {
+    final p = await SharedPreferences.getInstance();
+    final l = p.getStringList('carnet_errors') ?? [];
+    l.insert(0, '${DateTime.now().toIso8601String().substring(0, 16)} — $e\n${(st ?? StackTrace.empty).toString().split('\n').take(8).join('\n')}');
+    await p.setStringList('carnet_errors', l.take(12).toList());
+  } catch (_) {}
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  FlutterError.onError = (d) {
+    FlutterError.presentError(d);
+    logError(d.exception, d.stack);
+  };
+  PlatformDispatcher.instance.onError = (e, st) {
+    logError(e, st);
+    return true;
+  };
   final store = Store();
   await store.load();
   runApp(StoreScope(store: store, child: const CarnetApp()));
@@ -748,6 +768,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             padding: const EdgeInsets.only(top: 6),
             child: Text('Dernière synchro : ${DateTime.fromMillisecondsSinceEpoch(store.settings.lastSync).toString().substring(0, 16)}', style: body(12, pal.soft)),
           ),
+        const ErrorLog(),
       ]),
     );
   }
@@ -796,5 +817,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     await store.commit();
     setState(() {});
+  }
+}
+
+/// Le journal des erreurs, à copier pour me l'envoyer.
+class ErrorLog extends StatefulWidget {
+  const ErrorLog({super.key});
+  @override
+  State<ErrorLog> createState() => _ErrorLogState();
+}
+
+class _ErrorLogState extends State<ErrorLog> {
+  List<String> _l = [];
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((p) {
+      if (mounted) setState(() => _l = p.getStringList('carnet_errors') ?? []);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = Pal.byId(StoreScope.of(context).settings.theme);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const SizedBox(height: 20),
+      Label('Journal des erreurs', pal.soft),
+      if (_l.isEmpty) Text('Aucune erreur enregistrée.', style: body(13, pal.soft, w: FontWeight.w600)),
+      if (_l.isNotEmpty) ...[
+        Container(
+          constraints: const BoxConstraints(maxHeight: 220),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(color: pal.card, borderRadius: BorderRadius.circular(10), border: Border.all(color: pal.line)),
+          child: SingleChildScrollView(child: SelectableText(_l.join('\n\n'), style: const TextStyle(fontSize: 11, fontFamily: 'monospace'))),
+        ),
+        Row(children: [
+          TextButton.icon(
+            onPressed: () => Clipboard.setData(ClipboardData(text: _l.join('\n\n'))),
+            icon: const Icon(Icons.copy_rounded, size: 18),
+            label: const Text('Copier'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final p = await SharedPreferences.getInstance();
+              await p.remove('carnet_errors');
+              setState(() => _l = []);
+            },
+            child: const Text('Vider'),
+          ),
+        ]),
+      ],
+    ]);
   }
 }

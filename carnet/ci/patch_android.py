@@ -28,6 +28,8 @@ else:
     m = m.replace("</manifest>", "    <queries>" + queries + "    </queries>\n</manifest>", 1)
 
 m = re.sub(r'android:label="[^"]*"', 'android:label="Carnet Micky"', m, count=1)
+# moteur d'affichage Skia (plus stable qu'Impeller sur certains GPU Mali, dont les Galaxy Tab récentes)
+m = m.replace("</application>", '        <meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="false" />\n    </application>', 1)
 manifest.write_text(m)
 
 # --- build.gradle de l'appli (Groovy ou Kotlin) ---
