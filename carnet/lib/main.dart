@@ -78,6 +78,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     desk.addListener(() {
+      _lockScreen(desk.mode != Mode.use);
       if (mounted) setState(() {});
     });
     _tick = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -233,6 +234,17 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     }
   }
 
+  bool _locked = false;
+
+  /// En mode dessin ou déco : plein écran « collant » — les barres système se cachent, et un geste
+  /// sur le bord ne fait d'abord que les montrer (il faut un 2e geste pour quitter).
+  void _lockScreen(bool on) {
+    if (on == _locked) return;
+    _locked = on;
+    if (kIsWeb) return;
+    SystemChrome.setEnabledSystemUIMode(on ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge);
+  }
+
   void _deleteSelected() {
     if (desk.mode != Mode.deco || desk.selected.isEmpty) return;
     final store = StoreScope.read(context);
@@ -351,7 +363,25 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
         },
         child: Focus(
           autofocus: true,
-          child: Scaffold(
+          child: PopScope(
+            // le bouton retour ne fait pas quitter le carnet : en mode dessin il ne fait rien,
+            // sinon il revient d'abord au mode normal
+            canPop: false,
+            onPopInvokedWithResult: (didPop, _) {
+              if (didPop) return;
+              if (desk.mode == Mode.pen) {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  duration: Duration(seconds: 2),
+                  content: Text('Mode dessin verrouillé : touche ✋ pour en sortir.'),
+                ));
+              } else if (desk.mode == Mode.deco) {
+                desk.setMode(Mode.use);
+              } else {
+                SystemNavigator.pop();
+              }
+            },
+            child: Scaffold(
             backgroundColor: pal.desk,
             floatingActionButton: desk.mode == Mode.use && !styleOpen
                 ? FloatingActionButton(
@@ -404,6 +434,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
                 ),
               ]),
             ),
+          ),
           ),
         ),
       ),
