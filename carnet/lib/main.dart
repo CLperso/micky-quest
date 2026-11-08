@@ -61,7 +61,7 @@ class Shell extends StatefulWidget {
 
 class _ShellState extends State<Shell> with WidgetsBindingObserver {
   final desk = Desk();
-  int tab = tDay;
+  int tab = tCover; // le carnet s'ouvre sur sa couverture
   DateTime day = dateOnly(DateTime.now());
   DateTime monday = mondayOf(DateTime.now());
   DateTime month = DateTime(DateTime.now().year, DateTime.now().month, 1);
