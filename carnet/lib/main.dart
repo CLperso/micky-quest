@@ -102,6 +102,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
       if (mounted) setState(() {});
     });
     _tick = Timer.periodic(const Duration(seconds: 30), (_) {
+      _rollDay();
       if (mounted) setState(() {});
     });
     _syncTick = Timer.periodic(const Duration(minutes: 3), (_) => _sync());
@@ -118,7 +119,25 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _rollDay();
     if (state == AppLifecycleState.resumed || state == AppLifecycleState.paused) _sync();
+  }
+
+  String _today = dayKey(DateTime.now());
+
+  /// Après minuit (ou au retour dans l'appli le lendemain), on passe au nouveau jour,
+  /// sauf si on regardait volontairement un autre jour.
+  void _rollDay() {
+    final now = DateTime.now();
+    final k = dayKey(now);
+    if (k == _today || !mounted) return;
+    final old = parseDay(_today);
+    setState(() {
+      if (dayKey(day) == _today) day = dateOnly(now);
+      if (dayKey(monday) == dayKey(mondayOf(old))) monday = mondayOf(now);
+      if (month.year == old.year && month.month == old.month) month = DateTime(now.year, now.month, 1);
+      _today = k;
+    });
   }
 
   Future<void> _sync({bool manual = false}) async {
