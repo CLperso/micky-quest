@@ -40,6 +40,12 @@ class Desk extends ChangeNotifier {
   Rect? _selBox;
 
   bool textEraser = false; // gomme à texte (mode ✋)
+  bool autoText = true; // en mode ✏️, l'écriture sur une liste devient du texte
+  void toggleAutoText() {
+    autoText = !autoText;
+    notifyListeners();
+  }
+
   void toggleTextEraser() {
     textEraser = !textEraser;
     notifyListeners();
@@ -223,7 +229,7 @@ class _PageSheetState extends State<PageSheet> {
           ignoring: desk.mode != Mode.use,
           child: Listener(
             onPointerDown: (_) => desk.focus(widget.pageKey),
-            child: widget.bare ? widget.child : Padding(padding: const EdgeInsets.fromLTRB(34, 30, 34, 26), child: widget.child),
+            child: PageKeyScope(page: widget.pageKey, child: widget.bare ? widget.child : Padding(padding: const EdgeInsets.fromLTRB(34, 30, 34, 26), child: widget.child)),
           ),
         ),
       ),
@@ -299,6 +305,134 @@ class _PageSheetState extends State<PageSheet> {
 }
 
 /// Reconnaissance de l'écriture (Android seulement) : les traits pas encore convertis deviennent des lignes de texte.
+/// Quelle page contient ce widget.
+class PageKeyScope extends InheritedWidget {
+  final String page;
+  const PageKeyScope({super.key, required this.page, required super.child});
+  static String? of(BuildContext c) => c.dependOnInheritedWidgetOfExactType<PageKeyScope>()?.page;
+  @override
+  bool updateShouldNotify(PageKeyScope o) => o.page != page;
+}
+
+/// Une zone où l'écriture au stylet (mode ✏️) devient du texte : une liste, une case…
+class InkTarget extends StatefulWidget {
+  final Future<void> Function(List<String> lines) onLines;
+  final bool growDown; // une liste : on peut écrire dans l'espace libre en dessous
+  final Widget child;
+  const InkTarget({super.key, required this.onLines, required this.child, this.growDown = false});
+  @override
+  State<InkTarget> createState() => InkTargetState();
+}
+
+class InkTargetState extends State<InkTarget> {
+  static final Set<InkTargetState> live = {};
+  String? page;
+
+  @override
+  void initState() {
+    super.initState();
+    live.add(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    page = PageKeyScope.of(context);
+  }
+
+  @override
+  void dispose() {
+    live.remove(this);
+    super.dispose();
+  }
+
+  /// Le rectangle de la zone, dans les coordonnées de [layer].
+  Rect? rectIn(RenderBox layer) {
+    final b = context.findRenderObject();
+    if (b is! RenderBox || !b.attached || !b.hasSize) return null;
+    final a = layer.globalToLocal(b.localToGlobal(Offset.zero));
+    final z = layer.globalToLocal(b.localToGlobal(b.size.bottomRight(Offset.zero)));
+    return Rect.fromPoints(a, z);
+  }
+
+  Future<void> deliver(List<String> l) => widget.onLines(l);
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+double _cy(Stroke s) {
+  var a = double.infinity, b = -double.infinity;
+  for (var i = 1; i < s.pts.length; i += 3) {
+    a = min(a, s.pts[i]);
+    b = max(b, s.pts[i]);
+  }
+  return (a + b) / 2;
+}
+
+Offset strokeCenter(Stroke s) {
+  var x0 = double.infinity, x1 = -double.infinity;
+  for (var i = 0; i + 1 < s.pts.length; i += 3) {
+    x0 = min(x0, s.pts[i]);
+    x1 = max(x1, s.pts[i]);
+  }
+  return Offset((x0 + x1) / 2, _cy(s));
+}
+
+/// Regroupe des traits en lignes d'écriture.
+List<List<Stroke>> groupLines(List<Stroke> todo, {double gap = 22}) {
+  final groups = <List<Stroke>>[];
+  final centers = <double>[];
+  for (final s in [...todo]..sort((a, b) => _cy(a).compareTo(_cy(b)))) {
+    final c = _cy(s);
+    if (centers.isNotEmpty && (c - centers.last).abs() < gap) {
+      groups.last.add(s);
+    } else {
+      groups.add([s]);
+      centers.add(c);
+    }
+  }
+  for (final g in groups) {
+    g.sort((a, b) => a.pts[0].compareTo(b.pts[0]));
+  }
+  return groups;
+}
+
+mk.DigitalInkRecognizer? _recognizer;
+
+/// Reconnaît chaque ligne (null si la reconnaissance n'est pas disponible).
+Future<List<String>?> recognizeLines(List<List<Stroke>> groups) async {
+  if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return null;
+  try {
+    const lang = 'fr';
+    final manager = mk.DigitalInkRecognizerModelManager();
+    if (!await manager.isModelDownloaded(lang)) {
+      final ok = await manager.downloadModel(lang, isWifiRequired: false);
+      if (!ok) return null;
+    }
+    final r = _recognizer ??= mk.DigitalInkRecognizer(languageCode: lang);
+    final out = <String>[];
+    var t = 0;
+    for (final g in groups) {
+      final mi = mk.Ink();
+      mi.strokes = [
+        for (final s in g)
+          mk.Stroke()
+            ..points = [
+              for (var i = 0; i + 1 < s.pts.length; i += 3) mk.StrokePoint(x: s.pts[i] * 3, y: s.pts[i + 1] * 3, t: (t += 16))
+            ]
+      ];
+      final c = await r.recognize(mi);
+      final txt = c.isEmpty ? '' : c.first.text.trim();
+      out.add(txt.isEmpty ? '' : txt[0].toUpperCase() + txt.substring(1));
+    }
+    return out;
+  } catch (e) {
+    debugPrint('Encre : $e');
+    return null;
+  }
+}
+
 Future<List<String>?> recognizeInk(Store store, Desk desk, String page) async {
   if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return null;
   final ink = store.inks[page];

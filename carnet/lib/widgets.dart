@@ -174,7 +174,14 @@ class _HandFieldState extends State<HandField> {
               ),
       );
     }
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+    return InkTarget(
+      onLines: (l) async {
+        final add = l.join(' ');
+        _c.text = _c.text.trim().isEmpty ? add : '${_c.text.trimRight()} $add';
+        widget.onChanged(_c.text);
+        if (mounted) setState(() {});
+      },
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
       TextField(
       controller: _c,
       focusNode: _f,
@@ -192,7 +199,7 @@ class _HandFieldState extends State<HandField> {
       onChanged: widget.onChanged,
       ),
       EditTools(c: _c, f: _f, onChanged: () => widget.onChanged(_c.text)),
-    ]);
+    ]));
   }
 }
 
@@ -608,7 +615,14 @@ class BulletList extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = StoreScope.of(context);
     final shown = hideDone ? items.where((e) => !e.done && !e.dropped).toList() : items;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    return InkTarget(
+      growDown: true,
+      onLines: (l) async {
+        for (final t in l) {
+          await onAdd(t, 'task');
+        }
+      },
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       ReorderableListView(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
@@ -635,7 +649,7 @@ class BulletList extends StatelessWidget {
         ],
       ),
       AddLine(onAdd: onAdd, hint: hint),
-    ]);
+    ]));
   }
 }
 

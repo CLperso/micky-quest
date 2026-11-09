@@ -253,7 +253,13 @@ class DayBox extends StatelessWidget {
     final items = store.dayEntries(k);
     final isToday = k == store.todayKey;
     final name = store.text('week.day.${date.weekday}', dayNames[date.weekday - 1]);
-    return Stack(clipBehavior: Clip.none, children: [
+    return InkTarget(
+      onLines: (l) async {
+        for (final t in l) {
+          await store.addEntry(t, when: k);
+        }
+      },
+      child: Stack(clipBehavior: Clip.none, children: [
       Positioned.fill(child: CustomPaint(painter: SketchBox(isToday ? pal.acc : pal.ink))),
       Positioned(
         left: 10,
@@ -306,7 +312,7 @@ class DayBox extends StatelessWidget {
           child: Center(child: Text('${date.day}', style: hand(18, isToday ? Colors.white : pal.ink))),
         ),
       ),
-    ]);
+    ]));
   }
 }
 

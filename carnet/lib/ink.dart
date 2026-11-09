@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -380,6 +382,82 @@ class _InkLayerState extends State<InkLayer> {
   Rect _dragBox0 = Rect.zero;
   List<List<double>> _dragPts0 = [];
   int _version = 0;
+  final List<Stroke> _fresh = [];
+  Timer? _convert;
+  bool _converting = false;
+
+  @override
+  void dispose() {
+    _convert?.cancel();
+    super.dispose();
+  }
+
+  /// Écriture → texte : les traits posés sur une liste ou une case deviennent des lignes.
+  Future<void> _autoConvert(Store store, Desk desk) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    if (!mounted || _converting || _pointer != null) return;
+    final layer = context.findRenderObject();
+    if (layer is! RenderBox || !layer.attached) return;
+    final page = widget.pageKey;
+    final ink = store.ink(page);
+    final fresh = _fresh.where((s) => ink.strokes.contains(s)).toList();
+    _fresh.clear();
+    if (fresh.isEmpty) return;
+    // les zones de cette page, la plus petite d'abord (une case dans une liste…)
+    final zones = <(InkTargetState, Rect)>[];
+    for (final t in InkTargetState.live) {
+      if (t.page != page || !t.mounted) continue;
+      final r = t.rectIn(layer);
+      if (r != null) zones.add((t, r));
+    }
+    if (zones.isEmpty) return;
+    final grown = <(InkTargetState, Rect)>[];
+    for (final (t, r) in zones) {
+      var rr = r.inflate(10);
+      if (t.widget.growDown) {
+        var bottom = r.bottom + 150;
+        for (final (o, q) in zones) {
+          if (o != t && q.top > r.bottom - 4 && q.top < bottom && q.left < r.right && q.right > r.left) bottom = q.top - 4;
+        }
+        rr = Rect.fromLTRB(rr.left, rr.top, rr.right, max(rr.bottom, bottom));
+      }
+      grown.add((t, rr));
+    }
+    grown.sort((a, b) => (a.$2.width * a.$2.height).compareTo(b.$2.width * b.$2.height));
+    final byZone = <InkTargetState, List<Stroke>>{};
+    for (final s in fresh) {
+      final c = strokeCenter(s);
+      for (final (t, r) in grown) {
+        if (r.contains(c)) {
+          (byZone[t] ??= []).add(s);
+          break;
+        }
+      }
+    }
+    if (byZone.isEmpty) return;
+    _converting = true;
+    try {
+      for (final e in byZone.entries) {
+        final groups = groupLines(e.value);
+        final texts = await recognizeLines(groups);
+        if (texts == null) {
+          if (mounted) {
+            ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text('Reconnaissance d’écriture indisponible (la première fois, il faut internet pour la télécharger).')));
+          }
+          return;
+        }
+        final lines = texts.where((t) => t.isNotEmpty).toList();
+        if (lines.isEmpty) continue;
+        store.snapshot(page);
+        ink.strokes.removeWhere((s) => e.value.contains(s));
+        await store.touchInk(page);
+        await e.key.deliver(lines);
+      }
+    } finally {
+      _converting = false;
+      if (mounted) setState(() => _version++);
+    }
+  }
   Offset? _guideStart;
   double _guideX0 = 0.5, _guideY0 = 0.3;
 
@@ -588,6 +666,11 @@ class _InkLayerState extends State<InkLayer> {
       store.snapshot(page);
       _strokes(store).add(c);
       await store.touchInk(page);
+      if (desk.autoText && !c.hl) {
+        _fresh.add(c);
+        _convert?.cancel();
+        _convert = Timer(const Duration(milliseconds: 1400), () => _autoConvert(store, desk));
+      }
     } else {
       setState(() {});
     }
@@ -908,7 +991,8 @@ class PenBar extends StatelessWidget {
           tool('undo', Icons.undo_rounded, 'Annuler', onTap: () {
             if (store.canUndo) store.undo();
           }),
-          if (onRecognize != null) tool('texte', Icons.text_fields_rounded, '→ lignes', onTap: onRecognize),
+          if (onRecognize != null)
+            tool('auto', desk.autoText ? Icons.text_fields_rounded : Icons.gesture_rounded, desk.autoText ? 'Écriture → texte' : 'Écriture libre', onTap: desk.toggleAutoText),
         ]),
       ),
     );
