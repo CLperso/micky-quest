@@ -155,7 +155,8 @@ class _HandFieldState extends State<HandField> {
   Widget build(BuildContext context) {
     final pal = palOf(context);
     final st = widget.handwriting ? hand(widget.size, widget.color ?? pal.ink) : body(widget.size, widget.color ?? pal.ink, w: FontWeight.w600);
-    return TextField(
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+      TextField(
       controller: _c,
       focusNode: _f,
       minLines: 1,
@@ -170,7 +171,174 @@ class _HandFieldState extends State<HandField> {
         contentPadding: const EdgeInsets.symmetric(vertical: 2),
       ),
       onChanged: widget.onChanged,
+      ),
+      EditTools(c: _c, f: _f, onChanged: () => widget.onChanged(_c.text)),
+    ]);
+  }
+}
+
+/// Efface le mot juste avant le curseur.
+void deleteWord(TextEditingController c) {
+  final sel = c.selection;
+  final end = sel.isValid ? sel.end : c.text.length;
+  final start = sel.isValid && !sel.isCollapsed ? sel.start : null;
+  if (start != null) {
+    c.value = TextEditingValue(text: c.text.replaceRange(start, end, ''), selection: TextSelection.collapsed(offset: start));
+    return;
+  }
+  final before = c.text.substring(0, end).trimRight();
+  final i = before.lastIndexOf(RegExp(r'\s'));
+  final cut = i < 0 ? 0 : i + 1;
+  c.value = TextEditingValue(text: c.text.substring(0, cut) + c.text.substring(end), selection: TextSelection.collapsed(offset: cut));
+}
+
+/// Petits boutons sous un champ en cours d'écriture : effacer un mot, tout effacer, supprimer la ligne, OK.
+class EditTools extends StatelessWidget {
+  final TextEditingController c;
+  final FocusNode f;
+  final VoidCallback? onDeleteLine;
+  final VoidCallback? onChanged;
+  const EditTools({super.key, required this.c, required this.f, this.onDeleteLine, this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = palOf(context);
+    Widget b(IconData i, String label, VoidCallback onTap, {Color? color}) => Padding(
+          padding: const EdgeInsets.only(right: 6, top: 2),
+          child: Material(
+            color: pal.tint,
+            borderRadius: BorderRadius.circular(999),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(999),
+              canRequestFocus: false,
+              onTap: onTap,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(i, size: 16, color: color ?? pal.ink),
+                  const SizedBox(width: 4),
+                  Text(label, style: body(12, color ?? pal.ink, w: FontWeight.w800)),
+                ]),
+              ),
+            ),
+          ),
+        );
+    return ListenableBuilder(
+      listenable: f,
+      builder: (context, _) => !f.hasFocus
+          ? const SizedBox.shrink()
+          : TextFieldTapRegion(
+              child: Wrap(children: [
+                b(Icons.backspace_outlined, 'mot', () {
+                  deleteWord(c);
+                  onChanged?.call();
+                }),
+                b(Icons.clear_rounded, 'tout effacer', () {
+                  c.clear();
+                  onChanged?.call();
+                }),
+                if (onDeleteLine != null) b(Icons.delete_outline_rounded, 'supprimer la ligne', onDeleteLine!, color: pal.acc),
+                b(Icons.check_rounded, 'OK', () => f.unfocus(), color: pal.acc2),
+              ]),
+            ),
     );
+  }
+}
+
+/// Supprimer une ligne, avec « Annuler ».
+Future<void> deleteWithUndo(BuildContext context, Entry e) async {
+  final store = StoreScope.read(context);
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  await store.deleteEntry(e);
+  messenger?.hideCurrentSnackBar();
+  messenger?.showSnackBar(SnackBar(
+    content: Text('« ${e.text} » supprimée'),
+    action: SnackBarAction(
+      label: 'Annuler',
+      onPressed: () {
+        e.del = false;
+        store.updateEntry(e);
+      },
+    ),
+  ));
+}
+
+/// Le texte d'une ligne : un toucher et on l'écrit / le corrige sur place.
+class EntryText extends StatefulWidget {
+  final Entry e;
+  final TextStyle style;
+  final List<InlineSpan> extra;
+  const EntryText({super.key, required this.e, required this.style, this.extra = const []});
+  @override
+  State<EntryText> createState() => _EntryTextState();
+}
+
+class _EntryTextState extends State<EntryText> {
+  bool _edit = false;
+  late final TextEditingController _c = TextEditingController(text: widget.e.text);
+  final _f = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _f.addListener(() {
+      if (!_f.hasFocus && _edit) _save();
+    });
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    _f.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final store = StoreScope.read(context);
+    final t = _c.text.trim();
+    setState(() => _edit = false);
+    if (t.isEmpty) {
+      await deleteWithUndo(context, widget.e);
+    } else if (t != widget.e.text) {
+      widget.e.text = t;
+      await store.updateEntry(widget.e);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_edit) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          _c.text = widget.e.text;
+          _c.selection = TextSelection.collapsed(offset: _c.text.length);
+          setState(() => _edit = true);
+          WidgetsBinding.instance.addPostFrameCallback((_) => _f.requestFocus());
+        },
+        child: Text.rich(TextSpan(children: [TextSpan(text: widget.e.text, style: widget.style), ...widget.extra])),
+      );
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      TextField(
+        controller: _c,
+        focusNode: _f,
+        style: widget.style.copyWith(decoration: TextDecoration.none),
+        minLines: 1,
+        maxLines: 4,
+        textCapitalization: TextCapitalization.sentences,
+        decoration: const InputDecoration(isDense: true, border: InputBorder.none, contentPadding: EdgeInsets.symmetric(vertical: 2)),
+        onSubmitted: (_) => _f.unfocus(),
+      ),
+      EditTools(
+        c: _c,
+        f: _f,
+        onDeleteLine: () {
+          _c.clear();
+          _f.unfocus();
+        },
+      ),
+    ]);
   }
 }
 
@@ -188,10 +356,7 @@ class BulletRow extends StatelessWidget {
     final coll = e.coll.isEmpty ? null : store.colls[e.coll];
     final faded = e.done || e.dropped;
     final symCol = e.kind == 'event' ? pal.acc2 : (e.kind == 'note' ? pal.soft : pal.acc);
-    return InkWell(
-      onTap: () => entryMenu(context, e),
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
+    return Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           GestureDetector(
@@ -218,23 +383,27 @@ class BulletRow extends StatelessWidget {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: Text.rich(TextSpan(children: [
-                TextSpan(
-                  text: e.text,
-                  style: body(16, faded ? pal.soft : pal.ink, w: e.kind == 'note' ? FontWeight.w600 : FontWeight.w700).copyWith(
-                    decoration: e.dropped ? TextDecoration.lineThrough : null,
-                    fontStyle: e.kind == 'note' ? FontStyle.italic : null,
-                  ),
+              child: EntryText(
+                key: ValueKey('t${e.id}'),
+                e: e,
+                style: body(16, faded ? pal.soft : pal.ink, w: e.kind == 'note' ? FontWeight.w600 : FontWeight.w700).copyWith(
+                  decoration: e.dropped ? TextDecoration.lineThrough : null,
+                  fontStyle: e.kind == 'note' ? FontStyle.italic : null,
                 ),
-                if (goal != null) TextSpan(text: '  ${goal.emoji}', style: body(13, pal.soft)),
-                if (coll != null && showWhen) TextSpan(text: '  ${coll.emoji}', style: body(13, pal.soft)),
-                if (showWhen && e.when.isNotEmpty) TextSpan(text: '  · ${whenLabel(e.when)}', style: body(12, pal.soft)),
-              ])),
+                extra: [
+                  if (goal != null) TextSpan(text: '  ${goal.emoji}', style: body(13, pal.soft)),
+                  if (coll != null && showWhen) TextSpan(text: '  ${coll.emoji}', style: body(13, pal.soft)),
+                  if (showWhen && e.when.isNotEmpty) TextSpan(text: '  · ${whenLabel(e.when)}', style: body(12, pal.soft)),
+                ],
+              ),
             ),
           ),
+          GestureDetector(
+            onTap: () => entryMenu(context, e),
+            child: SizedBox(width: 28, height: 26, child: Icon(Icons.more_horiz_rounded, size: 18, color: pal.soft.withValues(alpha: .7))),
+          ),
         ]),
-      ),
-    );
+      );
   }
 }
 
@@ -275,7 +444,21 @@ class BulletList extends StatelessWidget {
         onReorder: (a, b) => store.reorder(shown, a, b > a ? b - 1 : b),
         children: [
           for (var i = 0; i < shown.length; i++)
-            ReorderableDelayedDragStartListener(key: ValueKey(shown[i].id), index: i, child: BulletRow(e: shown[i], showWhen: showWhen)),
+            ReorderableDelayedDragStartListener(
+              key: ValueKey(shown[i].id),
+              index: i,
+              child: Dismissible(
+                key: ValueKey('d${shown[i].id}'),
+                direction: DismissDirection.endToStart,
+                background: Container(
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Icon(Icons.delete_outline_rounded, color: palOf(context).acc),
+                ),
+                onDismissed: (_) => deleteWithUndo(context, shown[i]),
+                child: BulletRow(e: shown[i], showWhen: showWhen),
+              ),
+            ),
         ],
       ),
       AddLine(onAdd: onAdd, hint: hint),
@@ -327,7 +510,8 @@ class _AddLineState extends State<AddLine> {
   Widget build(BuildContext context) {
     final pal = palOf(context);
     final sym = _kind == 'event' ? '○' : (_kind == 'note' ? '–' : '+');
-    return Row(children: [
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+      Row(children: [
       GestureDetector(
         onTap: () => setState(() => _kind = _kind == 'task' ? 'event' : (_kind == 'event' ? 'note' : 'task')),
         child: SizedBox(width: 30, height: 30, child: Center(child: Text(sym, style: body(20, pal.acc, w: FontWeight.w900)))),
@@ -347,9 +531,12 @@ class _AddLineState extends State<AddLine> {
           onSubmitted: _submit,
         ),
       ),
+      ]),
+      Padding(padding: const EdgeInsets.only(left: 30), child: EditTools(c: _c, f: _f)),
     ]);
   }
 }
+
 
 /// Le menu d'une ligne : la changer de place, de type, la relier.
 Future<void> entryMenu(BuildContext context, Entry e) async {

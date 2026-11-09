@@ -262,10 +262,7 @@ class DayBox extends StatelessWidget {
         bottom: 4,
         child: ListView(padding: EdgeInsets.zero, children: [
           for (final e in items)
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => entryMenu(context, e),
-              child: Padding(
+            Padding(
                 padding: const EdgeInsets.symmetric(vertical: 1),
                 child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   GestureDetector(
@@ -276,12 +273,17 @@ class DayBox extends StatelessWidget {
                     ),
                   ),
                   Expanded(
-                    child: Text(e.text,
+                    child: EntryText(
+                        key: ValueKey('t${e.id}'),
+                        e: e,
                         style: hand(21, e.done ? pal.soft : pal.ink).copyWith(decoration: e.done ? TextDecoration.lineThrough : null, decorationColor: pal.acc)),
+                  ),
+                  GestureDetector(
+                    onTap: () => entryMenu(context, e),
+                    child: Padding(padding: const EdgeInsets.only(top: 4), child: Icon(Icons.more_horiz_rounded, size: 16, color: pal.soft.withValues(alpha: .7))),
                   ),
                 ]),
               ),
-            ),
           AddLine(hint: '', onAdd: (t, kind) async => store.addEntry(t, when: k, kind: kind)),
         ]),
       ),
