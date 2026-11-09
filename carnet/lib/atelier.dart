@@ -101,6 +101,23 @@ class _AtelierState extends State<Atelier> {
               ),
             ),
           ]),
+          section('Petits dessins'),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final (k, n, w, h) in doodleKinds)
+              Tooltip(
+                message: n,
+                child: GestureDetector(
+                  onTap: () => _place(store, desk, Deco(page: page, type: 'doodle', x: 300, y: 360, w: k == 'branche' ? 300 : w * 2, h: k == 'branche' ? 34 : h * 2, style: {'kind': k})),
+                  child: Container(
+                    width: k == 'branche' ? 96 : 48,
+                    height: 44,
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(color: pal.card, borderRadius: BorderRadius.circular(8), border: Border.all(color: pal.line)),
+                    child: CustomPaint(painter: DoodlePainter(k, pal, null)),
+                  ),
+                ),
+              ),
+          ]),
           for (final e in stickerEmojis.entries) ...[
             section(e.key),
             Wrap(spacing: 4, runSpacing: 4, children: [

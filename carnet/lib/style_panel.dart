@@ -103,6 +103,7 @@ class StylePanel extends StatelessWidget {
               }),
             ]),
             lab('Niveau de déco'),
+            Text('Les petits dessins (étoiles, lune, branche, nœud…) posés d’office sur les nouvelles pages. Ce sont des stickers : en mode déco tu peux les déplacer, les recolorer ou les enlever, et en ajouter depuis l’atelier.', style: body(11.5, pal.soft, w: FontWeight.w600)),
             Slider(
               value: st.decoLevel,
               min: 0,

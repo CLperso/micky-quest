@@ -180,6 +180,10 @@ class _PageSheetState extends State<PageSheet> {
     final paper = store.paper(widget.pageKey);
     final decos = store.pageDecos(widget.pageKey);
     final focused = desk.focusPage == widget.pageKey && desk.mode != Mode.use;
+    if (widget.ornaments && !widget.bare && !store.seeded.contains(widget.pageKey)) {
+      final key = widget.pageKey;
+      WidgetsBinding.instance.addPostFrameCallback((_) => store.seedPage(key, seedDoodles(key, store.settings.decoLevel)));
+    }
     final paperColor = widget.paperOverride ?? (paper.color == 0 ? pal.paper : Color(paper.color));
     final right = widget.pageKey.endsWith(':R');
     final darkPaper = paperColor.computeLuminance() < 0.3;
@@ -200,9 +204,6 @@ class _PageSheetState extends State<PageSheet> {
           ),
         ),
       ),
-      // petits ornements selon le niveau de déco
-      if (widget.ornaments && !widget.bare && store.settings.decoLevel > 0.3)
-        Positioned.fill(child: IgnorePointer(child: CustomPaint(painter: Ornaments(store.settings.decoLevel, pal, right)))),
       // contenu
       Positioned.fill(
         child: IgnorePointer(
@@ -345,6 +346,93 @@ Future<List<String>?> recognizeInk(Store store, Desk desk, String page) async {
     debugPrint('Encre : $e');
     return null;
   }
+}
+
+const doodleKinds = [
+  ('etincelle', 'Étincelle', 26.0, 26.0),
+  ('etoile', 'Petite étoile', 14.0, 14.0),
+  ('lune', 'Lune', 26.0, 26.0),
+  ('branche', 'Branche', 300.0, 34.0),
+  ('noeud', 'Nœud', 60.0, 46.0),
+  ('coeurs', 'Cœurs', 74.0, 22.0),
+];
+
+/// Les petits dessins de déco (étoiles, lune, branche, nœud, cœurs) : de vrais stickers.
+class DoodlePainter extends CustomPainter {
+  final String kind;
+  final Pal pal;
+  final int? color;
+  DoodlePainter(this.kind, this.pal, this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final o = Ornaments(1, pal, false);
+    final w = size.width, h = size.height;
+    final c = color == null ? null : Color(color!);
+    final gold = Paint()
+      ..color = c ?? pal.acc3
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4;
+    switch (kind) {
+      case 'etincelle':
+        o._spark(canvas, Offset(w / 2, h / 2), min(w, h) / 2 - 1, gold);
+        break;
+      case 'etoile':
+        o._spark(canvas, Offset(w / 2, h / 2), min(w, h) / 2, Paint()..color = c ?? pal.acc3);
+        break;
+      case 'lune':
+        canvas.drawPath(Path()..addArc(Rect.fromCircle(center: Offset(w / 2, h / 2), radius: min(w, h) / 2 - 2), -pi / 2.2, pi * 1.3), gold..strokeWidth = 1.6);
+        break;
+      case 'branche':
+        final stem = Paint()
+          ..color = pal.soft.withValues(alpha: .8)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.1;
+        o._vine(canvas, Offset(0, h / 2), w - 14, stem, Paint()..color = (c ?? pal.acc2).withValues(alpha: .55));
+        break;
+      case 'noeud':
+        final k = min(w / 60, h / 46);
+        o._bow(canvas, Offset(w / 2, h * 0.36), k, Paint()..color = c ?? pal.tint, Paint()
+          ..color = pal.acc
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.3);
+        break;
+      case 'coeurs':
+        for (var i = 0; i < 3; i++) {
+          final cx = w / 6 + i * w / 3, cy = h / 2;
+          final s = min(w / 3, h) / 14;
+          final heart = Path()
+            ..moveTo(cx, cy + 6 * s)
+            ..cubicTo(cx - 7 * s, cy + 1 * s, cx - 8 * s, cy - 4 * s, cx - 4.5 * s, cy - 5.5 * s)
+            ..cubicTo(cx - 2 * s, cy - 7 * s, cx, cy - 4.5 * s, cx, cy - 3 * s)
+            ..cubicTo(cx, cy - 4.5 * s, cx + 2 * s, cy - 7 * s, cx + 4.5 * s, cy - 5.5 * s)
+            ..cubicTo(cx + 8 * s, cy - 4 * s, cx + 7 * s, cy + 1 * s, cx, cy + 6 * s)
+            ..close();
+          canvas.drawPath(heart, Paint()..color = c ?? (i.isEven ? pal.acc : pal.tint));
+        }
+        break;
+    }
+  }
+
+  @override
+  bool shouldRepaint(DoodlePainter o) => o.kind != kind || o.pal != pal || o.color != color;
+}
+
+/// Les petits dessins posés d'office sur une nouvelle page, selon le niveau de déco.
+List<Deco> seedDoodles(String page, double level) {
+  if (level <= 0.3) return [];
+  final right = page.endsWith(':R');
+  final l = <Deco>[
+    Deco(page: page, type: 'doodle', x: pageW - (right ? 54 : 92), y: right ? 46 : 40, w: 18, h: 18, style: {'kind': 'etincelle'}),
+    Deco(page: page, type: 'doodle', x: pageW - (right ? 36 : 70), y: right ? 66 : 60, w: 8, h: 8, style: {'kind': 'etoile'}),
+    if (!right) Deco(page: page, type: 'doodle', x: pageW - 46, y: 38, w: 22, h: 22, style: {'kind': 'lune'}),
+    Deco(page: page, type: 'doodle', x: pageW / 2, y: pageH - 32, w: pageW * (right ? 0.5 : 0.6), h: 30, style: {'kind': 'branche'}),
+  ];
+  if (level > 1.4) {
+    l.add(Deco(page: page, type: 'doodle', x: right ? pageW - 40 : 44, y: pageH - 64, w: 60, h: 46, style: {'kind': 'noeud'}));
+    l.add(Deco(page: page, type: 'doodle', x: right ? 70 : pageW - 88, y: 22, w: 74, h: 22, style: {'kind': 'coeurs'}));
+  }
+  return l;
 }
 
 /// Étoiles, lune, feuillage et nœud dessinés sur la page (niveau de déco).
@@ -498,6 +586,8 @@ Widget renderDeco(Deco d, Store store) {
       return CustomPaint(size: Size(d.w, d.h), painter: WashiPainter(Color(col('color', 0xFFE8896B)), (s['pattern'] as String?) ?? 'stripes', (s['opacity'] as num?)?.toDouble() ?? 0.75));
     case 'emoji':
       return FittedBox(child: Text((s['emoji'] as String?) ?? '⭐', style: const TextStyle(fontSize: 120)));
+    case 'doodle':
+      return CustomPaint(size: Size(d.w, d.h), painter: DoodlePainter((s['kind'] as String?) ?? 'etincelle', Pal.byId(store.settings.theme), (s['color'] as num?)?.toInt()));
     case 'text':
       final bg = s['bg'] as num?;
       return Container(
@@ -888,7 +978,7 @@ class _DecoBar extends StatelessWidget {
     final desk = DeskScope.of(context);
     final d = deco;
     Widget b(String tip, IconData i, VoidCallback f) => IconButton(tooltip: tip, onPressed: f, icon: Icon(i, size: 24, color: const Color(0xFF3B3346)));
-    final colorable = d.type == 'washi' || d.type == 'frame' || d.type == 'text' || d.type == 'sticker' || d.type == 'image';
+    final colorable = d.type == 'washi' || d.type == 'frame' || d.type == 'text' || d.type == 'sticker' || d.type == 'image' || d.type == 'doodle';
     return Material(
       color: Colors.white,
       elevation: 6,

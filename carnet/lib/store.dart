@@ -24,6 +24,7 @@ class Store extends ChangeNotifier {
   final Map<String, DecoTemplate> templates = {};
   final Map<String, FreePage> freePages = {};
   final Map<String, Guide> guides = {}; // page → calque
+  final Set<String> seeded = {}; // pages qui ont déjà reçu leurs petits dessins
   final Map<String, String> images = {}; // id → base64 (jpeg)
   final Map<String, int> imageMod = {};
   int timerStart = 0; // session de travail en cours (local)
@@ -74,6 +75,7 @@ class Store extends ChangeNotifier {
         'tpl': templates.values.map((e) => e.toJson()).toList(),
         'free': freePages.values.map((e) => e.toJson()).toList(),
         'guides': guides.values.map((e) => e.toJson()).toList(),
+        'seeded': seeded.toList(),
         if (withImages) 'imgs': {for (final k in images.keys) k: {'d': images[k], 'mod': imageMod[k] ?? 0}},
         if (withImages) 'settings': settings.syncJson(),
       };
@@ -102,6 +104,7 @@ class Store extends ChangeNotifier {
     merge<DecoTemplate>(templates, _list(j, 'tpl'), DecoTemplate.fromJson, (e) => e.id, (e) => e.mod);
     merge<FreePage>(freePages, _list(j, 'free'), FreePage.fromJson, (e) => e.id, (e) => e.mod);
     merge<Guide>(guides, _list(j, 'guides'), Guide.fromJson, (e) => e.page, (e) => e.mod);
+    if (j['seeded'] is List) seeded.addAll((j['seeded'] as List).map((e) => '$e'));
     if (j['imgs'] is Map) {
       for (final e in (j['imgs'] as Map).entries) {
         final v = e.value as Map;
@@ -360,6 +363,18 @@ class Store extends ChangeNotifier {
     await saveImages();
     notifyListeners();
     return id;
+  }
+
+  // ---------- petits dessins d'office ----------
+  Future<void> seedPage(String page, List<Deco> l) async {
+    if (seeded.contains(page)) return;
+    seeded.add(page);
+    var z = topZ(page);
+    for (final d in l) {
+      d.z = z++;
+      decos[d.id] = d;
+    }
+    await commit();
   }
 
   // ---------- calques ----------
