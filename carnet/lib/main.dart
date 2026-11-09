@@ -368,6 +368,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
           decoration: BoxDecoration(color: pal.card, borderRadius: BorderRadius.circular(999), boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 8, offset: Offset(0, 2))]),
           child: Row(children: [
             modeBtn('Utiliser', Icons.touch_app_outlined, desk.mode == Mode.use, () => desk.setMode(Mode.use)),
+            if (desk.mode == Mode.use) modeBtn('Gomme à texte : frotte les mots à effacer', Icons.ink_eraser_outlined, desk.textEraser, desk.toggleTextEraser),
             modeBtn('Écrire et dessiner', Icons.edit_outlined, desk.mode == Mode.pen, () => desk.setMode(Mode.pen)),
             modeBtn('Décorer', Icons.auto_awesome_outlined, desk.mode == Mode.deco, () => desk.setMode(Mode.deco)),
             modeBtn('Annuler', Icons.undo_rounded, false, store.canUndo ? () => store.undo() : null),

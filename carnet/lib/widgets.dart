@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import 'canvas.dart';
@@ -155,6 +156,22 @@ class _HandFieldState extends State<HandField> {
   Widget build(BuildContext context) {
     final pal = palOf(context);
     final st = widget.handwriting ? hand(widget.size, widget.color ?? pal.ink) : body(widget.size, widget.color ?? pal.ink, w: FontWeight.w600);
+    if (DeskScope.of(context).textEraser && !_f.hasFocus) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: _c.text.isEmpty
+            ? Text(widget.hint, style: st.copyWith(color: pal.soft.withValues(alpha: 0.6)))
+            : ScrubText(
+                text: _c.text,
+                style: st,
+                maxLines: widget.maxLines,
+                onErased: (t) {
+                  setState(() => _c.text = t);
+                  widget.onChanged(t);
+                },
+              ),
+      );
+    }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
       TextField(
       controller: _c,
@@ -245,6 +262,100 @@ class EditTools extends StatelessWidget {
   }
 }
 
+/// Un texte qu'on gomme mot par mot en frottant dessus au stylet
+/// (gomme à texte activée, ou bouton du S Pen appuyé).
+class ScrubText extends StatefulWidget {
+  final String text;
+  final TextStyle style;
+  final List<InlineSpan> extra;
+  final int? maxLines;
+  final ValueChanged<String> onErased;
+  final VoidCallback? onTap;
+  const ScrubText({super.key, required this.text, required this.style, required this.onErased, this.extra = const [], this.maxLines, this.onTap});
+  @override
+  State<ScrubText> createState() => _ScrubTextState();
+}
+
+class _ScrubTextState extends State<ScrubText> {
+  final Set<int> _gone = {}; // débuts des mots gommés
+  final List<TextRange> _ranges = [];
+  bool _active = false;
+
+  bool _wants(PointerEvent e) {
+    final desk = DeskScope.of(context);
+    final stylusButton = (e.kind == PointerDeviceKind.stylus || e.kind == PointerDeviceKind.invertedStylus) && (e.buttons & kPrimaryStylusButton) != 0;
+    return desk.textEraser || stylusButton || e.kind == PointerDeviceKind.invertedStylus;
+  }
+
+  void _hit(Offset p, double width) {
+    if (widget.text.isEmpty) return;
+    final tp = TextPainter(text: TextSpan(text: widget.text, style: widget.style), textDirection: TextDirection.ltr, maxLines: widget.maxLines)..layout(maxWidth: width);
+    if (p.dy > tp.height + 6 || p.dx > tp.width + 6) return;
+    final pos = tp.getPositionForOffset(p);
+    final r = tp.getWordBoundary(pos);
+    if (r.isCollapsed || r.start < 0 || r.end > widget.text.length) return;
+    if (widget.text.substring(r.start, r.end).trim().isEmpty) return;
+    if (_gone.add(r.start)) setState(() => _ranges.add(r));
+  }
+
+  void _finish() {
+    if (!_active) return;
+    _active = false;
+    if (_ranges.isEmpty) return;
+    var t = widget.text;
+    final l = [..._ranges]..sort((a, b) => b.start.compareTo(a.start));
+    for (final r in l) {
+      t = t.replaceRange(r.start, r.end, '');
+    }
+    t = t.replaceAll(RegExp(r'[ \t]{2,}'), ' ').replaceAll(RegExp(r' +([,.;:!?])'), r'$1').trim();
+    setState(() {
+      _gone.clear();
+      _ranges.clear();
+    });
+    widget.onErased(t);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = palOf(context);
+    final spans = <InlineSpan>[];
+    if (_ranges.isEmpty) {
+      spans.add(TextSpan(text: widget.text, style: widget.style));
+    } else {
+      final l = [..._ranges]..sort((a, b) => a.start.compareTo(b.start));
+      var i = 0;
+      for (final r in l) {
+        if (r.start > i) spans.add(TextSpan(text: widget.text.substring(i, r.start), style: widget.style));
+        spans.add(TextSpan(
+            text: widget.text.substring(r.start, r.end),
+            style: widget.style.copyWith(color: pal.acc.withValues(alpha: 0.45), decoration: TextDecoration.lineThrough, decorationColor: pal.acc)));
+        i = r.end;
+      }
+      if (i < widget.text.length) spans.add(TextSpan(text: widget.text.substring(i), style: widget.style));
+    }
+    return LayoutBuilder(builder: (context, box) {
+      return Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: (e) {
+          if (!_wants(e)) return;
+          _active = true;
+          _hit(e.localPosition, box.maxWidth);
+        },
+        onPointerMove: (e) {
+          if (_active) _hit(e.localPosition, box.maxWidth);
+        },
+        onPointerUp: (_) => _finish(),
+        onPointerCancel: (_) => _finish(),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: DeskScope.of(context).textEraser ? null : widget.onTap,
+          child: Text.rich(TextSpan(children: [...spans, ...widget.extra]), maxLines: widget.maxLines),
+        ),
+      );
+    });
+  }
+}
+
 /// Supprimer une ligne, avec « Annuler ».
 Future<void> deleteWithUndo(BuildContext context, Entry e) async {
   final store = StoreScope.read(context);
@@ -308,15 +419,24 @@ class _EntryTextState extends State<EntryText> {
   @override
   Widget build(BuildContext context) {
     if (!_edit) {
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
+      return ScrubText(
+        text: widget.e.text,
+        style: widget.style,
+        extra: widget.extra,
         onTap: () {
           _c.text = widget.e.text;
           _c.selection = TextSelection.collapsed(offset: _c.text.length);
           setState(() => _edit = true);
           WidgetsBinding.instance.addPostFrameCallback((_) => _f.requestFocus());
         },
-        child: Text.rich(TextSpan(children: [TextSpan(text: widget.e.text, style: widget.style), ...widget.extra])),
+        onErased: (t) async {
+          if (t.isEmpty) {
+            await deleteWithUndo(context, widget.e);
+          } else {
+            widget.e.text = t;
+            await StoreScope.read(context).updateEntry(widget.e);
+          }
+        },
       );
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -449,7 +569,7 @@ class BulletList extends StatelessWidget {
               index: i,
               child: Dismissible(
                 key: ValueKey('d${shown[i].id}'),
-                direction: DismissDirection.endToStart,
+                direction: DeskScope.of(context).textEraser ? DismissDirection.none : DismissDirection.endToStart,
                 background: Container(
                   alignment: Alignment.centerRight,
                   padding: const EdgeInsets.only(right: 12),

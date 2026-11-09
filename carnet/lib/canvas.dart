@@ -34,8 +34,15 @@ class Desk extends ChangeNotifier {
   List<Stroke> sel = [];
   Rect? _selBox;
 
+  bool textEraser = false; // gomme à texte (mode ✋)
+  void toggleTextEraser() {
+    textEraser = !textEraser;
+    notifyListeners();
+  }
+
   void setMode(Mode m) {
     mode = m;
+    textEraser = false;
     selected = '';
     washi = null;
     clearSel(notify: false);
