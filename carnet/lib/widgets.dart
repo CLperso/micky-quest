@@ -652,6 +652,7 @@ class _AddLineState extends State<AddLine> {
     }
     if (t.isEmpty) return;
     _c.clear();
+    setState(() => _kind = 'task');
     await widget.onAdd(t, k);
     _f.requestFocus();
   }
@@ -659,11 +660,11 @@ class _AddLineState extends State<AddLine> {
   @override
   Widget build(BuildContext context) {
     final pal = palOf(context);
-    final sym = _kind == 'event' ? '○' : (_kind == 'note' ? '–' : '+');
+    final sym = _kind == 'event' ? '○' : (_kind == 'note' ? '–' : (_f.hasFocus ? '•' : '+'));
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
       Row(children: [
       GestureDetector(
-        onTap: () => setState(() => _kind = _kind == 'task' ? 'event' : (_kind == 'event' ? 'note' : 'task')),
+        onTap: () => _f.requestFocus(),
         child: SizedBox(width: 30, height: 30, child: Center(child: Text(sym, style: body(20, pal.acc, w: FontWeight.w900)))),
       ),
       Expanded(
@@ -682,6 +683,26 @@ class _AddLineState extends State<AddLine> {
         ),
       ),
       ]),
+      // le type de la ligne : tâche par défaut
+      ListenableBuilder(
+        listenable: _f,
+        builder: (context, _) => !_f.hasFocus
+            ? const SizedBox.shrink()
+            : TextFieldTapRegion(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 30, top: 2),
+                  child: Wrap(spacing: 6, children: [
+                    for (final (k, n) in [('task', '• tâche'), ('event', '○ rendez-vous'), ('note', '– note')])
+                      ChoiceChip(
+                        visualDensity: VisualDensity.compact,
+                        label: Text(n, style: body(12, pal.ink, w: FontWeight.w800)),
+                        selected: _kind == k,
+                        onSelected: (_) => setState(() => _kind = k),
+                      ),
+                  ]),
+                ),
+              ),
+      ),
       Padding(padding: const EdgeInsets.only(left: 30), child: EditTools(c: _c, f: _f)),
     ]);
   }
