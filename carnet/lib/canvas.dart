@@ -19,6 +19,11 @@ enum Mode { use, pen, deco }
 
 /// L'état de l'atelier : mode, outil, élément sélectionné, page visée.
 class Desk extends ChangeNotifier {
+  static Desk? main;
+  Desk() {
+    main ??= this;
+  }
+
   Mode mode = Mode.use;
   String selected = '';
   String focusPage = '';
@@ -125,7 +130,8 @@ class Desk extends ChangeNotifier {
 
 class DeskScope extends InheritedNotifier<Desk> {
   const DeskScope({super.key, required Desk desk, required super.child}) : super(notifier: desk);
-  static Desk of(BuildContext c) => c.dependOnInheritedWidgetOfExactType<DeskScope>()!.notifier!;
+  /// Le bureau du carnet. Hors de l'agenda (feuilles, dialogues), on retombe sur le bureau principal.
+  static Desk of(BuildContext c) => c.dependOnInheritedWidgetOfExactType<DeskScope>()?.notifier ?? Desk.main ?? (Desk.main = Desk());
 }
 
 class _Scale extends InheritedWidget {

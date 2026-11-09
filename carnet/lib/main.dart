@@ -98,6 +98,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    Desk.main = desk;
     desk.addListener(() {
       _lockScreen(desk.mode != Mode.use);
       if (mounted) setState(() {});
