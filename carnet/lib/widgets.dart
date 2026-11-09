@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -415,74 +417,95 @@ class EntryText extends StatefulWidget {
 }
 
 class _EntryTextState extends State<EntryText> {
-  bool _edit = false;
   late final TextEditingController _c = TextEditingController(text: widget.e.text);
   final _f = FocusNode();
+  Timer? _save;
 
   @override
   void initState() {
     super.initState();
     _f.addListener(() {
-      if (!_f.hasFocus && _edit) _save();
+      if (!_f.hasFocus) _commit();
     });
   }
 
   @override
+  void didUpdateWidget(EntryText old) {
+    super.didUpdateWidget(old);
+    if (!_f.hasFocus && _c.text != widget.e.text) _c.text = widget.e.text;
+  }
+
+  @override
   void dispose() {
+    _save?.cancel();
     _c.dispose();
     _f.dispose();
     super.dispose();
   }
 
-  Future<void> _save() async {
-    final store = StoreScope.read(context);
+  void _changed(String _) {
+    _save?.cancel();
+    _save = Timer(const Duration(milliseconds: 900), () {
+      final t = _c.text.trim();
+      if (t.isNotEmpty && t != widget.e.text && mounted) {
+        widget.e.text = t;
+        StoreScope.read(context).updateEntry(widget.e);
+      }
+    });
+  }
+
+  Future<void> _commit() async {
+    _save?.cancel();
+    if (!mounted) return;
     final t = _c.text.trim();
-    setState(() => _edit = false);
     if (t.isEmpty) {
       await deleteWithUndo(context, widget.e);
     } else if (t != widget.e.text) {
       widget.e.text = t;
-      await store.updateEntry(widget.e);
+      await StoreScope.read(context).updateEntry(widget.e);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_edit) {
+    if (DeskScope.of(context).textEraser && !_f.hasFocus) {
       return ScrubText(
         text: widget.e.text,
         style: widget.style,
         extra: widget.extra,
-        onTap: () {
-          _c.text = widget.e.text;
-          _c.selection = TextSelection.collapsed(offset: _c.text.length);
-          setState(() => _edit = true);
-          WidgetsBinding.instance.addPostFrameCallback((_) => _f.requestFocus());
-        },
         onErased: (t) async {
           if (t.isEmpty) {
             await deleteWithUndo(context, widget.e);
           } else {
             widget.e.text = t;
+            _c.text = t;
             await StoreScope.read(context).updateEntry(widget.e);
           }
         },
       );
     }
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      TextField(
-        controller: _c,
-        focusNode: _f,
-        style: widget.style.copyWith(decoration: TextDecoration.none),
-        minLines: 1,
-        maxLines: 4,
-        textCapitalization: TextCapitalization.sentences,
-        decoration: const InputDecoration(isDense: true, border: InputBorder.none, contentPadding: EdgeInsets.symmetric(vertical: 2)),
-        onSubmitted: (_) => _f.unfocus(),
-      ),
+    // la ligne est toujours une vraie case : on écrit au S Pen où on veut dedans, sans rien ouvrir
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+          child: TextField(
+            controller: _c,
+            focusNode: _f,
+            style: widget.style,
+            minLines: 1,
+            maxLines: 4,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(isDense: true, border: InputBorder.none, contentPadding: EdgeInsets.zero),
+            onChanged: _changed,
+            onSubmitted: (_) => _f.unfocus(),
+          ),
+        ),
+        if (widget.extra.isNotEmpty) Text.rich(TextSpan(children: widget.extra)),
+      ]),
       EditTools(
         c: _c,
         f: _f,
+        onChanged: () => _changed(_c.text),
         onDeleteLine: () {
           _c.clear();
           _f.unfocus();
@@ -629,15 +652,35 @@ class _AddLineState extends State<AddLine> {
   final _c = TextEditingController();
   final _f = FocusNode();
   String _kind = 'task';
+  Timer? _idle;
+
+  @override
+  void initState() {
+    super.initState();
+    _f.addListener(() {
+      if (!_f.hasFocus && _c.text.trim().isNotEmpty) _submit(_c.text, refocus: false);
+    });
+  }
+
+  /// Une petite pause après avoir écrit : la ligne se range toute seule, la suivante attend.
+  void _changed(String v) {
+    _idle?.cancel();
+    if (v.trim().isEmpty) return;
+    _idle = Timer(const Duration(milliseconds: 2200), () {
+      if (mounted && _c.text.trim().isNotEmpty) _submit(_c.text);
+    });
+  }
 
   @override
   void dispose() {
+    _idle?.cancel();
     _c.dispose();
     _f.dispose();
     super.dispose();
   }
 
-  Future<void> _submit(String v) async {
+  Future<void> _submit(String v, {bool refocus = true}) async {
+    _idle?.cancel();
     var t = v.trim();
     var k = _kind;
     if (t.startsWith('o ') || t.startsWith('○ ')) {
@@ -654,7 +697,7 @@ class _AddLineState extends State<AddLine> {
     _c.clear();
     setState(() => _kind = 'task');
     await widget.onAdd(t, k);
-    _f.requestFocus();
+    if (refocus && mounted) _f.requestFocus();
   }
 
   @override
@@ -679,6 +722,7 @@ class _AddLineState extends State<AddLine> {
             hintText: _kind == 'event' ? 'un rendez-vous…' : (_kind == 'note' ? 'une note, une idée…' : widget.hint),
             hintStyle: body(16, pal.soft.withValues(alpha: 0.6), w: FontWeight.w600),
           ),
+          onChanged: _changed,
           onSubmitted: _submit,
         ),
       ),
