@@ -276,22 +276,69 @@ class ScrubText extends StatefulWidget {
   State<ScrubText> createState() => _ScrubTextState();
 }
 
+/// La gomme à texte travaille à l'échelle de la page : on frotte où on veut,
+/// chaque texte gommable regarde si le stylet passe sur lui.
+class TextScrub {
+  static final Set<_ScrubTextState> _live = {};
+  static bool _on = false;
+
+  static bool wants(PointerEvent e, bool eraserOn) {
+    final stylusButton = (e.kind == PointerDeviceKind.stylus || e.kind == PointerDeviceKind.invertedStylus) &&
+        ((e.buttons & kPrimaryStylusButton) != 0 || (e.buttons & kSecondaryStylusButton) != 0);
+    return eraserOn || stylusButton || e.kind == PointerDeviceKind.invertedStylus;
+  }
+
+  static void down(PointerEvent e, bool eraserOn) {
+    _on = wants(e, eraserOn);
+    if (_on) move(e);
+  }
+
+  static void move(PointerEvent e) {
+    if (!_on) return;
+    for (final s in [..._live]) {
+      s._hitGlobal(e.position);
+    }
+  }
+
+  static void up() {
+    if (!_on) return;
+    _on = false;
+    for (final s in [..._live]) {
+      s._finish();
+    }
+  }
+}
+
 class _ScrubTextState extends State<ScrubText> {
   final Set<int> _gone = {}; // débuts des mots gommés
   final List<TextRange> _ranges = [];
-  bool _active = false;
 
-  bool _wants(PointerEvent e) {
-    final desk = DeskScope.of(context);
-    final stylusButton = (e.kind == PointerDeviceKind.stylus || e.kind == PointerDeviceKind.invertedStylus) && (e.buttons & kPrimaryStylusButton) != 0;
-    return desk.textEraser || stylusButton || e.kind == PointerDeviceKind.invertedStylus;
+  @override
+  void initState() {
+    super.initState();
+    TextScrub._live.add(this);
+  }
+
+  @override
+  void dispose() {
+    TextScrub._live.remove(this);
+    super.dispose();
+  }
+
+  void _hitGlobal(Offset g) {
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.attached || !box.hasSize) return;
+    final local = box.globalToLocal(g);
+    if (!(Offset.zero & box.size).inflate(10).contains(local)) return;
+    _hit(Offset(local.dx.clamp(0, box.size.width), local.dy.clamp(0, box.size.height - 1)), box.size.width);
   }
 
   void _hit(Offset p, double width) {
     if (widget.text.isEmpty) return;
-    final tp = TextPainter(text: TextSpan(text: widget.text, style: widget.style), textDirection: TextDirection.ltr, maxLines: widget.maxLines)..layout(maxWidth: width);
-    if (p.dy > tp.height + 6 || p.dx > tp.width + 6) return;
-    final pos = tp.getPositionForOffset(p);
+    final tp = TextPainter(text: TextSpan(text: widget.text, style: widget.style), textDirection: TextDirection.ltr, maxLines: widget.maxLines, textScaler: MediaQuery.textScalerOf(context))
+      ..layout(maxWidth: width);
+    if (p.dx > tp.width + 10) return;
+    final pos = tp.getPositionForOffset(Offset(p.dx, p.dy.clamp(0, tp.height - 1)));
     final r = tp.getWordBoundary(pos);
     if (r.isCollapsed || r.start < 0 || r.end > widget.text.length) return;
     if (widget.text.substring(r.start, r.end).trim().isEmpty) return;
@@ -299,9 +346,7 @@ class _ScrubTextState extends State<ScrubText> {
   }
 
   void _finish() {
-    if (!_active) return;
-    _active = false;
-    if (_ranges.isEmpty) return;
+    if (_ranges.isEmpty || !mounted) return;
     var t = widget.text;
     final l = [..._ranges]..sort((a, b) => b.start.compareTo(a.start));
     for (final r in l) {
@@ -333,26 +378,11 @@ class _ScrubTextState extends State<ScrubText> {
       }
       if (i < widget.text.length) spans.add(TextSpan(text: widget.text.substring(i), style: widget.style));
     }
-    return LayoutBuilder(builder: (context, box) {
-      return Listener(
-        behavior: HitTestBehavior.opaque,
-        onPointerDown: (e) {
-          if (!_wants(e)) return;
-          _active = true;
-          _hit(e.localPosition, box.maxWidth);
-        },
-        onPointerMove: (e) {
-          if (_active) _hit(e.localPosition, box.maxWidth);
-        },
-        onPointerUp: (_) => _finish(),
-        onPointerCancel: (_) => _finish(),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: DeskScope.of(context).textEraser ? null : widget.onTap,
-          child: Text.rich(TextSpan(children: [...spans, ...widget.extra]), maxLines: widget.maxLines),
-        ),
-      );
-    });
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: DeskScope.of(context).textEraser ? null : widget.onTap,
+      child: Text.rich(TextSpan(children: [...spans, ...widget.extra]), maxLines: widget.maxLines),
+    );
   }
 }
 

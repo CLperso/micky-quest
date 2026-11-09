@@ -22,6 +22,7 @@ import 'store.dart';
 import 'style_panel.dart';
 import 'sync.dart';
 import 'theme.dart';
+import 'widgets.dart';
 
 /// Garde les dernières erreurs pour pouvoir les retrouver dans les Réglages.
 Future<void> logError(Object e, StackTrace? st) async {
@@ -439,7 +440,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
                   child: LayoutBuilder(builder: (context, box) {
                     final wide = box.maxWidth >= 900;
                     final side = desk.mode == Mode.deco ? const Atelier() : (styleOpen ? StylePanel(onClose: () => setState(() => styleOpen = false)) : null);
-                    final planner = _Planner(
+                    final Widget planner0 = _Planner(
                       wide: wide,
                       tab: tab,
                       month: month.month,
@@ -459,6 +460,17 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
                       }),
                       penBar: desk.mode == Mode.pen ? PenBar(onRecognize: android ? _recognize : null) : null,
                       zoom: desk.mode == Mode.pen,
+                    );
+                    // gomme à texte : on frotte n'importe où sur la page (bouton gomme, ou bouton du S Pen appuyé)
+                    final planner = Listener(
+                      behavior: HitTestBehavior.translucent,
+                      onPointerDown: (e) {
+                        if (desk.mode == Mode.use) TextScrub.down(e, desk.textEraser);
+                      },
+                      onPointerMove: TextScrub.move,
+                      onPointerUp: (_) => TextScrub.up(),
+                      onPointerCancel: (_) => TextScrub.up(),
+                      child: AbsorbPointer(absorbing: desk.textEraser && desk.mode == Mode.use, child: planner0),
                     );
                     if (wide) {
                       return Row(children: [
