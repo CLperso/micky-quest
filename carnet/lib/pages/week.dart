@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../canvas.dart';
 import '../model.dart';
 import '../store.dart';
 import '../theme.dart';
