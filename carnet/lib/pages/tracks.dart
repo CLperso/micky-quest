@@ -46,9 +46,11 @@ class TonightPage extends StatelessWidget {
           over: 'suivis · {jour} {n}',
           title: 'Comment ça va ?',
           vars: dayVars(d),
-          trailing: TextButton(onPressed: () => manageTrackers(context), child: const Text('gérer')),
         ),
-        Text('$filled sur ${list.length + habits.length} · touche ce qui compte, laisse le reste vide', style: body(11.5, pal.soft, w: FontWeight.w700)),
+        Row(children: [
+          Expanded(child: Text('$filled sur ${list.length + habits.length} · touche ce qui compte, laisse le reste vide', style: body(11.5, pal.soft, w: FontWeight.w700))),
+          TextButton.icon(onPressed: () => manageTrackers(context), icon: const Icon(Icons.tune_rounded, size: 16), label: const Text('mes suivis')),
+        ]),
         const SizedBox(height: 12),
         LayoutBuilder(builder: (context, box) {
           final w = (box.maxWidth - 10) / 2;
@@ -108,7 +110,6 @@ class TrackerCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final store = StoreScope.of(context);
-    final pal = palOf(context);
     final v = store.tval(day, t.id);
     final c = Color(t.color);
     void set(dynamic x) => store.setTval(day, t.id, x);
@@ -545,13 +546,13 @@ class _FlowersPageState extends State<FlowersPage> {
         top: 0,
         height: top,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(
+            (widget.month ? 'humeur · ${niceMonth(monthKey(d)).toLowerCase()}' : 'semaine du ${mon.day} au ${mon.add(const Duration(days: 6)).day} ${monthNames[mon.add(const Duration(days: 6)).month - 1]}').toUpperCase(),
+            style: body(11, pal.soft, w: FontWeight.w800).copyWith(letterSpacing: 2),
+          ),
           Row(children: [
-            Expanded(
-              child: Text(
-                (widget.month ? 'humeur · ${niceMonth(monthKey(d)).toLowerCase()}' : 'semaine du ${mon.day} au ${mon.add(const Duration(days: 6)).day} ${monthNames[mon.add(const Duration(days: 6)).month - 1]}').toUpperCase(),
-                style: body(11, pal.soft, w: FontWeight.w800).copyWith(letterSpacing: 2),
-              ),
-            ),
+            Text(widget.month ? 'Ma fleur du mois' : 'Mes fleurs', style: titleFont(32, pal.ink)),
+            const SizedBox(width: 14),
             SegmentedButton<bool>(
               showSelectedIcon: false,
               style: const ButtonStyle(visualDensity: VisualDensity.compact),
@@ -560,7 +561,6 @@ class _FlowersPageState extends State<FlowersPage> {
               onSelectionChanged: (v) => widget.onView(v.first),
             ),
           ]),
-          Text(widget.month ? 'Ma fleur du mois' : 'Mes fleurs', style: titleFont(32, pal.ink)),
         ]),
       ),
       Positioned(

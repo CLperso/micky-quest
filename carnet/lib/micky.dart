@@ -791,7 +791,7 @@ class _MickyKeyCardState extends State<MickyKeyCard> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('Pour que je parle, il me faut une clé Groq. C’est gratuit :', style: body(14, pal.ink, w: FontWeight.w700)),
       const SizedBox(height: 8),
-      Text('1. Va sur console.groq.com et connecte-toi (Google marche).\n2. Menu « API Keys » → « Create API Key ».\n3. Copie la clé (elle commence par gsk_) et colle-la ici.',
+      Text('1. Va sur console.groq.com et connecte-toi (Google marche).\n2. Menu « API Keys », puis « Create API Key ».\n3. Copie la clé (elle commence par gsk_) et colle-la ici.',
           style: body(13, pal.soft, w: FontWeight.w700).copyWith(height: 1.5)),
       const SizedBox(height: 12),
       TextField(controller: _k, obscureText: true, decoration: const InputDecoration(labelText: 'Clé Groq (gsk_…)')),
