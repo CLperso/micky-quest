@@ -24,6 +24,8 @@ class Store extends ChangeNotifier {
   final Map<String, DecoTemplate> templates = {};
   final Map<String, FreePage> freePages = {};
   final Map<String, Guide> guides = {}; // page → calque
+  final Map<String, Tracker> trackers = {};
+  final Map<String, JEntry> journals = {};
   final Set<String> seeded = {}; // pages qui ont déjà reçu leurs petits dessins
   final Map<String, String> images = {}; // id → base64 (jpeg)
   final Map<String, int> imageMod = {};
@@ -50,6 +52,7 @@ class Store extends ChangeNotifier {
       debugPrint('Chargement : $e');
     }
     if (habits.isEmpty && goals.isEmpty && entries.isEmpty) _seed();
+    if (trackers.isEmpty) _seedTrackers();
   }
 
   void _seed() {
@@ -75,6 +78,8 @@ class Store extends ChangeNotifier {
         'tpl': templates.values.map((e) => e.toJson()).toList(),
         'free': freePages.values.map((e) => e.toJson()).toList(),
         'guides': guides.values.map((e) => e.toJson()).toList(),
+        'trk': trackers.values.map((e) => e.toJson()).toList(),
+        'jrn': journals.values.map((e) => e.toJson()).toList(),
         'seeded': seeded.toList(),
         if (withImages) 'imgs': {for (final k in images.keys) k: {'d': images[k], 'mod': imageMod[k] ?? 0}},
         if (withImages) 'settings': settings.syncJson(),
@@ -104,6 +109,8 @@ class Store extends ChangeNotifier {
     merge<DecoTemplate>(templates, _list(j, 'tpl'), DecoTemplate.fromJson, (e) => e.id, (e) => e.mod);
     merge<FreePage>(freePages, _list(j, 'free'), FreePage.fromJson, (e) => e.id, (e) => e.mod);
     merge<Guide>(guides, _list(j, 'guides'), Guide.fromJson, (e) => e.page, (e) => e.mod);
+    merge<Tracker>(trackers, _list(j, 'trk'), Tracker.fromJson, (e) => e.id, (e) => e.mod);
+    merge<JEntry>(journals, _list(j, 'jrn'), JEntry.fromJson, (e) => e.id, (e) => e.mod);
     if (j['seeded'] is List) seeded.addAll((j['seeded'] as List).map((e) => '$e'));
     if (j['imgs'] is Map) {
       for (final e in (j['imgs'] as Map).entries) {
@@ -233,6 +240,138 @@ class Store extends ChangeNotifier {
       d = d.subtract(const Duration(days: 1));
     }
     return null;
+  }
+
+  // ---------- suivis ----------
+  static const _rose = 0xFFD7A6A8, _deep = 0xFFB0707A, _sage = 0xFFA9B8A0, _mauve = 0xFFB9A7C2, _gold = 0xFFC6A26A, _sky = 0xFFA9BCD3;
+
+  void _seedTrackers() {
+    var o = 0.0;
+    Tracker t(String id, String name, String type, String group, int color, {String unit = '', int max = 8, bool on = true, bool flower = false}) =>
+        Tracker(id: id, name: name, type: type, group: group, color: color, unit: unit, max: max, active: on, flower: flower, order: o++, mod: 1);
+    for (final x in [
+      t('mood', 'Humeur', 'faces', 'tete', _rose),
+      t('energy', 'Énergie', 'scale', 'corps', _gold),
+      t('sleep', 'Sommeil', 'duration', 'corps', _mauve, max: 30),
+      t('anxiety', 'Anxiété', 'scale', 'tete', _mauve),
+      t('period', 'Règles', 'period', 'corps', _deep),
+      t('water', 'Eau', 'number', 'corps', _sky, unit: 'verres', max: 8, flower: true),
+      t('move', 'Mouvement', 'yesno', 'corps', _sage, flower: true),
+      t('outside', 'Dehors', 'duration', 'corps', _sage, max: 15, flower: true),
+      t('work', 'Temps de travail', 'duration', 'travail', _deep, max: 15),
+      t('start10', 'Commencé avant 10 h', 'yesno', 'travail', _deep, flower: true),
+      t('screens', 'Pas d’écran après 22 h', 'yesno', 'moi', _sky, flower: true, on: false),
+      t('gratitude', 'Gratitude', 'text', 'moi', _gold, flower: true),
+      t('meditation', 'Méditation', 'yesno', 'tete', _mauve, flower: true, on: false),
+      t('reading', 'Lecture', 'number', 'moi', _rose, unit: 'pages', max: 50, flower: true, on: false),
+      t('drawing', 'Dessin', 'yesno', 'moi', _rose, flower: true, on: false),
+    ]) {
+      trackers[x.id] = x;
+    }
+  }
+
+  List<Tracker> get activeTrackers => trackers.values.where((t) => !t.del && t.active).toList()..sort((a, b) => a.order.compareTo(b.order));
+  List<Tracker> get allTrackers => trackers.values.where((t) => !t.del).toList()..sort((a, b) => a.order.compareTo(b.order));
+
+  /// Valeur d'un suivi pour un jour (les suivis historiques gardent leur place dans DayLog).
+  dynamic tval(String day, String id) {
+    final l = logs[day];
+    if (l == null) return null;
+    switch (id) {
+      case 'mood':
+        return l.mood;
+      case 'energy':
+        return l.energy;
+      case 'period':
+        return l.period;
+      case 'work':
+        return l.proMin;
+    }
+    return l.vals[id];
+  }
+
+  Future<void> setTval(String day, String id, dynamic v) async {
+    final l = log(day);
+    int n(dynamic x) => x is num ? x.toInt() : int.tryParse('$x') ?? 0;
+    switch (id) {
+      case 'mood':
+        l.mood = n(v).clamp(0, 5);
+      case 'energy':
+        l.energy = n(v).clamp(0, 5);
+      case 'period':
+        l.period = n(v).clamp(0, 3);
+      case 'work':
+        l.proMin = n(v).clamp(0, 1440);
+      default:
+        if (v == null || v == '') {
+          l.vals.remove(id);
+        } else {
+          l.vals[id] = v;
+        }
+    }
+    await touchLog(l);
+  }
+
+  /// Un pétale est colorié : le suivi est « fait » ce jour-là (ou colorié à la main).
+  bool petalOn(String day, String key) {
+    final l = logs[day];
+    if (key == 'journal') return journals.values.any((j) => !j.del && j.day == day && j.text.trim().isNotEmpty);
+    if (l == null) return false;
+    if (l.vals['petal:$key'] == true) return true;
+    if (key.startsWith('h:')) return l.habits.contains(key.substring(2));
+    final t = trackers[key];
+    final v = tval(day, key);
+    if (t == null || v == null) return false;
+    switch (t.type) {
+      case 'yesno':
+        return v == true;
+      case 'text':
+        return '$v'.trim().isNotEmpty;
+      default:
+        return v is num && v > 0;
+    }
+  }
+
+  Future<void> setPetal(String day, String key, bool on) async {
+    final l = log(day);
+    if (key.startsWith('h:')) {
+      final h = key.substring(2);
+      if (on && !l.habits.contains(h)) l.habits.add(h);
+      if (!on) l.habits.remove(h);
+    } else if (trackers[key]?.type == 'yesno') {
+      if (on) {
+        l.vals[key] = true;
+      } else {
+        l.vals.remove(key);
+      }
+    }
+    if (on) {
+      l.vals['petal:$key'] = true;
+    } else {
+      l.vals.remove('petal:$key');
+    }
+    await touchLog(l);
+  }
+
+  Future<void> touchTracker(Tracker t) async {
+    t.mod = nowMs();
+    trackers[t.id] = t;
+    await commit();
+  }
+
+  // ---------- journal ----------
+  List<JEntry> dayJournal(String day) => journals.values.where((j) => !j.del && j.day == day).toList()..sort((a, b) => a.created.compareTo(b.created));
+
+  Future<JEntry> addJournal(String day, {String kind = 'libre', String moment = 'matin', String text = ''}) async {
+    final j = JEntry(day: day, kind: kind, moment: moment, text: text);
+    journals[j.id] = j;
+    await commit();
+    return j;
+  }
+
+  Future<void> touchJournal(JEntry j) async {
+    j.mod = nowMs();
+    await commit();
   }
 
   // ---------- objectifs, habitudes, collections ----------

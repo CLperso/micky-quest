@@ -17,7 +17,9 @@ import 'pages/day.dart';
 import 'pages/free.dart';
 import 'pages/future.dart';
 import 'pages/goals.dart';
+import 'pages/journal.dart';
 import 'pages/month.dart';
+import 'pages/tracks.dart';
 import 'pages/week.dart';
 import 'store.dart';
 import 'style_panel.dart';
@@ -72,8 +74,9 @@ class CarnetApp extends StatelessWidget {
 }
 
 // onglets de l'agenda
-const tCover = 0, tDay = 1, tWeek = 2, tMonth = 3, tFuture = 4, tGoals = 5, tColls = 6, tPages = 7;
-const tabNames = ['Couverture', 'Jour', 'Semaine', 'Mois', 'Futur', 'Objectifs', 'Collections', 'Pages'];
+const tCover = 0, tDay = 1, tWeek = 2, tMonth = 3, tFuture = 4, tGoals = 5, tColls = 6, tPages = 7, tTrack = 8, tJournal = 9;
+const tabNames = ['Couverture', 'Jour', 'Semaine', 'Mois', 'Futur', 'Objectifs', 'Collections', 'Pages', 'Suivis', 'Journal'];
+bool dayTab(int t) => t == tDay || t == tTrack || t == tJournal;
 
 class Shell extends StatefulWidget {
   const Shell({super.key});
@@ -93,6 +96,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   int narrowPage = 0;
   bool styleOpen = false;
   bool mickyOpen = false;
+  bool flowersMonth = false;
   Timer? _tick, _syncTick;
   String? _syncMsg;
 
@@ -225,6 +229,20 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
           'Index',
           'Page'
         );
+      case tTrack:
+        final k = dayKey(day);
+        final fk = flowersMonth ? 'flowers:m:${monthKey(day)}' : 'flowers:w:${dayKey(mondayOf(day))}';
+        return (
+          'track:$k:L',
+          TonightPage(day: k),
+          fk,
+          FlowersPage(key: ValueKey(fk), day: k, pageKey: fk, month: flowersMonth, onView: (v) => setState(() => flowersMonth = v)),
+          'Ce soir',
+          'Fleurs'
+        );
+      case tJournal:
+        final k = dayKey(day);
+        return ('jrn:$k:L', JournalFree(day: k), 'jrn:$k:R', JournalIdeas(day: k, onWrite: () => setState(() => narrowPage = 0)), 'Écrire', 'Idées');
       default:
         final k = dayKey(day);
         return ('day:$k:L', DayMorning(day: k), 'day:$k:R', DayEvening(day: k), 'Matin', 'Soir');
@@ -254,6 +272,18 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
           break;
         case 'goal':
           await store.addEntry(l, when: 'someday', goal: parts[1]);
+          break;
+        case 'jrn':
+          final js = store.dayJournal(parts[1]).where((j) => j.kind == 'libre').toList();
+          if (js.isEmpty) {
+            await store.addJournal(parts[1], moment: DateTime.now().hour < 14 ? 'matin' : 'soir', text: l);
+          } else {
+            js.first.text = js.first.text.isEmpty ? l : '${js.first.text}\n$l';
+            await store.touchJournal(js.first);
+          }
+          break;
+        case 'track':
+        case 'flowers':
           break;
         default:
           await store.addEntry(l, when: 'someday');
@@ -297,7 +327,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   }
 
   void _nav(int dir) => setState(() {
-        if (tab == tDay) day = day.add(Duration(days: dir));
+        if (dayTab(tab)) day = day.add(Duration(days: dir));
         if (tab == tWeek) monday = monday.add(Duration(days: 7 * dir));
         if (tab == tMonth) month = DateTime(month.year, month.month + dir, 1);
       });
@@ -309,7 +339,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
       });
 
   String _navLabel() {
-    if (tab == tDay) {
+    if (dayTab(tab)) {
       final t = dateOnly(DateTime.now());
       final diff = day.difference(t).inDays;
       if (diff == 0) return 'Aujourd’hui';
@@ -348,7 +378,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
       height: 50,
       child: Row(children: [
         const SizedBox(width: 14),
-        if (tab == tDay || tab == tWeek || tab == tMonth) ...[
+        if (dayTab(tab) || tab == tWeek || tab == tMonth) ...[
           IconButton(onPressed: () => _nav(-1), icon: Icon(Icons.chevron_left_rounded, color: pal.ink)),
           GestureDetector(onTap: _home, child: Text(_navLabel(), style: titleFont(22, pal.ink))),
           IconButton(onPressed: () => _nav(1), icon: Icon(Icons.chevron_right_rounded, color: pal.ink)),

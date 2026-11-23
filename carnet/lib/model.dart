@@ -113,6 +113,7 @@ class DayLog {
   int proMin;
   List<String> habits; // habitudes faites
   List<String> goals; // objectifs avancés (un pas)
+  Map<String, dynamic> vals; // valeurs des autres suivis (id du suivi → valeur)
   int mod;
   bool del;
 
@@ -127,13 +128,15 @@ class DayLog {
     this.proMin = 0,
     List<String>? habits,
     List<String>? goals,
+    Map<String, dynamic>? vals,
     int? mod,
     this.del = false,
   })  : habits = habits ?? [],
         goals = goals ?? [],
+        vals = vals ?? {},
         mod = mod ?? 0;
 
-  bool get empty => intention.isEmpty && win.isEmpty && journal.isEmpty && mood == 0 && energy == 0 && period == 0 && proMin == 0 && habits.isEmpty && goals.isEmpty;
+  bool get empty => intention.isEmpty && win.isEmpty && journal.isEmpty && mood == 0 && energy == 0 && period == 0 && proMin == 0 && habits.isEmpty && goals.isEmpty && vals.isEmpty;
 
   factory DayLog.fromJson(Map<String, dynamic> j) => DayLog(
         id: _s(j['id']),
@@ -146,6 +149,7 @@ class DayLog {
         proMin: _i(j['pro']),
         habits: _ls(j['hab']),
         goals: _ls(j['goals']),
+        vals: j['v'] is Map ? Map<String, dynamic>.from(j['v'] as Map) : null,
         mod: _i(j['mod']),
         del: _b(j['del']),
       );
@@ -161,9 +165,89 @@ class DayLog {
         'pro': proMin,
         'hab': habits,
         'goals': goals,
+        'v': vals,
         'mod': mod,
         'del': del,
       };
+}
+
+/// Un suivi quotidien (bibliothèque) : humeur, sommeil, eau, gratitude…
+/// type : faces, scale (1-5), period (0-3), yesno, number, duration (minutes), text.
+class Tracker {
+  String id;
+  String name;
+  String type;
+  String group; // corps, tete, travail, moi
+  int color;
+  String unit;
+  int max; // nombre : maximum affiché ; durée : pas en minutes
+  bool active;
+  bool flower; // apparaît dans les fleurs de la semaine
+  double order;
+  int mod;
+  bool del;
+  Tracker(
+      {String? id,
+      required this.name,
+      this.type = 'yesno',
+      this.group = 'moi',
+      this.color = 0xFFD7A6A8,
+      this.unit = '',
+      this.max = 8,
+      this.active = true,
+      this.flower = true,
+      double? order,
+      int? mod,
+      this.del = false})
+      : id = id ?? newId(),
+        order = order ?? nowMs().toDouble(),
+        mod = mod ?? nowMs();
+
+  factory Tracker.fromJson(Map<String, dynamic> j) => Tracker(
+        id: _s(j['id']),
+        name: _s(j['name']),
+        type: _s(j['type'], 'yesno'),
+        group: _s(j['group'], 'moi'),
+        color: _i(j['color'], 0xFFD7A6A8),
+        unit: _s(j['unit']),
+        max: _i(j['max'], 8),
+        active: _b(j['on']),
+        flower: _b(j['fl']),
+        order: _d(j['order']),
+        mod: _i(j['mod']),
+        del: _b(j['del']),
+      );
+  Map<String, dynamic> toJson() =>
+      {'id': id, 'name': name, 'type': type, 'group': group, 'color': color, 'unit': unit, 'max': max, 'on': active, 'fl': flower, 'order': order, 'mod': mod, 'del': del};
+}
+
+/// Une page de journal : expression libre ou un format (gratitude, lettre à moi…).
+class JEntry {
+  String id;
+  String day;
+  String kind; // libre, gratitude, pages, pese, fierte, lettre, appris
+  String moment; // matin, soir, libre
+  String text;
+  bool share; // Micky peut la lire
+  int created;
+  int mod;
+  bool del;
+  JEntry({String? id, required this.day, this.kind = 'libre', this.moment = 'matin', this.text = '', this.share = false, int? created, int? mod, this.del = false})
+      : id = id ?? newId(),
+        created = created ?? nowMs(),
+        mod = mod ?? nowMs();
+  factory JEntry.fromJson(Map<String, dynamic> j) => JEntry(
+        id: _s(j['id']),
+        day: _s(j['day']),
+        kind: _s(j['kind'], 'libre'),
+        moment: _s(j['mo'], 'matin'),
+        text: _s(j['text']),
+        share: _b(j['sh']),
+        created: _i(j['cr']),
+        mod: _i(j['mod']),
+        del: _b(j['del']),
+      );
+  Map<String, dynamic> toJson() => {'id': id, 'day': day, 'kind': kind, 'mo': moment, 'text': text, 'sh': share, 'cr': created, 'mod': mod, 'del': del};
 }
 
 class Goal {

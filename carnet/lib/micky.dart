@@ -170,6 +170,7 @@ contenant une liste JSON. Actions possibles (utilise les identifiants courts du 
 {"a":"done","id":"t3"}
 {"a":"log","field":"mood"|"energy"|"period"|"proMin"|"win"|"intention"|"journal","value":…}  (mood 1-5, energy 1-5, period 0-3, proMin en minutes, win/intention/journal en texte ; pour aujourd’hui)
 {"a":"habit","id":"h1"}  (habitude faite aujourd’hui)
+{"a":"track","id":"k1","value":…}  (un autre suivi, pour aujourd’hui)
 {"a":"goal","id":"g1"}  (un pas vers un objectif aujourd’hui)
 {"a":"sprint","min":15}  (lance un minuteur de travail)
 N’ajoute le bloc que si tu fais vraiment quelque chose. N’invente pas d’identifiants.
@@ -249,6 +250,16 @@ N’ajoute le bloc que si tu fais vraiment quelque chose. N’invente pas d’id
         b.writeln('- h${i + 1} ${habits[i].name} (${habits[i].perWeek}/semaine)');
       }
     }
+    final custom = s.activeTrackers.where((t) => !const ['mood', 'energy', 'period', 'work'].contains(t.id)).toList();
+    if (custom.isNotEmpty) {
+      b.writeln('Autres suivis (id, type) :');
+      for (var i = 0; i < custom.length; i++) {
+        final t = custom[i];
+        _ids['k${i + 1}'] = t.id;
+        final ty = switch (t.type) { 'yesno' => 'oui/non (true/false)', 'scale' => '1 à 5', 'number' => 'nombre${t.unit.isEmpty ? '' : ' de ${t.unit}'}', 'duration' => 'durée en minutes', _ => 'texte' };
+        b.writeln('- k${i + 1} ${t.name} : $ty');
+      }
+    }
     if (sees.contains('trackers')) {
       b.writeln('Suivis des 7 derniers jours (humeur 1-5, énergie 1-5, temps pro) :');
       for (var i = 6; i >= 0; i--) {
@@ -257,16 +268,34 @@ N’ajoute le bloc que si tu fais vraiment quelque chose. N’invente pas d’id
         if (l == null || l.empty) continue;
         final hab = l.habits.map((id) => s.habits[id]?.name).whereType<String>().join(', ');
         b.writeln('- ${dayKey(d)} : humeur ${l.mood == 0 ? '?' : l.mood}, énergie ${l.energy == 0 ? '?' : l.energy}, pro ${fmtMin(l.proMin)}'
-            '${hab.isEmpty ? '' : ', habitudes : $hab'}${l.win.isEmpty ? '' : ', victoire : ${_cut(l.win, 80)}'}${l.intention.isEmpty ? '' : ', intention : ${_cut(l.intention, 80)}'}');
+            '${hab.isEmpty ? '' : ', habitudes : $hab'}${_vals(s, l)}${l.win.isEmpty ? '' : ', victoire : ${_cut(l.win, 80)}'}${l.intention.isEmpty ? '' : ', intention : ${_cut(l.intention, 80)}'}');
       }
     }
+    for (final j in s.journals.values.where((j) => !j.del && j.share && j.text.trim().isNotEmpty && now.difference(DateTime.tryParse(j.day) ?? DateTime(2000)).inDays <= 7)) {
+      b.writeln('Page de journal qu’elle t’a montrée (${j.day}) : ${_cut(j.text, 500)}');
+    }
     if (sees.contains('journal')) {
+      for (final j in s.journals.values.where((j) => !j.del && !j.share && j.text.trim().isNotEmpty && now.difference(DateTime.tryParse(j.day) ?? DateTime(2000)).inDays <= 2)) {
+        b.writeln('Journal (${j.day}) : ${_cut(j.text, 400)}');
+      }
       for (var i = 2; i >= 0; i--) {
         final l = s.logs[dayKey(now.subtract(Duration(days: i)))];
         if (l != null && l.journal.isNotEmpty) b.writeln('Journal ${dayKey(now.subtract(Duration(days: i)))} : ${_cut(l.journal, 400)}');
       }
     }
     return _cut(b.toString(), 7000);
+  }
+
+  String _vals(Store s, DayLog l) {
+    final parts = <String>[];
+    for (final e in l.vals.entries) {
+      if (e.key.startsWith('petal:')) continue;
+      final t = s.trackers[e.key];
+      if (t == null) continue;
+      final v = e.value;
+      parts.add('${t.name} ${v is bool ? (v ? 'oui' : 'non') : t.type == 'duration' && v is num ? fmtMin(v.toInt()) : _cut('$v', 60)}${t.unit.isEmpty || v is bool ? '' : ' ${t.unit}'}');
+    }
+    return parts.isEmpty ? '' : ', ${parts.join(', ')}';
   }
 
   static String _cut(String x, int n) => x.length <= n ? x : '${x.substring(0, n)}…';
@@ -436,6 +465,16 @@ N’ajoute le bloc que si tu fais vraiment quelque chose. N’invente pas d’id
                 undo.removeLast();
             }
             await s.touchLog(l);
+          case 'track':
+            final id = _ids['${a['id']}'];
+            final tr = id == null ? null : s.trackers[id];
+            if (tr == null) break;
+            var v = a['value'];
+            if (tr.type == 'yesno') v = v == true || v == 'true' || v == 'oui';
+            if (tr.type == 'number' || tr.type == 'duration' || tr.type == 'scale') v = v is num ? v.toInt() : int.tryParse('$v') ?? 0;
+            undo.add({'a': 'track', 'id': tr.id, 'value': s.tval(t, tr.id)});
+            await s.setTval(t, tr.id, v);
+            done.add('${tr.name} · ${v is bool ? (v ? 'oui' : 'non') : tr.type == 'duration' && v is int ? fmtMin(v) : v}');
           case 'habit':
             final id = _ids['${a['id']}'];
             final h = id == null ? null : s.habits[id];
@@ -500,6 +539,8 @@ N’ajoute le bloc que si tu fais vraiment quelque chose. N’invente pas d’id
               l.journal = '$v';
           }
           await s.touchLog(l);
+        case 'track':
+          await s.setTval(t, '${u['id']}', u['value']);
         case 'unhabit':
           final l = s.log(t);
           l.habits.remove('${u['id']}');
@@ -830,7 +871,7 @@ class _MickySettingsState extends State<MickySettings> {
       see('tasks', 'Tâches et rendez-vous', 'pour ranger ta journée'),
       see('trackers', 'Suivis des 7 derniers jours', 'pour repérer tes schémas'),
       see('cycle', 'Cycle', 'pour adapter la charge'),
-      see('journal', 'Journal du soir', 'les 3 derniers jours'),
+      see('journal', 'Tout mon journal', 'sinon, seulement les pages que je lui montre'),
       Text('Tes dessins ne sont jamais envoyés. Groq ne s’en sert pas pour entraîner ses modèles.', style: body(11.5, pal.soft, w: FontWeight.w600)),
     ]);
   }
