@@ -578,7 +578,7 @@ class _FlowersPageState extends State<FlowersPage> {
         Positioned(
           left: 0,
           right: 0,
-          bottom: 4,
+          bottom: 44,
           child: Wrap(spacing: 14, runSpacing: 6, children: [
             for (var m = 0; m < 5; m++)
               Row(mainAxisSize: MainAxisSize.min, children: [
@@ -592,7 +592,7 @@ class _FlowersPageState extends State<FlowersPage> {
         Positioned(
           left: 0,
           right: 0,
-          bottom: 4,
+          bottom: 44,
           child: Text('Colorie un pétale par jour au stylet (mode ✏️), ou touche-le. Ton suivi se remplit tout seul.', style: body(11.5, pal.soft, w: FontWeight.w700)),
         ),
     ]);
