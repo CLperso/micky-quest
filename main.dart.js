@@ -50261,7 +50261,7 @@ g=A.b([A.dH(j,A.aM(A.b([h,A.bf(A.b([A.P(p,j,j,j,A.dZ(32,o),j,j,j),B.fZ,A.aKn(new
 if(k.a.e){h=A.b([],m)
 for(l=0;l<5;++l){q=A.aP(j,j,B.k,j,j,new A.aI(B.i7[l],j,j,j,j,j,B.az),j,14,j,j,j,j,14)
 p=B.qg[l]
-h.push(A.bf(A.b([q,B.XX,A.P(p,j,j,j,new A.p(!0,o,j,"PatrickHand",j,j,15.48,j,j,j,j,j,1.2,j,j,j,j,j,j,j,j,j,j,j,j,j),j,j,j)],m),B.r,B.j,B.aj))}g.push(A.dH(4,A.bE(h,B.K,6,14),j,j,0,0,j,j))}else g.push(A.dH(4,A.P("Colorie un p\xe9tale par jour au stylet (mode \u270f\ufe0f), ou touche-le. Ton suivi se remplit tout seul.",j,j,j,A.au(j,j,q,j,j,j,j,j,"Nunito",j,j,11.5,j,j,B.H,j,j,!0,j,j,j,j,j,j,j,j),j,j,j),j,j,0,0,j,j))
+h.push(A.bf(A.b([q,B.XX,A.P(p,j,j,j,new A.p(!0,o,j,"PatrickHand",j,j,15.48,j,j,j,j,j,1.2,j,j,j,j,j,j,j,j,j,j,j,j,j),j,j,j)],m),B.r,B.j,B.aj))}g.push(A.dH(44,A.bE(h,B.K,6,14),j,j,0,0,j,j))}else g.push(A.dH(44,A.P("Colorie un p\xe9tale par jour au stylet (mode \u270f\ufe0f), ou touche-le. Ton suivi se remplit tout seul.",j,j,j,A.au(j,j,q,j,j,j,j,j,"Nunito",j,j,11.5,j,j,B.H,j,j,!0,j,j,j,j,j,j,j,j),j,j,j),j,j,0,0,j,j))
 return A.en(B.aY,g,B.z,B.aU,j)}}
 A.ava.prototype={
 $1(a){var s
