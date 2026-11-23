@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'atelier.dart';
 import 'canvas.dart';
 import 'ink.dart';
+import 'micky.dart';
 import 'model.dart';
 import 'pages/cover.dart';
 import 'pages/day.dart';
@@ -91,6 +92,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   String freeSel = '';
   int narrowPage = 0;
   bool styleOpen = false;
+  bool mickyOpen = false;
   Timer? _tick, _syncTick;
   String? _syncMsg;
 
@@ -377,9 +379,27 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
           ]),
         ),
         const SizedBox(width: 6),
+        Tooltip(
+          message: 'Parler à Micky',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(999),
+            onTap: () => setState(() {
+              mickyOpen = !mickyOpen;
+              if (mickyOpen) styleOpen = false;
+            }),
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: mickyOpen ? pal.acc : Colors.transparent, width: 2)),
+              child: const MickyAvatar(size: 34),
+            ),
+          ),
+        ),
         IconButton(
           tooltip: 'Mon style',
-          onPressed: () => setState(() => styleOpen = !styleOpen),
+          onPressed: () => setState(() {
+            styleOpen = !styleOpen;
+            if (styleOpen) mickyOpen = false;
+          }),
           icon: Icon(Icons.palette_outlined, color: styleOpen ? pal.acc : pal.soft),
         ),
         IconButton(
@@ -425,7 +445,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
             },
             child: Scaffold(
             backgroundColor: pal.desk,
-            floatingActionButton: desk.mode == Mode.use && !styleOpen
+            floatingActionButton: desk.mode == Mode.use && !styleOpen && !mickyOpen
                 ? FloatingActionButton(
                     tooltip: 'Noter vite (Ctrl + K)',
                     backgroundColor: pal.acc,
@@ -440,7 +460,15 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
                 Expanded(
                   child: LayoutBuilder(builder: (context, box) {
                     final wide = box.maxWidth >= 900;
-                    final side = desk.mode == Mode.deco ? const Atelier() : (styleOpen ? StylePanel(onClose: () => setState(() => styleOpen = false)) : null);
+                    final side = desk.mode == Mode.deco
+                        ? const Atelier()
+                        : mickyOpen
+                            ? MickyPanel(
+                                onClose: () => setState(() => mickyOpen = false),
+                                onSettings: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
+                              )
+                            : (styleOpen ? StylePanel(onClose: () => setState(() => styleOpen = false)) : null);
+                    final sideW = side is MickyPanel ? 420.0 : 340.0;
                     final Widget planner0 = _Planner(
                       wide: wide,
                       tab: tab,
@@ -476,12 +504,12 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
                     if (wide) {
                       return Row(children: [
                         Expanded(child: planner),
-                        if (side != null) Padding(padding: const EdgeInsets.fromLTRB(0, 6, 12, 12), child: SizedBox(width: 340, child: side)),
+                        if (side != null) Padding(padding: const EdgeInsets.fromLTRB(0, 6, 12, 12), child: SizedBox(width: sideW, child: side)),
                       ]);
                     }
                     return Column(children: [
                       Expanded(child: planner),
-                      if (side != null) SizedBox(height: 320, child: side),
+                      if (side != null) SizedBox(height: side is MickyPanel ? 460 : 320, child: side),
                     ]);
                   }),
                 ),
@@ -766,6 +794,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       backgroundColor: pal.paper,
       appBar: AppBar(title: const Text('Réglages'), backgroundColor: pal.paper),
       body: ListView(padding: const EdgeInsets.all(20), children: [
+        const MickySettings(),
+        const SizedBox(height: 18),
         Label('Habitudes suivies au feu de camp', pal.soft),
         for (final h in store.activeHabits)
           ListTile(

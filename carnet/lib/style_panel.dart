@@ -181,13 +181,18 @@ class StylePanel extends StatelessWidget {
                 },
                 child: const Text('Remettre tous les textes par défaut'),
               ),
-            lab('Ton de Micky'),
-            Wrap(children: [
-              for (final (k, n) in [('discrete', 'Discrète'), ('douce', 'Douce'), ('taquine', 'Taquine'), ('coach', 'Coach')])
-                chip(n, st.mickyTone == k, () {
-                  st.mickyTone = k;
-                  save();
-                }),
+            lab('Micky, entre amie et coach'),
+            StatefulBuilder(
+              builder: (context, setS) => Slider(
+                value: st.mickyCoach.clamp(0, 1),
+                onChanged: (v) => setS(() => st.mickyCoach = v),
+                onChangeEnd: (_) => save(),
+              ),
+            ),
+            Row(children: [
+              Text('amie', style: body(11, pal.soft)),
+              const Spacer(),
+              Text('coach', style: body(11, pal.soft)),
             ]),
             lab('Stylet'),
             SwitchListTile(

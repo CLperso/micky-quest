@@ -490,6 +490,9 @@ class Settings {
   String labelStyle; // étiquettes des jours : tag, washi, souligne, cadre
   Map<String, String> labels; // textes personnalisés (titres, sous-titres…)
   List<String> hidden; // parties masquées
+  String groqKey, groqModel; // Micky (local, jamais synchronisé)
+  double mickyCoach; // 0 = amie, 1 = coach
+  List<String> mickySees; // ce que Micky voit : tasks, trackers, cycle, journal
   int mod;
 
   static const defaultPalette = [0xFF4A3F3C, 0xFFB0707A, 0xFFD7A6A8, 0xFF7E9471, 0xFFA9B8A0, 0xFF8E7BA0, 0xFFC6A26A, 0xFF7C93AE, 0xFFE3B7A0, 0xFFFFFFFF];
@@ -510,8 +513,13 @@ class Settings {
       this.labelStyle = 'tag',
       Map<String, String>? labels,
       List<String>? hidden,
+      this.groqKey = '',
+      this.groqModel = 'openai/gpt-oss-120b',
+      this.mickyCoach = 0.45,
+      List<String>? mickySees,
       int? mod})
       : labels = labels ?? {},
+        mickySees = mickySees ?? ['tasks', 'trackers', 'cycle'],
         hidden = hidden ?? [],
         palette = palette ?? [...defaultPalette],
         mod = mod ?? 0;
@@ -532,10 +540,14 @@ class Settings {
         labelStyle: _s(j['ls'], 'tag'),
         labels: j['lb'] is Map ? (j['lb'] as Map).map((k, v) => MapEntry('$k', '$v')) : null,
         hidden: j['hd'] is List ? (j['hd'] as List).map((e) => '$e').toList() : null,
+        groqKey: _s(j['gk']),
+        groqModel: _s(j['gm'], 'openai/gpt-oss-120b'),
+        mickyCoach: _d(j['mc'], 0.45),
+        mickySees: j['ms'] is List ? (j['ms'] as List).map((e) => '$e').toList() : null,
         mod: _i(j['mod']),
       );
 
-  Map<String, dynamic> toJson() => {...syncJson(), 'repo': syncRepo, 'tok': syncToken, 'last': lastSync, 'stylus': stylusOnly};
+  Map<String, dynamic> toJson() => {...syncJson(), 'repo': syncRepo, 'tok': syncToken, 'last': lastSync, 'stylus': stylusOnly, 'gk': groqKey, 'gm': groqModel};
 
   /// Ce qui se synchronise (pas le jeton ni l'état local).
   Map<String, dynamic> syncJson() => {
@@ -550,6 +562,8 @@ class Settings {
         'ls': labelStyle,
         'lb': labels,
         'hd': hidden,
+        'mc': mickyCoach,
+        'ms': mickySees,
         'mod': mod,
       };
 
@@ -566,6 +580,8 @@ class Settings {
     labelStyle = s.labelStyle;
     labels = s.labels;
     hidden = s.hidden;
+    mickyCoach = s.mickyCoach;
+    mickySees = s.mickySees;
     mod = s.mod;
   }
 }
