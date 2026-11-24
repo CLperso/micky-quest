@@ -87,6 +87,7 @@ class _DayStripState extends State<DayStrip> {
                 child: Column(children: [
                   Expanded(
                     child: Container(
+                      width: double.infinity,
                       decoration: BoxDecoration(
                         color: pal.paper,
                         borderRadius: BorderRadius.circular(6),
