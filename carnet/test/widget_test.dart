@@ -41,7 +41,15 @@ void main() {
     await tester.pumpAndSettle(const Duration(milliseconds: 100));
     await tester.tap(find.text('Couverture').first);
     await tester.pump(const Duration(milliseconds: 300));
-    await tester.tap(find.text('Pages').first);
+    await tester.tap(find.text('Mes pages').first);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Jour').first);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Index'), findsWidgets);
+    await tester.tap(find.text('Journal').first);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Mon journal'), findsOneWidget);
+    await tester.tap(find.text('Suivis').first);
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.byTooltip('Mon style'));
     await tester.pump(const Duration(milliseconds: 300));
