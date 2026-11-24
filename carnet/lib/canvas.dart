@@ -203,6 +203,13 @@ class _PageSheetState extends State<PageSheet> {
       final key = widget.pageKey;
       WidgetsBinding.instance.addPostFrameCallback((_) => store.seedPage(key, seedDoodles(key, store.settings.decoLevel)));
     }
+    // le post-it des signes du bullet journal, sur chaque page du jour (on peut le déplacer, le recolorer, l'enlever)
+    if (store.settings.signsPostit && widget.pageKey.startsWith('day:') && widget.pageKey.endsWith(':L') && !store.seeded.contains('postit:${widget.pageKey}')) {
+      final key = widget.pageKey;
+      WidgetsBinding.instance.addPostFrameCallback((_) => store.seedPage('postit:$key', [
+            Deco(page: key, type: 'postit', x: pageW - 104, y: pageH - 150, w: 150, h: 172, rot: 0.05, style: {'color': 0xFFF6E7A8}),
+          ]));
+    }
     final paperColor = widget.paperOverride ?? (paper.color == 0 ? pal.paper : Color(paper.color));
     final right = widget.pageKey.endsWith(':R');
     final darkPaper = paperColor.computeLuminance() < 0.3;
@@ -746,6 +753,8 @@ Widget renderDeco(Deco d, Store store) {
               style: (s['font'] == 'title' ? titleFont(60, Color(col('color', 0xFF3B3346))) : hand(70, Color(col('color', 0xFF3B3346))))),
         ),
       );
+    case 'postit':
+      return PostitSigns(color: Color(col('color', 0xFFF6E7A8)), w: d.w, h: d.h);
     case 'frame':
       return CustomPaint(
         size: Size(d.w, d.h),
@@ -933,6 +942,33 @@ class FramePainter extends CustomPainter {
         canvas.drawShadow(outer, Colors.black, 4, false);
         canvas.drawPath(Path.combine(PathOperation.difference, outer, inner), Paint()..color = fill ?? Colors.white);
         canvas.drawRect(r, p..strokeWidth = 1..color = c.withValues(alpha: 0.4));
+        break;
+      case 'arch':
+        final rad = Radius.circular(size.width / 2);
+        final arch = RRect.fromRectAndCorners(r.deflate(2), topLeft: rad, topRight: rad, bottomLeft: const Radius.circular(14), bottomRight: const Radius.circular(14));
+        if (f != null) canvas.drawRRect(arch, f);
+        final ap = Path()..addRRect(arch);
+        for (final m in ap.computeMetrics()) {
+          for (var d = 0.0; d < m.length; d += 14) {
+            canvas.drawPath(m.extractPath(d, min(d + 8, m.length)), p..strokeWidth = 2.2);
+          }
+        }
+        break;
+      case 'washitop':
+        if (f != null) canvas.drawRRect(RRect.fromRectAndRadius(r.deflate(2), const Radius.circular(18)), f);
+        canvas.drawRRect(RRect.fromRectAndRadius(r.deflate(2), const Radius.circular(18)), p..strokeWidth = 2);
+        final tw = min(size.width * .45, 180.0);
+        final tape = Rect.fromLTWH(size.width / 2 - tw / 2, -10, tw, 22);
+        canvas.save();
+        canvas.translate(tape.center.dx, tape.center.dy);
+        canvas.rotate(-0.03);
+        canvas.translate(-tape.center.dx, -tape.center.dy);
+        canvas.drawRect(tape, Paint()..color = c.withValues(alpha: .45));
+        final sp = Paint()..color = c.withValues(alpha: .35);
+        for (var x = tape.left; x < tape.right; x += 12) {
+          canvas.drawRect(Rect.fromLTWH(x, tape.top, 6, tape.height), sp);
+        }
+        canvas.restore();
         break;
       case 'corners':
         final k = min(size.width, size.height) * .16;
@@ -1125,7 +1161,7 @@ class _DecoBar extends StatelessWidget {
     final desk = DeskScope.of(context);
     final d = deco;
     Widget b(String tip, IconData i, VoidCallback f) => IconButton(tooltip: tip, onPressed: f, icon: Icon(i, size: 24, color: const Color(0xFF3B3346)));
-    final colorable = d.type == 'washi' || d.type == 'frame' || d.type == 'text' || d.type == 'sticker' || d.type == 'image' || d.type == 'doodle';
+    final colorable = d.type == 'washi' || d.type == 'frame' || d.type == 'text' || d.type == 'sticker' || d.type == 'image' || d.type == 'doodle' || d.type == 'postit';
     return Material(
       color: Colors.white,
       elevation: 6,
@@ -1285,3 +1321,80 @@ Future<String?> askText(BuildContext context, String title, {String initial = ''
 
 /// Image d'un sticker perso (déjà réduite par le sélecteur) encodée en base64.
 String encodeImage(Uint8List bytes) => base64Encode(bytes);
+
+
+/// Le post-it qui rappelle les signes du bullet journal.
+class PostitSigns extends StatelessWidget {
+  final Color color;
+  final double w, h;
+  const PostitSigns({super.key, required this.color, required this.w, required this.h});
+  @override
+  Widget build(BuildContext context) {
+    const ink = Color(0xFF4B4260);
+    Widget sign(String kind, String t) => Padding(
+          padding: const EdgeInsets.only(bottom: 3),
+          child: Row(children: [
+            SizedBox(width: 18, height: 18, child: CustomPaint(painter: SignPainter(kind, ink))),
+            const SizedBox(width: 8),
+            Text(t, style: hand(17, ink)),
+          ]),
+        );
+    return SizedBox(
+      width: w,
+      height: h,
+      child: FittedBox(
+        child: Container(
+          width: 150,
+          height: 172,
+          padding: const EdgeInsets.fromLTRB(14, 12, 10, 8),
+          decoration: BoxDecoration(color: color, boxShadow: const [BoxShadow(color: Color(0x2A000000), blurRadius: 8, offset: Offset(0, 3))]),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('mes signes', style: hand(19, const Color(0xFFB0707A))),
+            const SizedBox(height: 4),
+            sign('task', 'à faire'),
+            sign('done', 'fait'),
+            sign('moved', 'reporté'),
+            sign('event', 'rendez-vous'),
+            sign('note', 'note'),
+            sign('important', 'important'),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// Un signe du bullet journal dessiné à la main.
+class SignPainter extends CustomPainter {
+  final String kind;
+  final Color c;
+  SignPainter(this.kind, this.c);
+  @override
+  void paint(Canvas canvas, Size s) {
+    final p = Paint()
+      ..color = c
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    final m = s.center(Offset.zero);
+    switch (kind) {
+      case 'task':
+        canvas.drawCircle(m, 3, Paint()..color = c);
+      case 'done':
+        canvas.drawLine(m + const Offset(-5, -5), m + const Offset(5, 5), p);
+        canvas.drawLine(m + const Offset(5, -5), m + const Offset(-5, 5), p);
+      case 'moved':
+        canvas.drawPath(Path()..moveTo(m.dx - 4, m.dy - 6)..lineTo(m.dx + 4, m.dy)..lineTo(m.dx - 4, m.dy + 6), p);
+      case 'event':
+        canvas.drawCircle(m, 5, p);
+      case 'note':
+        canvas.drawLine(m + const Offset(-6, 0), m + const Offset(6, 0), p);
+      default:
+        canvas.drawLine(m + const Offset(0, -7), m + const Offset(0, 3), p);
+        canvas.drawCircle(m + const Offset(0, 7), 1.2, Paint()..color = c);
+    }
+  }
+
+  @override
+  bool shouldRepaint(SignPainter o) => o.kind != kind || o.c != c;
+}

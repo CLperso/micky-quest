@@ -135,9 +135,11 @@ const stickerEmojis = {
 };
 
 const washiPatterns = ['stripes', 'dots', 'grid', 'solid', 'zigzag', 'check'];
-const framePatterns = ['solid', 'dashed', 'double', 'rounded', 'tag', 'bubble', 'polaroid', 'corners'];
+const framePatterns = ['solid', 'dashed', 'double', 'rounded', 'washitop', 'arch', 'tag', 'bubble', 'polaroid', 'corners'];
 const frameNames = {
   'solid': 'Trait',
+  'washitop': 'Washi',
+  'arch': 'Arche',
   'dashed': 'Pointillés',
   'double': 'Double',
   'rounded': 'Arrondi',

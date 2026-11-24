@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../bio.dart';
 import '../model.dart';
 import '../store.dart';
 import '../theme.dart';
@@ -254,5 +255,182 @@ class JournalIdeas extends StatelessWidget {
     final dot = s.indexOf(RegExp(r'[.!?]'), 30);
     final cut = dot > 0 && dot < 180 ? dot + 1 : (s.length > 160 ? 160 : s.length);
     return '${s.substring(0, cut)}${cut < s.length && (dot <= 0 || dot >= 180) ? '…' : ''}';
+  }
+}
+
+// =====================================================================
+// Le journal comme un vrai carnet : deux pages libres, et un cadenas
+// =====================================================================
+
+/// Page de journal libre (gauche : la date ; droite : rien que la place pour écrire).
+class JournalPage extends StatelessWidget {
+  final String day;
+  final bool left;
+  const JournalPage({super.key, required this.day, required this.left});
+  @override
+  Widget build(BuildContext context) {
+    final store = StoreScope.of(context);
+    final pal = palOf(context);
+    final d = parseDay(day);
+    final typed = store.dayJournal(day).where((j) => j.text.trim().isNotEmpty).toList();
+    if (!left) return const SizedBox.expand();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      PageTitle(id: 'jrnp.L', over: 'journal', title: '{jour} {n} {mois}', vars: dayVars(d)),
+      // ce qui avait été tapé avant reste là, comme écrit
+      for (final j in typed)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(j.text, style: hand(21, const Color(0xFF5A4A6A))),
+        ),
+      if (typed.isEmpty) Text('écris ce qui vient, au stylet, n’importe où', style: body(11, pal.soft, w: FontWeight.w700)),
+    ]);
+  }
+}
+
+/// Empreinte d'un code (FNV-1a 32 bits, deux passes) : on ne garde jamais le code lui-même.
+/// Calcul sans dépasser 2^53, pour donner le même résultat sur la tablette et sur le PC.
+String pinHash(String pin) {
+  int fnv(String t, int h) {
+    for (final c in t.codeUnits) {
+      h = (h ^ c) & 0xFFFFFFFF;
+      // h * 16777619 = h * 0x193 + h * 2^24, modulo 2^32
+      h = (h * 0x193 + ((h & 0xFF) << 24)) & 0xFFFFFFFF;
+    }
+    return h;
+  }
+
+  final a = fnv('carnet-micky:$pin', 0x811c9dc5);
+  final b = fnv('$pin:micky-carnet', a);
+  return '${a.toRadixString(16)}${b.toRadixString(16)}';
+}
+
+/// Le cadenas du journal : un code à 4 chiffres, ou l'empreinte sur la tablette.
+class JournalLock extends StatefulWidget {
+  final VoidCallback onUnlock;
+  const JournalLock({super.key, required this.onUnlock});
+  @override
+  State<JournalLock> createState() => _JournalLockState();
+}
+
+class _JournalLockState extends State<JournalLock> {
+  String _code = '';
+  String? _first; // création du code : première saisie
+  String _msg = '';
+  bool _bio = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _tryBio(auto: true));
+  }
+
+  Future<void> _tryBio({bool auto = false}) async {
+    if (!mounted || StoreScope.read(context).settings.jrnPin.isEmpty) return;
+    final ok = await biometricUnlock();
+    if (!mounted) return;
+    if (ok == null) return;
+    setState(() => _bio = true);
+    if (ok) widget.onUnlock();
+  }
+
+  Future<void> _digit(String d) async {
+    final store = StoreScope.read(context);
+    if (_code.length >= 4) return;
+    setState(() {
+      _code += d;
+      _msg = '';
+    });
+    if (_code.length < 4) return;
+    await Future.delayed(const Duration(milliseconds: 120));
+    final pin = store.settings.jrnPin;
+    if (pin.isEmpty) {
+      if (_first == null) {
+        setState(() {
+          _first = _code;
+          _code = '';
+          _msg = 'Encore une fois, pour confirmer';
+        });
+      } else if (_first == _code) {
+        store.settings.jrnPin = pinHash(_code);
+        await store.touchSettings();
+        widget.onUnlock();
+      } else {
+        setState(() {
+          _first = null;
+          _code = '';
+          _msg = 'Les deux codes ne sont pas pareils, on recommence';
+        });
+      }
+      return;
+    }
+    if (pinHash(_code) == pin) {
+      widget.onUnlock();
+    } else {
+      setState(() {
+        _code = '';
+        _msg = 'Ce n’est pas le bon code';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final store = StoreScope.of(context);
+    final pal = palOf(context);
+    final creating = store.settings.jrnPin.isEmpty;
+    Widget key(String t, {VoidCallback? onTap, Widget? child}) => Padding(
+          padding: const EdgeInsets.all(8),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(99),
+            onTap: onTap ?? (t.isEmpty ? null : () => _digit(t)),
+            child: Container(
+              width: 62,
+              height: 62,
+              decoration: BoxDecoration(color: t.isEmpty && child == null ? Colors.transparent : pal.card, shape: BoxShape.circle, border: Border.all(color: t.isEmpty && child == null ? Colors.transparent : pal.line)),
+              child: Center(child: child ?? Text(t, style: titleFont(28, pal.ink))),
+            ),
+          ),
+        );
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [const Color(0xFFECE5F0), pal.tint]),
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Center(
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.lock_rounded, size: 46, color: pal.acc),
+            const SizedBox(height: 6),
+            Text('Mon journal', style: titleFont(38, pal.ink)),
+            Text(creating ? (_first == null ? 'Choisis un code à 4 chiffres' : 'Encore une fois') : 'rien que pour moi', style: body(13, pal.soft, w: FontWeight.w800)),
+            const SizedBox(height: 16),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              for (var i = 0; i < 4; i++)
+                Container(
+                  width: 14,
+                  height: 14,
+                  margin: const EdgeInsets.symmetric(horizontal: 7),
+                  decoration: BoxDecoration(shape: BoxShape.circle, color: i < _code.length ? pal.acc : Colors.transparent, border: Border.all(color: pal.acc, width: 2)),
+                ),
+            ]),
+            SizedBox(height: 26, child: Center(child: Text(_msg, style: body(12, pal.acc, w: FontWeight.w800)))),
+            for (final row in const [
+              ['1', '2', '3'],
+              ['4', '5', '6'],
+              ['7', '8', '9'],
+            ])
+              Row(mainAxisSize: MainAxisSize.min, children: [for (final t in row) key(t)]),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              _bio || !creating ? key('', onTap: () => _tryBio(), child: Icon(Icons.fingerprint_rounded, color: pal.acc, size: 30)) : key(''),
+              key('0'),
+              key('', onTap: () => setState(() => _code = _code.isEmpty ? '' : _code.substring(0, _code.length - 1)), child: Icon(Icons.backspace_outlined, color: pal.ink, size: 22)),
+            ]),
+            const SizedBox(height: 10),
+            Text('Le journal se reverrouille dès que tu changes d’onglet. Micky n’y a pas accès.', textAlign: TextAlign.center, style: body(11, pal.soft, w: FontWeight.w700)),
+          ]),
+        ),
+      ),
+    );
   }
 }

@@ -26,6 +26,10 @@ class Store extends ChangeNotifier {
   final Map<String, Guide> guides = {}; // page → calque
   final Map<String, Tracker> trackers = {};
   final Map<String, JEntry> journals = {};
+  /// Ce que le carnet a lu de l'écriture à la main, par page (« signe|texte » par ligne) : recherche, index, Micky.
+  final Map<String, String> inkText = {};
+  /// Appelé quand l'encre d'une page change (lecture en arrière-plan).
+  static void Function(Store, String)? onInk;
   final Set<String> seeded = {}; // pages qui ont déjà reçu leurs petits dessins
   final Map<String, String> images = {}; // id → base64 (jpeg)
   final Map<String, int> imageMod = {};
@@ -54,6 +58,7 @@ class Store extends ChangeNotifier {
     if (habits.isEmpty && goals.isEmpty && entries.isEmpty) _seed();
     if (trackers.isEmpty) _seedTrackers();
     trackers['anxiety']?.low = true;
+    _migrateColls();
   }
 
   void _seed() {
@@ -79,6 +84,7 @@ class Store extends ChangeNotifier {
         'tpl': templates.values.map((e) => e.toJson()).toList(),
         'free': freePages.values.map((e) => e.toJson()).toList(),
         'guides': guides.values.map((e) => e.toJson()).toList(),
+        'itx': inkText,
         'trk': trackers.values.map((e) => e.toJson()).toList(),
         'jrn': journals.values.map((e) => e.toJson()).toList(),
         'seeded': seeded.toList(),
@@ -110,6 +116,9 @@ class Store extends ChangeNotifier {
     merge<DecoTemplate>(templates, _list(j, 'tpl'), DecoTemplate.fromJson, (e) => e.id, (e) => e.mod);
     merge<FreePage>(freePages, _list(j, 'free'), FreePage.fromJson, (e) => e.id, (e) => e.mod);
     merge<Guide>(guides, _list(j, 'guides'), Guide.fromJson, (e) => e.page, (e) => e.mod);
+    if (j['itx'] is Map) {
+      (j['itx'] as Map).forEach((k, v) => inkText.putIfAbsent('$k', () => '$v'));
+    }
     merge<Tracker>(trackers, _list(j, 'trk'), Tracker.fromJson, (e) => e.id, (e) => e.mod);
     merge<JEntry>(journals, _list(j, 'jrn'), JEntry.fromJson, (e) => e.id, (e) => e.mod);
     if (j['seeded'] is List) seeded.addAll((j['seeded'] as List).map((e) => '$e'));
@@ -337,7 +346,10 @@ class Store extends ChangeNotifier {
   /// Niveau du code couleur : 3 parfait/atteint (vert), 2 bien/avancé (jaune), 1 un peu (orange), 0 pas fait (gris), null = pas répondu.
   int? level(String day, String key) {
     final l = logs[day];
-    if (key == 'journal') return journals.values.any((j) => !j.del && j.day == day && j.text.trim().isNotEmpty) ? 3 : null;
+    if (key == 'journal') {
+      final ink = (inks['jrn:$day:L']?.strokes.isNotEmpty ?? false) || (inks['jrn:$day:R']?.strokes.isNotEmpty ?? false);
+      return ink || journals.values.any((j) => !j.del && j.day == day && j.text.trim().isNotEmpty) ? 3 : null;
+    }
     if (key == 'wgoal') {
       final w = logs['w:${dayKey(mondayOf(parseDay(day)))}'];
       final v = w?.vals[day];
@@ -401,6 +413,28 @@ class Store extends ChangeNotifier {
     t.mod = nowMs();
     trackers[t.id] = t;
     await commit();
+  }
+
+  /// Les collections deviennent des pages de « Mes pages » (une fois) : leurs lignes sont posées en texte.
+  void _migrateColls() {
+    if (seeded.contains('mig:colls')) return;
+    seeded.add('mig:colls');
+    for (final c in colls.values.where((c) => !c.del)) {
+      if (freePages.containsKey('mig-${c.id}')) continue;
+      final p = FreePage(id: 'mig-${c.id}', title: '${c.emoji} ${c.title}'.trim(), paper: 'dots');
+      final items = collEntries(c.id).where((e) => !e.dropped).toList();
+      p.sheets = max(1, (items.length / 18).ceil());
+      freePages[p.id] = p;
+      for (var i = 0; i < items.length; i++) {
+        final e = items[i];
+        final sheet = i ~/ 18;
+        final page = sheet == 0 ? 'free:${p.id}' : 'free:${p.id}:${sheet + 1}';
+        final t = '${e.done ? '×' : '•'} ${e.text}';
+        final w = min(500.0, 20.0 + t.length * 11.0);
+        final dd = Deco(id: 'mig-${e.id}', page: page, type: 'text', x: 40 + w / 2, y: (sheet == 0 ? 130 : 70) + (i % 18) * 38, w: w, h: 30, style: {'text': t, 'font': 'hand', 'color': 0xFF4B4260});
+        decos[dd.id] = dd;
+      }
+    }
   }
 
   // ---------- journal ----------
@@ -609,6 +643,7 @@ class Store extends ChangeNotifier {
   Future<void> touchInk(String page) async {
     ink(page).mod = nowMs();
     await commit();
+    onInk?.call(this, page);
   }
 
   // ---------- papier ----------

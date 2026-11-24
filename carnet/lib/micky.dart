@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'index.dart';
 import 'model.dart';
 import 'store.dart';
 import 'theme.dart';
@@ -181,6 +182,7 @@ contenant une liste JSON. Actions possibles (utilise les identifiants courts du 
 {"a":"wgoal","text":"…"}  (fixe l’objectif de la semaine, si elle le décide)
 {"a":"wgoalday","value":3|2|0}  (objectif de la semaine aujourd’hui : 3 atteint, 2 avancé, 0 pas aujourd’hui)
 N’ajoute le bloc que si tu fais vraiment quelque chose. N’invente pas d’identifiants.
+Sa page du jour est écrite à la main avec les signes du bullet journal (• à faire, × fait, > reporté, ○ rendez-vous, – note). L’encre ne se déplace pas : pour reporter une tâche écrite à la main, ajoute-la au jour voulu (action add) et dis-lui de mettre un > devant sur sa page.
 '''
         .trim();
   }
@@ -326,8 +328,14 @@ N’ajoute le bloc que si tu fais vraiment quelque chose. N’invente pas d’id
     try {
       final hist = today.where((m) => m.role != 'info').toList();
       final recent = hist.length > 14 ? hist.sublist(hist.length - 14) : hist;
+      var hand = '';
+      if (s.settings.mickySees.contains('tasks')) {
+        try {
+          hand = await InkReader.todayForMicky(s);
+        } catch (_) {}
+      }
       final messages = [
-        {'role': 'system', 'content': '${_persona(s, mode)}\n\n${_context(s)}'},
+        {'role': 'system', 'content': '${_persona(s, mode)}\n\n${_context(s)}${hand.isEmpty ? '' : '\nSa page du jour, écrite à la main (lue par la tablette, il peut y avoir des fautes de lecture) :\n$hand'}'},
         for (final m in recent) {'role': m.role == 'user' ? 'user' : 'assistant', 'content': _cut(m.text, 1500)},
       ];
       var (reply, err) = claude

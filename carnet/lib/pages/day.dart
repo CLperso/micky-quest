@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../canvas.dart';
 import '../model.dart';
 import '../store.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'tracks.dart';
 
 /// Page de gauche du jour : le briefing et la liste.
 class DayMorning extends StatelessWidget {
@@ -293,6 +295,111 @@ class DayEvening extends StatelessWidget {
           },
         ),
         ])),
+      ]),
+    );
+  }
+}
+
+// =====================================================================
+// La page du jour, comme un vrai carnet : on écrit partout au stylet
+// =====================================================================
+
+/// Gauche : le titre du jour, et toute la place pour écrire. Ce qui a été tapé avant (ou rangé par Micky)
+/// reste affiché, sans case à toucher.
+class DayFreeL extends StatelessWidget {
+  final String day;
+  const DayFreeL({super.key, required this.day});
+  @override
+  Widget build(BuildContext context) {
+    final store = StoreScope.of(context);
+    final d = parseDay(day);
+    final typed = store.dayEntries(day);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      PageTitle(id: 'day.L', over: '{mois} {annee}', title: '{jour} {n}', vars: dayVars(d)),
+      if (typed.isNotEmpty) TypedLines(items: typed),
+    ]);
+  }
+}
+
+/// Droite : le soir, page libre ; en bas, la journée en couleurs (remplie par les questions du soir).
+class DayFreeR extends StatelessWidget {
+  final String day;
+  const DayFreeR({super.key, required this.day});
+  @override
+  Widget build(BuildContext context) {
+    final store = StoreScope.of(context);
+    final pal = palOf(context);
+    final d = parseDay(day);
+    final items = flowerItems(store, d).where((e) => e.$1 != 'journal').toList();
+    final answered = items.where((e) => store.level(day, e.$1) != null).toList();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      PageTitle(id: 'day.R', over: '', title: 'le soir', vars: dayVars(d)),
+      const Spacer(),
+      if (!store.isHidden('day.colors') && answered.isNotEmpty) ...[
+        const ELabel('day.colors', 'ma journée en couleurs', part: 'day.colors'),
+        const SizedBox(height: 4),
+        Wrap(spacing: 12, runSpacing: 6, children: [
+          for (final (k, n) in answered)
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Container(width: 15, height: 15, decoration: BoxDecoration(shape: BoxShape.circle, color: levelColors[store.level(day, k)!.clamp(0, 3)], border: Border.all(color: pal.ink.withValues(alpha: .4)))),
+              const SizedBox(width: 5),
+              Text(n, style: hand(17, pal.ink)),
+            ]),
+        ]),
+        const SizedBox(height: 46),
+      ],
+    ]);
+  }
+}
+
+/// Les lignes tapées (ou rangées par Micky), affichées comme écrites à la main ; appui long pour les ranger.
+class TypedLines extends StatelessWidget {
+  final List<Entry> items;
+  const TypedLines({super.key, required this.items});
+  @override
+  Widget build(BuildContext context) {
+    final store = StoreScope.of(context);
+    final pal = palOf(context);
+    String sign(Entry e) => e.done ? 'done' : (e.dropped ? 'note' : (e.kind == 'event' ? 'event' : (e.kind == 'note' ? 'note' : 'task')));
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        for (final e in items)
+          GestureDetector(
+            onLongPress: () async {
+              final r = await showModalBottomSheet<String>(
+                context: context,
+                builder: (ctx) => SafeArea(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    ListTile(leading: const Icon(Icons.check_rounded), title: Text(e.done ? 'Pas encore fait' : 'C’est fait'), onTap: () => Navigator.pop(ctx, 'done')),
+                    ListTile(leading: const Icon(Icons.chevron_right_rounded), title: const Text('Reporter à demain'), onTap: () => Navigator.pop(ctx, 'move')),
+                    ListTile(leading: const Icon(Icons.delete_outline_rounded), title: const Text('Effacer'), onTap: () => Navigator.pop(ctx, 'del')),
+                  ]),
+                ),
+              );
+              switch (r) {
+                case 'done':
+                  await store.toggleDone(e);
+                case 'move':
+                  await store.moveEntry(e, dayKey(parseDay(e.when).add(const Duration(days: 1))));
+                case 'del':
+                  await store.deleteEntry(e);
+              }
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(children: [
+                SizedBox(width: 18, height: 18, child: CustomPaint(painter: SignPainter(sign(e), pal.ink))),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    e.text,
+                    style: hand(22, e.done ? pal.soft : pal.ink).copyWith(decoration: e.done ? TextDecoration.lineThrough : null),
+                  ),
+                ),
+              ]),
+            ),
+          ),
       ]),
     );
   }

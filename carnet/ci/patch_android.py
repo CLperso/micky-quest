@@ -13,6 +13,7 @@ m = manifest.read_text()
 
 permissions = """
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
 """
 m = re.sub(r"(<manifest[^>]*>)", r"\1" + permissions, m, count=1)
 
@@ -31,6 +32,14 @@ m = re.sub(r'android:label="[^"]*"', 'android:label="Carnet Micky"', m, count=1)
 # moteur d'affichage Skia (plus stable qu'Impeller sur certains GPU Mali, dont les Galaxy Tab récentes)
 m = m.replace("</application>", '        <meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="false" />\n    </application>', 1)
 manifest.write_text(m)
+
+# --- empreinte (local_auth) : l'activité doit être une FlutterFragmentActivity ---
+for main in (app / "src/main").rglob("MainActivity.*"):
+    t = main.read_text()
+    t = t.replace("io.flutter.embedding.android.FlutterActivity", "io.flutter.embedding.android.FlutterFragmentActivity")
+    t = re.sub(r"\bFlutterActivity\b", "FlutterFragmentActivity", t)
+    main.write_text(t)
+    print(t)
 
 # --- build.gradle de l'appli (Groovy ou Kotlin) ---
 gradle = app / "build.gradle"

@@ -429,6 +429,34 @@ class WeekRight extends StatelessWidget {
 class WeekGoalBox extends StatelessWidget {
   final DateTime monday;
   const WeekGoalBox({super.key, required this.monday});
+
+  /// Le washi de l'encadré se personnalise : couleur, motif, texte.
+  Future<void> _customize(BuildContext context, Store store) async {
+    if (DeskScope.of(context).mode != Mode.use) return;
+    final r = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: const Icon(Icons.palette_outlined), title: const Text('Couleur du washi'), onTap: () => Navigator.pop(ctx, 'color')),
+          ListTile(leading: const Icon(Icons.texture_rounded), title: const Text('Motif suivant'), onTap: () => Navigator.pop(ctx, 'pattern')),
+          ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('Texte'), onTap: () => Navigator.pop(ctx, 'text')),
+        ]),
+      ),
+    );
+    if (r == null || !context.mounted) return;
+    switch (r) {
+      case 'color':
+        final c = await pickColor(context, store, title: 'Couleur du washi');
+        if (c != null) store.settings.labels['wgoal.wc'] = '$c';
+      case 'pattern':
+        final i = washiPatterns.indexOf(store.text('wgoal.wp', 'stripes'));
+        store.settings.labels['wgoal.wp'] = washiPatterns[(i + 1) % washiPatterns.length];
+      case 'text':
+        final t = await askText(context, 'Texte du washi', initial: store.text('wgoal.t', 'objectif de la semaine'));
+        if (t != null) store.settings.labels['wgoal.t'] = t;
+    }
+    await store.touchSettings();
+  }
   @override
   Widget build(BuildContext context) {
     final store = StoreScope.of(context);
@@ -476,12 +504,21 @@ class WeekGoalBox extends StatelessWidget {
         left: 0,
         right: 0,
         child: Center(
-          child: Transform.rotate(
-            angle: -0.03,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-              decoration: BoxDecoration(color: pal.acc.withValues(alpha: .35)),
-              child: Text('objectif de la semaine', style: hand(17, pal.ink)),
+          child: GestureDetector(
+            onTap: () => _customize(context, store),
+            child: Transform.rotate(
+              angle: -0.03,
+              child: CustomPaint(
+                painter: WashiPainter(
+                  Color(int.tryParse(store.text('wgoal.wc', '')) ?? pal.acc.toARGB32()),
+                  store.text('wgoal.wp', 'stripes'),
+                  0.7,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                  child: Text(store.text('wgoal.t', 'objectif de la semaine'), style: hand(17, pal.ink)),
+                ),
+              ),
             ),
           ),
         ),

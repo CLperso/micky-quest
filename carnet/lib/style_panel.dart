@@ -194,6 +194,17 @@ class StylePanel extends StatelessWidget {
               const Spacer(),
               Text('coach', style: body(11, pal.soft)),
             ]),
+            lab('Bullet journal'),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text('Post-it des signes sur les pages du jour', style: body(14, pal.ink)),
+              subtitle: Text('Tu peux le déplacer, le recolorer ou l’enlever en mode déco.', style: body(12, pal.soft, w: FontWeight.w600)),
+              value: st.signsPostit,
+              onChanged: (v) {
+                st.signsPostit = v;
+                save();
+              },
+            ),
             lab('Stylet'),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,

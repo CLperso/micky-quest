@@ -21,8 +21,8 @@ class FreeIndex extends StatelessWidget {
     final pages = store.activeFree;
     return SingleChildScrollView(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const PageTitle(id: 'pages', over: '', title: 'Pages'),
-        Text('appui long sur une page : renommer, déplacer, supprimer', style: body(11.5, pal.soft, w: FontWeight.w600)),
+        const PageTitle(id: 'pages', over: 'tout ce que je garde', title: 'Mes pages'),
+        Text('Chaque page s’écrit, se dessine, se décore (cadres, washi…) et continue vers le bas. Appui long : renommer, déplacer, supprimer.', style: body(11.5, pal.soft, w: FontWeight.w600)),
         const SizedBox(height: 14),
         Wrap(spacing: 12, runSpacing: 14, children: [
           for (final p in pages)
@@ -199,4 +199,47 @@ class MiniPaper extends CustomPainter {
 
   @override
   bool shouldRepaint(MiniPaper o) => o.pattern != pattern || o.c != c;
+}
+
+
+/// Une page de « Mes pages » qui continue vers le bas : plusieurs feuilles qui défilent.
+class FreeSheets extends StatelessWidget {
+  final String id;
+  final Widget first;
+  const FreeSheets({super.key, required this.id, required this.first});
+  @override
+  Widget build(BuildContext context) {
+    final store = StoreScope.of(context);
+    final desk = DeskScope.of(context);
+    final pal = palOf(context);
+    final p = store.freePages[id];
+    final n = p?.sheets ?? 1;
+    // au stylet seul, le doigt fait défiler ; sinon on ne défile pas pendant qu'on dessine
+    final canScroll = desk.mode != Mode.pen || store.settings.stylusOnly;
+    return ListView(
+      physics: canScroll ? null : const NeverScrollableScrollPhysics(),
+      children: [
+        first,
+        for (var i = 2; i <= n; i++) ...[
+          const SizedBox(height: 14),
+          PageSheet(pageKey: 'free:$id:$i', flat: true, child: const SizedBox.expand()),
+        ],
+        if (p != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Center(
+              child: TextButton.icon(
+                onPressed: () async {
+                  p.sheets = n + 1;
+                  await store.setPaper('free:$id:${n + 1}', pattern: p.paper);
+                  await store.touchFree(p);
+                },
+                icon: Icon(Icons.keyboard_double_arrow_down_rounded, color: pal.acc),
+                label: Text('la page continue', style: body(13, pal.acc, w: FontWeight.w800)),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }

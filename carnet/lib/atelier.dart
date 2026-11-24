@@ -154,6 +154,14 @@ class _AtelierState extends State<Atelier> {
                   Text(frameNames[f] ?? f, style: body(11, pal.ink)),
                 ]),
               ),
+            GestureDetector(
+              onTap: () => _place(store, desk, Deco(page: page, type: 'postit', x: 300, y: 360, w: 150, h: 172, rot: 0.04, style: {'color': 0xFFF6E7A8})),
+              child: Column(children: [
+                const SizedBox(width: 80, height: 56, child: PostitSigns(color: Color(0xFFF6E7A8), w: 48, h: 56)),
+                const SizedBox(height: 4),
+                Text('Post-it des signes', style: body(11, pal.ink)),
+              ]),
+            ),
           ]),
         ]);
         break;

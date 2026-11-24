@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'atelier.dart';
 import 'canvas.dart';
+import 'index.dart';
 import 'ink.dart';
 import 'micky.dart';
 import 'model.dart';
@@ -49,6 +50,7 @@ Future<void> main() async {
   };
   final store = Store();
   await store.load();
+  InkReader.install();
   runApp(StoreScope(store: store, child: const CarnetApp()));
 }
 
@@ -75,7 +77,9 @@ class CarnetApp extends StatelessWidget {
 
 // onglets de l'agenda
 const tCover = 0, tDay = 1, tWeek = 2, tMonth = 3, tFuture = 4, tGoals = 5, tColls = 6, tPages = 7, tTrack = 8, tJournal = 9;
-const tabNames = ['Couverture', 'Jour', 'Semaine', 'Mois', 'Futur', 'Objectifs', 'Collections', 'Pages', 'Suivis', 'Journal'];
+const tabNames = ['Couverture', 'Jour', 'Semaine', 'Mois', 'Futur', 'Objectifs', 'Collections', 'Mes pages', 'Suivis', 'Journal'];
+// ordre d'affichage (les collections vivent maintenant dans « Mes pages »)
+const tabOrder = [tCover, tDay, tWeek, tMonth, tTrack, tJournal, tPages, tGoals, tFuture];
 bool dayTab(int t) => t == tDay || t == tTrack || t == tJournal;
 
 class Shell extends StatefulWidget {
@@ -97,6 +101,8 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   bool styleOpen = false;
   bool mickyOpen = false;
   bool flowersMonth = false;
+  bool jrnOpen = false; // journal déverrouillé
+  int _swipeDir = 0;
   Timer? _tick, _syncTick;
   String? _syncMsg;
 
@@ -128,6 +134,9 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) _rollDay();
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      if (jrnOpen) setState(() => jrnOpen = false);
+    }
     if (state == AppLifecycleState.resumed || state == AppLifecycleState.paused) _sync();
   }
 
@@ -165,6 +174,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
       });
 
   void _setTab(int i) => setState(() {
+        if (i != tJournal) jrnOpen = false;
         tab = i;
         narrowPage = 0;
         desk.select('');
@@ -242,10 +252,10 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
         );
       case tJournal:
         final k = dayKey(day);
-        return ('jrn:$k:L', JournalFree(day: k), 'jrn:$k:R', JournalIdeas(day: k, onWrite: () => setState(() => narrowPage = 0)), 'Écrire', 'Idées');
+        return ('jrn:$k:L', JournalPage(day: k, left: true), 'jrn:$k:R', JournalPage(day: k, left: false), 'Gauche', 'Droite');
       default:
         final k = dayKey(day);
-        return ('day:$k:L', DayMorning(day: k), 'day:$k:R', DayEvening(day: k), 'Matin', 'Soir');
+        return ('day:$k:L', DayFreeL(day: k), 'day:$k:R', DayFreeR(day: k), 'Matin', 'Soir');
     }
   }
 
@@ -327,6 +337,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   }
 
   void _nav(int dir) => setState(() {
+        _swipeDir = dir;
         if (dayTab(tab)) day = day.add(Duration(days: dir));
         if (tab == tWeek) monday = monday.add(Duration(days: 7 * dir));
         if (tab == tMonth) month = DateTime(month.year, month.month + dir, 1);
@@ -499,8 +510,28 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
                               )
                             : (styleOpen ? StylePanel(onClose: () => setState(() => styleOpen = false)) : null);
                     final sideW = side is MickyPanel ? 420.0 : 340.0;
+                    final locked = tab == tJournal && !jrnOpen;
                     final Widget planner0 = _Planner(
                       wide: wide,
+                      cover: locked ? JournalLock(onUnlock: () => setState(() => jrnOpen = true)) : null,
+                      pageId: '$lk|$rk',
+                      swipeDir: _swipeDir,
+                      onSwipe: dayTab(tab) && desk.mode == Mode.use && !locked ? _nav : null,
+                      strip: dayTab(tab) && !locked
+                          ? DayStrip(
+                              day: day,
+                              pagePrefix: tab == tJournal ? 'jrn' : (tab == tTrack ? 'track' : 'day'),
+                              onPick: (d) => setState(() {
+                                _swipeDir = d.isAfter(day) ? 1 : -1;
+                                day = d;
+                              }),
+                              onIndex: () => showIndex(context, onOpenDay: openDay, onOpenPage: (id) => setState(() {
+                                    tab = tPages;
+                                    freeSel = id;
+                                    narrowPage = 1;
+                                  })),
+                            )
+                          : null,
                       tab: tab,
                       month: month.month,
                       onTab: _setTab,
@@ -509,7 +540,11 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
                         tab = tMonth;
                       }),
                       left: PageSheet(pageKey: lk, flat: true, bare: tab == tCover, paperOverride: tab == tCover ? (coverStyles[store.settings.coverStyle] ?? pal.cover) : null, onInkLines: (l) => _inkTo(lk, l), child: lw),
-                      right: rw == null ? null : PageSheet(pageKey: rk, flat: true, onInkLines: (l) => _inkTo(rk, l), child: rw),
+                      right: rw == null
+                          ? null
+                          : (tab == tPages && store.freePages[rk.substring(5)] != null)
+                              ? FreeSheets(id: rk.substring(5), first: PageSheet(pageKey: rk, flat: true, onInkLines: (l) => _inkTo(rk, l), child: rw))
+                              : PageSheet(pageKey: rk, flat: true, onInkLines: (l) => _inkTo(rk, l), child: rw),
                       leftName: ln,
                       rightName: rn,
                       narrowPage: narrowPage,
@@ -556,6 +591,11 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
 /// L'agenda : la couverture autour, les onglets, la spirale entre les deux pages.
 class _Planner extends StatelessWidget {
   final bool wide;
+  final Widget? cover; // remplace les pages (cadenas du journal)
+  final Widget? strip; // bande des pages en bas
+  final String pageId;
+  final int swipeDir;
+  final ValueChanged<int>? onSwipe;
   final int tab, month;
   final ValueChanged<int> onTab, onMonth;
   final Widget left;
@@ -567,6 +607,11 @@ class _Planner extends StatelessWidget {
   final bool zoom;
   const _Planner(
       {required this.wide,
+      this.cover,
+      this.strip,
+      this.pageId = '',
+      this.swipeDir = 0,
+      this.onSwipe,
       required this.tab,
       required this.month,
       required this.onTab,
@@ -584,14 +629,14 @@ class _Planner extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = StoreScope.of(context);
     final pal = Pal.byId(store.settings.theme);
-    final cover = coverStyles[store.settings.coverStyle] ?? pal.cover;
+    final coverColor = coverStyles[store.settings.coverStyle] ?? pal.cover;
     final tabs = pal.tabs;
     final sideW = wide ? 34.0 : 0.0;
 
     final topTabs = SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        for (var i = 0; i < tabNames.length; i++)
+        for (final i in tabOrder)
           GestureDetector(
             onTap: () => onTab(i),
             child: AnimatedContainer(
@@ -599,7 +644,7 @@ class _Planner extends StatelessWidget {
               margin: const EdgeInsets.only(right: 4),
               padding: EdgeInsets.fromLTRB(14, tab == i ? 10 : 6, 14, 8),
               decoration: BoxDecoration(
-                color: (i == tCover ? cover : tabs[(i - 1) % tabs.length]).withValues(alpha: tab == i ? 1 : 0.8),
+                color: (i == tCover ? coverColor : tabs[(tabOrder.indexOf(i) - 1) % tabs.length]).withValues(alpha: tab == i ? 1 : 0.8),
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
               ),
               child: Text(tabNames[i], style: body(12, pal.dark ? Colors.white : pal.ink, w: FontWeight.w800)),
@@ -644,7 +689,7 @@ class _Planner extends StatelessWidget {
           right: sideW,
           child: Container(
             decoration: BoxDecoration(
-              color: cover,
+              color: coverColor,
               borderRadius: BorderRadius.circular(24),
               boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 30, offset: Offset(0, 12))],
             ),
@@ -684,9 +729,35 @@ class _Planner extends StatelessWidget {
           top: penBar != null ? 128 : 44,
           left: 14,
           right: sideW + 14,
-          bottom: 14,
-          child: ZoomBox(enabled: zoom, child: pages),
+          bottom: strip != null ? 96 : 14,
+          child: cover != null
+              ? Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 560), child: cover!))
+              : ZoomBox(
+                  enabled: zoom,
+                  child: GestureDetector(
+                    onHorizontalDragEnd: onSwipe == null
+                        ? null
+                        : (d) {
+                            final v = d.primaryVelocity ?? 0;
+                            if (v < -250) onSwipe!(1);
+                            if (v > 250) onSwipe!(-1);
+                          },
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 260),
+                      transitionBuilder: (child, anim) {
+                        final fromRight = (child.key == ValueKey(pageId)) == (swipeDir >= 0);
+                        return FadeTransition(
+                          opacity: anim,
+                          child: SlideTransition(position: Tween(begin: Offset(fromRight ? .06 : -.06, 0), end: Offset.zero).animate(anim), child: child),
+                        );
+                      },
+                      child: KeyedSubtree(key: ValueKey(pageId), child: pages),
+                    ),
+                  ),
+                ),
         ),
+        if (strip != null)
+          Positioned(left: 14, right: sideW + 14, bottom: 8, height: 84, child: strip!),
         if (penBar != null)
           Positioned(
             top: 42,

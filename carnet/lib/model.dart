@@ -479,17 +479,18 @@ class FreePage {
   String id;
   String title;
   String paper; // dots, grid, lines, plain
+  int sheets; // la page continue vers le bas : nombre de feuilles
   double order;
   int mod;
   bool del;
-  FreePage({String? id, this.title = '', this.paper = 'dots', double? order, int? mod, this.del = false})
+  FreePage({String? id, this.title = '', this.paper = 'dots', this.sheets = 1, double? order, int? mod, this.del = false})
       : id = id ?? newId(),
         order = order ?? nowMs().toDouble(),
         mod = mod ?? nowMs();
 
   factory FreePage.fromJson(Map<String, dynamic> j) =>
-      FreePage(id: _s(j['id']), title: _s(j['title']), paper: _s(j['paper'], 'dots'), order: _d(j['order']), mod: _i(j['mod']), del: _b(j['del']));
-  Map<String, dynamic> toJson() => {'id': id, 'title': title, 'paper': paper, 'order': order, 'mod': mod, 'del': del};
+      FreePage(id: _s(j['id']), title: _s(j['title']), paper: _s(j['paper'], 'dots'), sheets: _i(j['sh'], 1), order: _d(j['order']), mod: _i(j['mod']), del: _b(j['del']));
+  Map<String, dynamic> toJson() => {'id': id, 'title': title, 'paper': paper, 'sh': sheets, 'order': order, 'mod': mod, 'del': del};
 }
 
 /// L'encre d'une page.
@@ -584,6 +585,8 @@ class Settings {
   String aiProvider, claudeKey, claudeModel; // groq ou claude
   double mickyCoach; // 0 = amie, 1 = coach
   List<String> mickySees; // ce que Micky voit : tasks, trackers, cycle, journal
+  bool signsPostit; // post-it des signes sur les pages du jour
+  String jrnPin; // code du journal (empreinte du code, jamais le code lui-même)
   int mod;
 
   static const defaultPalette = [0xFF4A3F3C, 0xFFB0707A, 0xFFD7A6A8, 0xFF7E9471, 0xFFA9B8A0, 0xFF8E7BA0, 0xFFC6A26A, 0xFF7C93AE, 0xFFE3B7A0, 0xFFFFFFFF];
@@ -611,9 +614,13 @@ class Settings {
       this.claudeModel = 'claude-haiku-5-5',
       this.mickyCoach = 0.45,
       List<String>? mickySees,
+      bool? signsPostit,
+      String? jrnPin,
       int? mod})
       : labels = labels ?? {},
         mickySees = mickySees ?? ['tasks', 'trackers', 'cycle'],
+        signsPostit = signsPostit ?? true,
+        jrnPin = jrnPin ?? '',
         hidden = hidden ?? [],
         palette = palette ?? [...defaultPalette],
         mod = mod ?? 0;
@@ -641,6 +648,8 @@ class Settings {
         claudeModel: _s(j['cm'], 'claude-haiku-5-5'),
         mickyCoach: _d(j['mc'], 0.45),
         mickySees: j['ms'] is List ? (j['ms'] as List).map((e) => '$e').toList() : null,
+        signsPostit: j['sp'] is bool ? j['sp'] as bool : null,
+        jrnPin: j['jp'] is String ? j['jp'] as String : null,
         mod: _i(j['mod']),
       );
 
@@ -661,6 +670,8 @@ class Settings {
         'hd': hidden,
         'mc': mickyCoach,
         'ms': mickySees,
+        'sp': signsPostit,
+        'jp': jrnPin,
         'mod': mod,
       };
 
@@ -679,6 +690,8 @@ class Settings {
     hidden = s.hidden;
     mickyCoach = s.mickyCoach;
     mickySees = s.mickySees;
+    signsPostit = s.signsPostit;
+    jrnPin = s.jrnPin;
     mod = s.mod;
   }
 }
