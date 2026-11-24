@@ -29,11 +29,10 @@ const levelNames = ['pas fait', 'un peu', 'bien · avancé', 'parfait · atteint
 /// Une question du soir : une clé (suivi, h:habitude, wgoal), un titre, et des réponses.
 class _Opt {
   final String label;
-  final String? sub;
   final int? lvl; // couleur
   final Future<void> Function() pick;
   final bool on;
-  _Opt(this.label, this.lvl, this.pick, {this.sub, this.on = false});
+  _Opt(this.label, this.lvl, this.pick, {this.on = false});
 }
 
 class _Q {
@@ -89,12 +88,14 @@ List<_Q> eveningQuestions(Store store, String day) {
         final dur = t.type == 'duration';
         String f(int x) => dur ? fmtMin(x) : '$x';
         final u = dur ? '' : (t.unit.isEmpty ? '' : ' ${t.unit}');
-        final a = max(1, (g * .6).ceil()), b = max(1, (g * .3).round());
+        final step = dur ? (g >= 120 ? 15 : 5) : 1;
+        int rnd(double x) => max(step, (x / step).round() * step);
+        final a = rnd(g * .6), b = rnd(g * .3);
         final cur = store.level(day, t.id);
         qs.add(_Q(t.id, '$name ?', [
           _Opt('${f(g)}$u et plus', 3, () => set(g), on: cur == 3),
-          if (a < g) _Opt(a == g - 1 ? '${f(a)}$u' : '${f(a)} à ${f(dur ? g - 5 : g - 1)}$u', 2, () => set(a), on: cur == 2),
-          if (b < a) _Opt(b == a - 1 || b == 1 && a <= 2 ? '${f(b)}$u' : 'un peu (${f(b)})', 1, () => set(b), on: cur == 1),
+          if (a < g) _Opt(a >= g - step ? '${f(a)}$u' : '${f(a)} à ${f(g - step)}$u', 2, () => set(a), on: cur == 2),
+          if (b < a) _Opt('moins de ${f(a)}$u', 1, () => set(b), on: cur == 1),
           _Opt(dur ? 'pas du tout' : 'presque rien', 0, () => set(0), on: cur == 0),
         ]));
       default:
@@ -163,10 +164,11 @@ class _EveningQuestionsState extends State<EveningQuestions> {
           Text(title, style: titleFont(34, pal.ink)),
         ]);
 
-    final top = Row(children: [
-      Expanded(child: Text('${niceDay(d)} · le soir', style: body(11, pal.acc, w: FontWeight.w800))),
-      TextButton.icon(onPressed: () => manageTrackers(context), icon: const Icon(Icons.tune_rounded, size: 16), label: const Text('mes suivis')),
-    ]);
+    final top = Text('${niceDay(d)} · le soir', style: body(11, pal.acc, w: FontWeight.w800));
+    final manage = Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(onPressed: () => manageTrackers(context), icon: const Icon(Icons.tune_rounded, size: 16), label: const Text('mes suivis')),
+    );
 
     if (i >= qs.length) {
       return SingleChildScrollView(
@@ -188,6 +190,8 @@ class _EveningQuestionsState extends State<EveningQuestions> {
           ]),
           const SizedBox(height: 18),
           Text('Touche un suivi pour changer ta réponse. Tu peux aussi tout raconter à Micky : elle répond à ta place et tu valides.', style: body(12, pal.soft, w: FontWeight.w700)),
+          const SizedBox(height: 10),
+          manage,
         ]),
       );
     }
@@ -241,10 +245,12 @@ class _EveningQuestionsState extends State<EveningQuestions> {
           ),
         const SizedBox(height: 6),
         Row(children: [
-          if (i > 0) TextButton(onPressed: () => setState(() => _i = i - 1), child: const Text('← retour')),
+          if (i > 0) TextButton(onPressed: () => setState(() => _i = i - 1), child: const Text('‹ retour')),
           const Spacer(),
-          TextButton(onPressed: next, child: Text(q.text != null ? 'suivant →' : 'passer')),
+          TextButton(onPressed: next, child: Text(q.text != null ? 'suivant ›' : 'passer')),
         ]),
+        const SizedBox(height: 20),
+        manage,
       ]),
     );
   }
