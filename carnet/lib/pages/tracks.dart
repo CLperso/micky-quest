@@ -443,9 +443,8 @@ class _FlowersPageState extends State<FlowersPage> {
         (widget.month ? niceMonth(monthKey(d)).toLowerCase() : 'semaine du ${mon.day} au ${mon.add(const Duration(days: 6)).day} ${monthNames[mon.add(const Duration(days: 6)).month - 1]}').toUpperCase(),
         style: body(11, pal.soft, w: FontWeight.w800).copyWith(letterSpacing: 2),
       ),
-      Row(children: [
+      Wrap(spacing: 14, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
         Text(widget.month ? 'Ma fleur du mois' : 'Mes fleurs', style: titleFont(32, pal.ink)),
-        const SizedBox(width: 14),
         SegmentedButton<bool>(
           showSelectedIcon: false,
           style: const ButtonStyle(visualDensity: VisualDensity.compact),
