@@ -53,6 +53,7 @@ class Store extends ChangeNotifier {
     }
     if (habits.isEmpty && goals.isEmpty && entries.isEmpty) _seed();
     if (trackers.isEmpty) _seedTrackers();
+    trackers['anxiety']?.low = true;
   }
 
   void _seed() {
@@ -253,7 +254,7 @@ class Store extends ChangeNotifier {
       t('mood', 'Humeur', 'faces', 'tete', _rose),
       t('energy', 'Énergie', 'scale', 'corps', _gold),
       t('sleep', 'Sommeil', 'duration', 'corps', _mauve, max: 30),
-      t('anxiety', 'Anxiété', 'scale', 'tete', _mauve),
+      t('anxiety', 'Anxiété', 'scale', 'tete', _mauve)..low = true,
       t('period', 'Règles', 'period', 'corps', _deep),
       t('water', 'Eau', 'number', 'corps', _sky, unit: 'verres', max: 8, flower: true),
       t('move', 'Mouvement', 'yesno', 'corps', _sage, flower: true),
@@ -300,11 +301,14 @@ class Store extends ChangeNotifier {
         l.energy = n(v).clamp(0, 5);
       case 'period':
         l.period = n(v).clamp(0, 3);
+        l.vals['ans:period'] = true;
       case 'work':
         l.proMin = n(v).clamp(0, 1440);
+        l.vals['ans:work'] = true;
       default:
         if (v == null || v == '') {
           l.vals.remove(id);
+          if (id == 'work') l.vals.remove('ans:work');
         } else {
           l.vals[id] = v;
         }
@@ -312,45 +316,85 @@ class Store extends ChangeNotifier {
     await touchLog(l);
   }
 
-  /// Un pétale est colorié : le suivi est « fait » ce jour-là (ou colorié à la main).
-  bool petalOn(String day, String key) {
+  /// Objectif « parfait » d'un suivi chiffré (nombre ou minutes).
+  int goalOf(Tracker t) {
+    if (t.goal > 0) return t.goal;
+    switch (t.id) {
+      case 'water':
+        return 8;
+      case 'sleep':
+        return 420;
+      case 'outside':
+        return 30;
+      case 'work':
+        return 180;
+      case 'reading':
+        return 20;
+    }
+    return t.type == 'duration' ? 30 : (t.max > 0 ? t.max : 1);
+  }
+
+  /// Niveau du code couleur : 3 parfait/atteint (vert), 2 bien/avancé (jaune), 1 un peu (orange), 0 pas fait (gris), null = pas répondu.
+  int? level(String day, String key) {
     final l = logs[day];
-    if (key == 'journal') return journals.values.any((j) => !j.del && j.day == day && j.text.trim().isNotEmpty);
-    if (l == null) return false;
-    if (l.vals['petal:$key'] == true) return true;
-    if (key.startsWith('h:')) return l.habits.contains(key.substring(2));
+    if (key == 'journal') return journals.values.any((j) => !j.del && j.day == day && j.text.trim().isNotEmpty) ? 3 : null;
+    if (key == 'wgoal') {
+      final w = logs['w:${dayKey(mondayOf(parseDay(day)))}'];
+      final v = w?.vals[day];
+      return v is num ? v.toInt() : null;
+    }
+    if (l == null) return null;
+    if (key.startsWith('h:')) {
+      final id = key.substring(2);
+      if (l.habits.contains(id)) return 3;
+      return l.vals['h:$id'] == false ? 0 : null;
+    }
     final t = trackers[key];
+    if (t == null) return null;
     final v = tval(day, key);
-    if (t == null || v == null) return false;
     switch (t.type) {
       case 'yesno':
-        return v == true;
+        return v == true ? 3 : (v == false ? 0 : null);
       case 'text':
-        return '$v'.trim().isNotEmpty;
+        return v is String && v.trim().isNotEmpty ? 3 : null;
+      case 'faces':
+      case 'scale':
+        if (v is! num || v <= 0) return null;
+        final n = t.low ? 6 - v.toInt() : v.toInt();
+        return n >= 4 ? 3 : (n == 3 ? 2 : (n == 2 ? 1 : 0));
+      case 'period':
+        return null;
       default:
-        return v is num && v > 0;
+        if (v is! num) return null;
+        if (key == 'work' && v == 0 && l.vals['ans:work'] != true) return null;
+        final r = v / goalOf(t);
+        return r >= 1 ? 3 : (r >= .6 ? 2 : (r > 0 ? 1 : 0));
     }
   }
 
-  Future<void> setPetal(String day, String key, bool on) async {
+  Future<void> setHabitAnswer(String day, String id, bool done) async {
     final l = log(day);
-    if (key.startsWith('h:')) {
-      final h = key.substring(2);
-      if (on && !l.habits.contains(h)) l.habits.add(h);
-      if (!on) l.habits.remove(h);
-    } else if (trackers[key]?.type == 'yesno') {
-      if (on) {
-        l.vals[key] = true;
-      } else {
-        l.vals.remove(key);
-      }
-    }
-    if (on) {
-      l.vals['petal:$key'] = true;
+    if (done) {
+      if (!l.habits.contains(id)) l.habits.add(id);
+      l.vals.remove('h:$id');
     } else {
-      l.vals.remove('petal:$key');
+      l.habits.remove(id);
+      l.vals['h:$id'] = false;
     }
     await touchLog(l);
+  }
+
+  // ---------- objectif de la semaine ----------
+  DayLog weekLog(DateTime anyDay) => log('w:${dayKey(mondayOf(anyDay))}');
+  String weekGoal(DateTime anyDay) => logs['w:${dayKey(mondayOf(anyDay))}']?.win ?? '';
+  Future<void> setWeekGoalDay(String day, int? lvl) async {
+    final w = weekLog(parseDay(day));
+    if (lvl == null) {
+      w.vals.remove(day);
+    } else {
+      w.vals[day] = lvl;
+    }
+    await touchLog(w);
   }
 
   Future<void> touchTracker(Tracker t) async {

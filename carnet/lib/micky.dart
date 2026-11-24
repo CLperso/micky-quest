@@ -153,8 +153,13 @@ Tu es entre une amie et une coach :
 - Coach : une seule question à la fois ; tu transformes le flou en prochaine action concrète ; tu l’aides à décider quand et où elle commence ; tu proposes un ordre selon son énergie et son cycle, mais c’est elle qui décide ; tu rappelles avec tendresse ce qui avait été prévu.
 $dose
 
+Ta façon de parler :
+- Comme une vraie amie qui écrit un message : naturel, chaleureux, précis, jamais de phrases toutes faites ni de jargon de coach.
+- Tu t’appuies sur ce que tu vois dans son carnet (tâches, objectif de la semaine, suivis) plutôt que sur des conseils généraux.
+- Tu varies tes tournures, tu ne répètes pas ce qu’elle vient de dire, tu ne commences pas chaque message par la même formule.
+
 Règles :
-- Réponses courtes : 1 à 4 phrases, pas de listes longues, pas de titres.
+- Réponses courtes : 1 à 4 phrases, pas de listes longues, pas de titres, pas de markdown.
 - Pas de diagnostic ni de conseil médical. Si elle semble aller vraiment mal, dis-le franchement et encourage-la à en parler à un proche ou à un professionnel ; en cas d’idées suicidaires, le 3114 (France) répond jour et nuit.
 - Tu ne mens pas sur ce que tu as fait : n’annonce un rangement que si tu mets l’action correspondante.
 
@@ -173,6 +178,8 @@ contenant une liste JSON. Actions possibles (utilise les identifiants courts du 
 {"a":"track","id":"k1","value":…}  (un autre suivi, pour aujourd’hui)
 {"a":"goal","id":"g1"}  (un pas vers un objectif aujourd’hui)
 {"a":"sprint","min":15}  (lance un minuteur de travail)
+{"a":"wgoal","text":"…"}  (fixe l’objectif de la semaine, si elle le décide)
+{"a":"wgoalday","value":3|2|0}  (objectif de la semaine aujourd’hui : 3 atteint, 2 avancé, 0 pas aujourd’hui)
 N’ajoute le bloc que si tu fais vraiment quelque chose. N’invente pas d’identifiants.
 '''
         .trim();
@@ -233,6 +240,8 @@ N’ajoute le bloc que si tu fais vraiment quelque chose. N’invente pas d’id
         }
       }
     }
+    final wg = s.weekGoal(now);
+    b.writeln(wg.trim().isEmpty ? 'Objectif de la semaine : pas encore choisi.' : 'Objectif de la semaine : $wg');
     final goals = s.activeGoals;
     if (goals.isNotEmpty) {
       b.writeln('Objectifs (et ses raisons) :');
@@ -302,11 +311,12 @@ N’ajoute le bloc que si tu fais vraiment quelque chose. N’invente pas d’id
 
   // ------------------------------------------------------------------ envoyer
   Future<void> send(Store s, String text, {String mode = 'libre'}) async {
-    final key = s.settings.groqKey.trim();
+    final claude = s.settings.aiProvider == 'claude';
+    final key = (claude ? s.settings.claudeKey : s.settings.groqKey).trim();
     if (text.trim().isEmpty || busy) return;
     chat.add(MickyMsg('user', text.trim()));
     if (key.isEmpty) {
-      chat.add(MickyMsg('info', 'Il me faut ta clé Groq pour parler (Réglages → Micky). C’est gratuit.'));
+      chat.add(MickyMsg('info', claude ? 'Il me faut ta clé Claude pour parler (Réglages → Micky).' : 'Il me faut ta clé Groq pour parler (Réglages → Micky). C’est gratuit.'));
       await _save();
       notifyListeners();
       return;
@@ -320,8 +330,10 @@ N’ajoute le bloc que si tu fais vraiment quelque chose. N’invente pas d’id
         {'role': 'system', 'content': '${_persona(s, mode)}\n\n${_context(s)}'},
         for (final m in recent) {'role': m.role == 'user' ? 'user' : 'assistant', 'content': _cut(m.text, 1500)},
       ];
-      var (reply, err) = await _call(s.settings.groqModel.trim().isEmpty ? 'openai/gpt-oss-120b' : s.settings.groqModel.trim(), key, messages);
-      if (reply == null && err == 'limite' && s.settings.groqModel != fallbackModel) {
+      var (reply, err) = claude
+          ? await _callClaude(s.settings.claudeModel.trim().isEmpty ? 'claude-haiku-5-5' : s.settings.claudeModel.trim(), key, messages)
+          : await _call(s.settings.groqModel.trim().isEmpty ? 'openai/gpt-oss-120b' : s.settings.groqModel.trim(), key, messages);
+      if (!claude && reply == null && err == 'limite' && s.settings.groqModel != fallbackModel) {
         (reply, err) = await _call(fallbackModel, key, messages);
       }
       if (reply == null) {
@@ -333,11 +345,50 @@ N’ajoute le bloc que si tu fais vraiment quelque chose. N’invente pas d’id
         chat.add(MickyMsg('micky', clean.isEmpty ? '✿' : clean, done: done, undo: undo));
       }
     } catch (e) {
-      chat.add(MickyMsg('info', 'Je n’arrive pas à joindre Groq (connexion ?).'));
+      chat.add(MickyMsg('info', claude ? 'Je n’arrive pas à joindre Claude (connexion ?).' : 'Je n’arrive pas à joindre Groq (connexion ?).'));
     }
     busy = false;
     await _save();
     notifyListeners();
+  }
+
+  /// Claude (Anthropic) : système à part, messages qui alternent en commençant par l'utilisatrice.
+  Future<(String?, String?)> _callClaude(String model, String key, List<Map<String, String>> messages) async {
+    final system = messages.first['content'] ?? '';
+    final conv = <Map<String, String>>[];
+    for (final m in messages.skip(1)) {
+      if (conv.isEmpty && m['role'] != 'user') continue;
+      if (conv.isNotEmpty && conv.last['role'] == m['role']) {
+        conv.last = {'role': m['role']!, 'content': '${conv.last['content']}\n\n${m['content']}'};
+      } else {
+        conv.add(Map<String, String>.from(m));
+      }
+    }
+    if (conv.isEmpty) return (null, 'Rien à envoyer.');
+    final r = await http
+        .post(
+          Uri.parse('https://api.anthropic.com/v1/messages'),
+          headers: {
+            'x-api-key': key,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true',
+            'content-type': 'application/json',
+          },
+          body: jsonEncode({'model': model, 'max_tokens': 1200, 'system': system, 'messages': conv}),
+        )
+        .timeout(const Duration(seconds: 60));
+    if (r.statusCode == 429 || r.statusCode == 529) return (null, 'limite');
+    if (r.statusCode == 401) return (null, 'Ma clé Claude ne marche pas : vérifie-la dans Réglages → Micky.');
+    if (r.statusCode >= 300) {
+      String msg = '';
+      try {
+        msg = '${(jsonDecode(utf8.decode(r.bodyBytes)) as Map)['error']?['message'] ?? ''}';
+      } catch (_) {}
+      return (null, 'Claude refuse la demande (${r.statusCode}) : ${_cut(msg, 160)}');
+    }
+    final j = jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+    final parts = (j['content'] as List).whereType<Map>().where((c) => c['type'] == 'text').map((c) => '${c['text']}');
+    return (parts.join('\n'), null);
   }
 
   Future<(String?, String?)> _call(String model, String key, List<Map<String, String>> messages) async {
@@ -493,6 +544,17 @@ N’ajoute le bloc que si tu fais vraiment quelque chose. N’invente pas d’id
             await s.touchLog(l);
             undo.add({'a': 'ungoal', 'id': g.id});
             done.add('un pas vers ${_cut(g.title, 30)}');
+          case 'wgoal':
+            final w = s.weekLog(DateTime.now());
+            undo.add({'a': 'wgoal', 'value': w.win});
+            w.win = '${a['text'] ?? ''}'.trim();
+            await s.touchLog(w);
+            done.add('objectif de la semaine noté');
+          case 'wgoalday':
+            final v = a['value'] is num ? (a['value'] as num).toInt().clamp(0, 3) : 2;
+            undo.add({'a': 'wgoalday', 'value': s.level(t, 'wgoal')});
+            await s.setWeekGoalDay(t, v);
+            done.add('objectif : ${const ['pas aujourd’hui', 'un peu', 'avancé', 'atteint'][v]}');
           case 'sprint':
             if (s.timerStart == 0) await s.startTimer();
             final m = a['min'] is num ? (a['min'] as num).toInt() : 15;
@@ -541,6 +603,12 @@ N’ajoute le bloc que si tu fais vraiment quelque chose. N’invente pas d’id
           await s.touchLog(l);
         case 'track':
           await s.setTval(t, '${u['id']}', u['value']);
+        case 'wgoal':
+          final w = s.weekLog(DateTime.fromMillisecondsSinceEpoch(m.t));
+          w.win = '${u['value'] ?? ''}';
+          await s.touchLog(w);
+        case 'wgoalday':
+          await s.setWeekGoalDay(t, u['value'] is int ? u['value'] as int : null);
         case 'unhabit':
           final l = s.log(t);
           l.habits.remove('${u['id']}');
@@ -628,7 +696,8 @@ class _MickyPanelState extends State<MickyPanel> {
     final pal = Pal.byId(store.settings.theme);
     final m = Micky.i;
     final msgs = m.today;
-    final noKey = store.settings.groqKey.trim().isEmpty;
+    final claude = store.settings.aiProvider == 'claude';
+    final noKey = (claude ? store.settings.claudeKey : store.settings.groqKey).trim().isEmpty;
 
     Widget bubble(MickyMsg x) {
       if (x.role == 'user') {
@@ -706,7 +775,7 @@ class _MickyPanelState extends State<MickyPanel> {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('Micky', style: script(26, pal.acc)),
-                Text(noKey ? 'clé Groq à ajouter' : 'gratuit · Groq · ${m.usedToday} / ${Micky.dailyFree} aujourd’hui', style: body(11, pal.soft, w: FontWeight.w800)),
+                Text(noKey ? 'clé à ajouter' : claude ? 'Claude Haiku · ${m.usedToday} messages aujourd’hui' : 'gratuit · Groq · ${m.usedToday} / ${Micky.dailyFree} aujourd’hui', style: body(11, pal.soft, w: FontWeight.w800)),
               ]),
             ),
             if (msgs.isNotEmpty) IconButton(tooltip: 'Nouvelle discussion', onPressed: () => Micky.i.clearToday(), icon: Icon(Icons.refresh_rounded, color: pal.soft)),
@@ -788,23 +857,40 @@ class _MickyKeyCardState extends State<MickyKeyCard> {
   Widget build(BuildContext context) {
     final store = StoreScope.of(context);
     final pal = Pal.byId(store.settings.theme);
+    final claude = store.settings.aiProvider == 'claude';
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('Pour que je parle, il me faut une clé Groq. C’est gratuit :', style: body(14, pal.ink, w: FontWeight.w700)),
+      SegmentedButton<String>(
+        segments: const [ButtonSegment(value: 'groq', label: Text('Groq · gratuit')), ButtonSegment(value: 'claude', label: Text('Claude Haiku'))],
+        selected: {store.settings.aiProvider},
+        onSelectionChanged: (v) {
+          store.settings.aiProvider = v.first;
+          store.commit();
+        },
+      ),
+      const SizedBox(height: 12),
+      Text(claude ? 'Pour que je parle avec Claude (quelques centimes par mois) :' : 'Pour que je parle, il me faut une clé Groq. C’est gratuit :', style: body(14, pal.ink, w: FontWeight.w700)),
       const SizedBox(height: 8),
-      Text('1. Va sur console.groq.com et connecte-toi (Google marche).\n2. Menu « API Keys », puis « Create API Key ».\n3. Copie la clé (elle commence par gsk_) et colle-la ici.',
+      Text(
+          claude
+              ? '1. Va sur console.anthropic.com et crée un compte.\n2. « Billing » : ajoute 5 \$ de crédit (ça dure des mois).\n3. « API Keys » → « Create Key », copie la clé (sk-ant-…) et colle-la ici.'
+              : '1. Va sur console.groq.com et connecte-toi (Google marche).\n2. Menu « API Keys », puis « Create API Key ».\n3. Copie la clé (elle commence par gsk_) et colle-la ici.',
           style: body(13, pal.soft, w: FontWeight.w700).copyWith(height: 1.5)),
       const SizedBox(height: 12),
-      TextField(controller: _k, obscureText: true, decoration: const InputDecoration(labelText: 'Clé Groq (gsk_…)')),
+      TextField(controller: _k, obscureText: true, decoration: InputDecoration(labelText: claude ? 'Clé Claude (sk-ant-…)' : 'Clé Groq (gsk_…)')),
       const SizedBox(height: 10),
       FilledButton(
         onPressed: () async {
-          store.settings.groqKey = _k.text.trim();
+          if (claude) {
+            store.settings.claudeKey = _k.text.trim();
+          } else {
+            store.settings.groqKey = _k.text.trim();
+          }
           await store.commit();
         },
         child: const Text('C’est parti'),
       ),
       const SizedBox(height: 10),
-      Text('Ta clé reste sur cet appareil. Je n’envoie à Groq qu’un petit résumé de ton carnet, selon ce que tu m’autorises à voir.', style: body(11.5, pal.soft, w: FontWeight.w600)),
+      Text('Ta clé reste sur cet appareil. Je n’envoie qu’un petit résumé de ton carnet, selon ce que tu m’autorises à voir. Ni Groq ni Claude ne s’en servent pour entraîner leurs modèles.', style: body(11.5, pal.soft, w: FontWeight.w600)),
     ]);
   }
 }
@@ -819,6 +905,8 @@ class MickySettings extends StatefulWidget {
 class _MickySettingsState extends State<MickySettings> {
   late final _key = TextEditingController(text: StoreScope.read(context).settings.groqKey);
   late final _model = TextEditingController(text: StoreScope.read(context).settings.groqModel);
+  late final _ckey = TextEditingController(text: StoreScope.read(context).settings.claudeKey);
+  late final _cmodel = TextEditingController(text: StoreScope.read(context).settings.claudeModel);
 
   @override
   Widget build(BuildContext context) {
@@ -837,7 +925,34 @@ class _MickySettingsState extends State<MickySettings> {
         );
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Label('Micky, ma compagne', pal.soft),
-      TextField(
+      SegmentedButton<String>(
+        segments: const [ButtonSegment(value: 'groq', label: Text('Groq · gratuit')), ButtonSegment(value: 'claude', label: Text('Claude Haiku · payant'))],
+        selected: {st.aiProvider},
+        onSelectionChanged: (v) {
+          setState(() => st.aiProvider = v.first);
+          store.commit();
+        },
+      ),
+      if (st.aiProvider == 'claude') ...[
+        TextField(
+          controller: _ckey,
+          obscureText: true,
+          decoration: const InputDecoration(labelText: 'Clé Claude (console.anthropic.com)'),
+          onChanged: (v) {
+            st.claudeKey = v.trim();
+            store.save();
+          },
+        ),
+        TextField(
+          controller: _cmodel,
+          decoration: const InputDecoration(labelText: 'Modèle', helperText: 'claude-haiku-5-5 · environ quelques centimes par mois'),
+          onChanged: (v) {
+            st.claudeModel = v.trim();
+            store.save();
+          },
+        ),
+      ],
+      if (st.aiProvider != 'claude') TextField(
         controller: _key,
         obscureText: true,
         decoration: const InputDecoration(labelText: 'Clé Groq (gratuite, console.groq.com)'),
@@ -846,7 +961,7 @@ class _MickySettingsState extends State<MickySettings> {
           store.save();
         },
       ),
-      TextField(
+      if (st.aiProvider != 'claude') TextField(
         controller: _model,
         decoration: const InputDecoration(labelText: 'Modèle', helperText: 'openai/gpt-oss-120b · en secours openai/gpt-oss-20b'),
         onChanged: (v) {
@@ -872,7 +987,7 @@ class _MickySettingsState extends State<MickySettings> {
       see('trackers', 'Suivis des 7 derniers jours', 'pour repérer tes schémas'),
       see('cycle', 'Cycle', 'pour adapter la charge'),
       see('journal', 'Tout mon journal', 'sinon, seulement les pages que je lui montre'),
-      Text('Tes dessins ne sont jamais envoyés. Groq ne s’en sert pas pour entraîner ses modèles.', style: body(11.5, pal.soft, w: FontWeight.w600)),
+      Text('Tes dessins et ton journal privé ne sont jamais envoyés. Ni Groq ni Claude ne s’en servent pour entraîner leurs modèles.', style: body(11.5, pal.soft, w: FontWeight.w600)),
     ]);
   }
 }

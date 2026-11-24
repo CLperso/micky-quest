@@ -181,6 +181,8 @@ class Tracker {
   int color;
   String unit;
   int max; // nombre : maximum affiché ; durée : pas en minutes
+  int goal; // ce qui est « parfait » (nombre ou minutes) ; 0 = défaut
+  bool low; // plus bas = mieux (anxiété)
   bool active;
   bool flower; // apparaît dans les fleurs de la semaine
   double order;
@@ -194,6 +196,8 @@ class Tracker {
       this.color = 0xFFD7A6A8,
       this.unit = '',
       this.max = 8,
+      this.goal = 0,
+      this.low = false,
       this.active = true,
       this.flower = true,
       double? order,
@@ -211,6 +215,8 @@ class Tracker {
         color: _i(j['color'], 0xFFD7A6A8),
         unit: _s(j['unit']),
         max: _i(j['max'], 8),
+        goal: _i(j['goal']),
+        low: j['low'] == true,
         active: _b(j['on']),
         flower: _b(j['fl']),
         order: _d(j['order']),
@@ -218,7 +224,7 @@ class Tracker {
         del: _b(j['del']),
       );
   Map<String, dynamic> toJson() =>
-      {'id': id, 'name': name, 'type': type, 'group': group, 'color': color, 'unit': unit, 'max': max, 'on': active, 'fl': flower, 'order': order, 'mod': mod, 'del': del};
+      {'id': id, 'name': name, 'type': type, 'group': group, 'color': color, 'unit': unit, 'max': max, 'goal': goal, 'low': low, 'on': active, 'fl': flower, 'order': order, 'mod': mod, 'del': del};
 }
 
 /// Une page de journal : expression libre ou un format (gratitude, lettre à moi…).
@@ -575,6 +581,7 @@ class Settings {
   Map<String, String> labels; // textes personnalisés (titres, sous-titres…)
   List<String> hidden; // parties masquées
   String groqKey, groqModel; // Micky (local, jamais synchronisé)
+  String aiProvider, claudeKey, claudeModel; // groq ou claude
   double mickyCoach; // 0 = amie, 1 = coach
   List<String> mickySees; // ce que Micky voit : tasks, trackers, cycle, journal
   int mod;
@@ -599,6 +606,9 @@ class Settings {
       List<String>? hidden,
       this.groqKey = '',
       this.groqModel = 'openai/gpt-oss-120b',
+      this.aiProvider = 'groq',
+      this.claudeKey = '',
+      this.claudeModel = 'claude-haiku-5-5',
       this.mickyCoach = 0.45,
       List<String>? mickySees,
       int? mod})
@@ -626,12 +636,15 @@ class Settings {
         hidden: j['hd'] is List ? (j['hd'] as List).map((e) => '$e').toList() : null,
         groqKey: _s(j['gk']),
         groqModel: _s(j['gm'], 'openai/gpt-oss-120b'),
+        aiProvider: _s(j['ap'], 'groq'),
+        claudeKey: _s(j['ck']),
+        claudeModel: _s(j['cm'], 'claude-haiku-5-5'),
         mickyCoach: _d(j['mc'], 0.45),
         mickySees: j['ms'] is List ? (j['ms'] as List).map((e) => '$e').toList() : null,
         mod: _i(j['mod']),
       );
 
-  Map<String, dynamic> toJson() => {...syncJson(), 'repo': syncRepo, 'tok': syncToken, 'last': lastSync, 'stylus': stylusOnly, 'gk': groqKey, 'gm': groqModel};
+  Map<String, dynamic> toJson() => {...syncJson(), 'repo': syncRepo, 'tok': syncToken, 'last': lastSync, 'stylus': stylusOnly, 'gk': groqKey, 'gm': groqModel, 'ap': aiProvider, 'ck': claudeKey, 'cm': claudeModel};
 
   /// Ce qui se synchronise (pas le jeton ni l'état local).
   Map<String, dynamic> syncJson() => {

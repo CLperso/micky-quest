@@ -5,6 +5,7 @@ import '../model.dart';
 import '../store.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'tracks.dart';
 
 int isoWeek(DateTime d) {
   final thursday = d.add(Duration(days: 4 - d.weekday));
@@ -331,7 +332,9 @@ class WeekLeft extends StatelessWidget {
     final note = store.log('w:${dayKey(monday)}');
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       PageTitle(id: 'week.L', over: 'semaine {semaine} · {du} – {au}', title: '{Mois}', vars: weekVars(monday)),
-      const SizedBox(height: 22),
+      const SizedBox(height: 14),
+      WeekGoalBox(monday: monday),
+      const SizedBox(height: 16),
       Expanded(
         child: Row(children: [
           Expanded(child: DayBox(date: d(0), color: tabs[0], onOpenDay: onOpenDay)),
@@ -382,24 +385,6 @@ class WeekRight extends StatelessWidget {
     final pal = palOf(context);
     final tabs = pal.tabs;
     DateTime d(int i) => monday.add(Duration(days: i));
-    final days = [for (var i = 0; i < 7; i++) dayKey(d(i))];
-    final logs = [for (final k in days) store.logs[k]];
-
-    Widget dot(bool on, Color c) => Container(
-          width: 15,
-          height: 15,
-          decoration: BoxDecoration(shape: BoxShape.circle, color: on ? c : Colors.transparent, border: Border.all(color: on ? c : pal.ink.withValues(alpha: .35), width: 1.2)),
-        );
-    final rows = <(String, List<bool>, Color)>[
-      if (!store.isHidden('trk.mood')) (store.text('trk.mood', 'Humeur'), [for (final l in logs) (l?.mood ?? 0) >= 4], pal.acc),
-      if (!store.isHidden('trk.energy')) (store.text('trk.energy', 'Énergie'), [for (final l in logs) (l?.energy ?? 0) >= 3], pal.acc3),
-      if (!store.isHidden('trk.pro')) (store.text('trk.pro', 'Travail'), [for (final l in logs) (l?.proMin ?? 0) > 0], pal.acc2),
-      for (final h in store.activeHabits)
-        if (!store.isHidden('trk.h.${h.id}')) (store.text('trk.h.${h.id}', '${h.emoji} ${h.name}'), [for (final l in logs) l?.habits.contains(h.id) ?? false], pal.acc),
-      for (final g in store.activeGoals.where((g) => g.kind == 'perso'))
-        if (!store.isHidden('trk.g.${g.id}')) (store.text('trk.g.${g.id}', '${g.emoji} ${g.title}'), [for (final l in logs) l?.goals.contains(g.id) ?? false], Color(g.color)),
-    ];
-
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       PageTitle(id: 'week.R', over: '', title: '', vars: weekVars(monday)),
       const SizedBox(height: 22),
@@ -427,31 +412,80 @@ class WeekRight extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(14, 8, 14, 6),
               child: SingleChildScrollView(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  const ELabel('week.trackers', 'Trackers', part: 'week.trackers'),
-                  Row(children: [
-                    const SizedBox(width: 120),
-                    for (var i = 0; i < 7; i++)
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () => onOpenDay(days[i]),
-                          child: Center(child: Text(dayShort[i].substring(0, 1).toUpperCase(), style: body(11, pal.soft, w: FontWeight.w800))),
-                        ),
-                      ),
-                  ]),
-                  for (final r in rows)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 3),
-                      child: Row(children: [
-                        SizedBox(width: 120, child: Text(r.$1, overflow: TextOverflow.ellipsis, style: hand(19, pal.ink))),
-                        for (final on in r.$2) Expanded(child: Center(child: dot(on, r.$3))),
-                      ]),
-                    ),
+                  const ELabel('week.trackers', 'Ma semaine en couleurs', part: 'week.trackers'),
+                  WeekColorGrid(monday: monday, onOpenDay: onOpenDay),
                 ]),
               ),
             ),
           ]),
         ),
       ],
+    ]);
+  }
+}
+
+
+/// L'objectif de la semaine, dans un encadré washi, avec une pastille par jour.
+class WeekGoalBox extends StatelessWidget {
+  final DateTime monday;
+  const WeekGoalBox({super.key, required this.monday});
+  @override
+  Widget build(BuildContext context) {
+    final store = StoreScope.of(context);
+    final pal = palOf(context);
+    final w = store.weekLog(monday);
+    return Stack(clipBehavior: Clip.none, children: [
+      Container(
+        padding: const EdgeInsets.fromLTRB(14, 18, 14, 8),
+        decoration: BoxDecoration(color: pal.tint.withValues(alpha: .35), borderRadius: BorderRadius.circular(16), border: Border.all(color: pal.acc.withValues(alpha: .6), width: 1.6)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          HandField(
+            value: w.win,
+            hint: 'mon objectif de la semaine…',
+            size: 23,
+            maxLines: 2,
+            onChanged: (v) {
+              w.win = v;
+              store.touchLog(w);
+            },
+          ),
+          const SizedBox(height: 4),
+          Row(children: [
+            for (var i = 0; i < 7; i++)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Builder(builder: (_) {
+                  final lv = store.level(dayKey(monday.add(Duration(days: i))), 'wgoal');
+                  return Column(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                      width: 18,
+                      height: 18,
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: lv == null ? Colors.transparent : levelColors[lv.clamp(0, 3)], border: Border.all(color: pal.ink.withValues(alpha: .5))),
+                    ),
+                    Text(dayShort[i].substring(0, 1).toUpperCase(), style: body(8.5, pal.soft, w: FontWeight.w800)),
+                  ]);
+                }),
+              ),
+            const Spacer(),
+            Text('demandé chaque soir', style: body(10.5, pal.soft, w: FontWeight.w700)),
+          ]),
+        ]),
+      ),
+      Positioned(
+        top: -11,
+        left: 0,
+        right: 0,
+        child: Center(
+          child: Transform.rotate(
+            angle: -0.03,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+              decoration: BoxDecoration(color: pal.acc.withValues(alpha: .35)),
+              child: Text('objectif de la semaine', style: hand(17, pal.ink)),
+            ),
+          ),
+        ),
+      ),
     ]);
   }
 }

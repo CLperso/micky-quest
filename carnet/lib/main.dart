@@ -234,9 +234,9 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
         final fk = flowersMonth ? 'flowers:m:${monthKey(day)}' : 'flowers:w:${dayKey(mondayOf(day))}';
         return (
           'track:$k:L',
-          TonightPage(day: k),
+          EveningQuestions(key: ValueKey('eq$k'), day: k),
           fk,
-          FlowersPage(key: ValueKey(fk), day: k, pageKey: fk, month: flowersMonth, onView: (v) => setState(() => flowersMonth = v)),
+          FlowersPage(key: ValueKey(fk), day: k, month: flowersMonth, onView: (v) => setState(() => flowersMonth = v)),
           'Ce soir',
           'Fleurs'
         );
