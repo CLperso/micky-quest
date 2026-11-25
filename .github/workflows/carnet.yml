@@ -83,7 +83,7 @@ jobs:
           body: "Télécharge carnet-micky.apk depuis la tablette pour l’installer ou le mettre à jour. Version PC sur https://clperso.github.io/micky-quest/"
           files: |
             carnet/carnet-micky.apk
-          make_latest: false
+          make_latest: true
 
       - name: Mettre en ligne la version PC
         uses: peaceiris/actions-gh-pages@v4
