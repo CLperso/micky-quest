@@ -22,14 +22,16 @@ class Nib {
   final double taperStart, taperEnd; // affinage aux extrémités (en px)
   final double alpha;
   final bool multiply; // repasser dessus fonce la couleur
+  final bool even; // trait régulier aux bouts ronds (aucune variation)
   const Nib(this.id, this.name,
-      {required this.width, this.thinning = 0.5, this.streamline = 0.5, this.taperStart = 0, this.taperEnd = 0, this.alpha = 1, this.multiply = false});
+      {required this.width, this.thinning = 0.5, this.streamline = 0.5, this.taperStart = 0, this.taperEnd = 0, this.alpha = 1, this.multiply = false, this.even = false});
 }
 
 const nibs = [
+  Nib('bille', 'Stylo bille', width: 2.8, thinning: 0, streamline: 0.45, even: true),
   Nib('stylo', 'Stylo', width: 2.6, thinning: 0.45, streamline: 0.5, taperStart: 2, taperEnd: 8),
   Nib('plume', 'Plume', width: 5, thinning: 0.3, streamline: 0.55),
-  Nib('feutre', 'Feutre', width: 4, thinning: 0, streamline: 0.15, multiply: true),
+  Nib('feutre', 'Feutre', width: 4, thinning: 0, streamline: 0.15, multiply: true, even: true),
   Nib('pinceau', 'Pinceau', width: 10, thinning: 0.8, streamline: 0.5, taperStart: 18, taperEnd: 40, alpha: 0.9, multiply: true),
   Nib('aquarelle', 'Aquarelle', width: 16, thinning: 0.5, streamline: 0.45, taperStart: 10, taperEnd: 24, alpha: 0.42, multiply: true),
   Nib('crayon', 'Crayon', width: 2.2, thinning: 0.3, streamline: 0.4, alpha: 0.72),
@@ -41,7 +43,10 @@ Nib nibOf(String id) => nibs.firstWhere((n) => n.id == id, orElse: () => nibs.fi
 // ---------------------------------------------------------------- tracé
 final _cache = Expando<Path>();
 
-void invalidateStroke(Stroke s) => _cache[s] = null;
+void invalidateStroke(Stroke s) {
+  _cache[s] = null;
+  _evenCache[s] = null;
+}
 
 /// Contour d'un trait (forme pleine), à la manière de « perfect-freehand ».
 Path strokeOutline(Stroke s) {
@@ -169,7 +174,50 @@ void paintStroke(Canvas canvas, Stroke s, {bool dark = false}) {
   if (nib.multiply) paint.blendMode = dark ? BlendMode.screen : BlendMode.multiply;
   if (s.tool == 'crayon') paint.maskFilter = const MaskFilter.blur(BlurStyle.normal, 0.45);
   if (s.tool == 'aquarelle') paint.maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.6);
+  if (nib.even) {
+    _paintEven(canvas, s, nib, paint);
+    return;
+  }
   canvas.drawPath(strokeOutline(s), paint);
+}
+
+/// Trait régulier : une ligne lissée, même épaisseur partout, bouts ronds et nets.
+final _evenCache = Expando<Path>();
+void _paintEven(Canvas canvas, Stroke s, Nib nib, Paint paint) {
+  if (s.pts.length < 6) {
+    canvas.drawCircle(Offset(s.pts[0], s.pts[1]), s.width / 2, paint);
+    return;
+  }
+  var path = _evenCache[s];
+  if (path == null) {
+    final t = 0.4 + (1 - nib.streamline) * 0.6;
+    final pts = <Offset>[Offset(s.pts[0], s.pts[1])];
+    for (var i = 3; i + 2 < s.pts.length; i += 3) {
+      final q = Offset.lerp(pts.last, Offset(s.pts[i], s.pts[i + 1]), t)!;
+      if ((q - pts.last).distance < 0.5) continue;
+      pts.add(q);
+    }
+    pts.add(Offset(s.pts[s.pts.length - 3], s.pts[s.pts.length - 2]));
+    path = Path()..moveTo(pts.first.dx, pts.first.dy);
+    if (pts.length == 2) {
+      path.lineTo(pts.last.dx, pts.last.dy);
+    } else {
+      for (var i = 1; i < pts.length - 1; i++) {
+        final m = Offset((pts[i].dx + pts[i + 1].dx) / 2, (pts[i].dy + pts[i + 1].dy) / 2);
+        path.quadraticBezierTo(pts[i].dx, pts[i].dy, m.dx, m.dy);
+      }
+      path.lineTo(pts.last.dx, pts.last.dy);
+    }
+    _evenCache[s] = path;
+  }
+  canvas.drawPath(
+    path,
+    paint
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = s.width
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round,
+  );
 }
 
 final _fillCache = Expando<Path>();

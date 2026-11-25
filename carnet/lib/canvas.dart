@@ -28,7 +28,7 @@ class Desk extends ChangeNotifier {
   String selected = '';
   String focusPage = '';
   Map<String, dynamic>? washi; // rouleau armé : on le tire sur la page
-  String tool = 'stylo'; // une pointe, ou gomme, lasso, forme
+  String tool = 'bille'; // une pointe, ou gomme, lasso, forme
   String shape = 'ligne';
   int penColor = 0xFF4A3F3C;
   final Map<String, double> _widths = {};
@@ -90,7 +90,7 @@ class Desk extends ChangeNotifier {
 
   void setColor(int c) {
     penColor = c;
-    if (tool == 'gomme' || tool == 'lasso') tool = 'stylo';
+    if (tool == 'gomme' || tool == 'lasso') tool = 'bille';
     notifyListeners();
   }
 
