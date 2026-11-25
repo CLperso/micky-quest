@@ -28,6 +28,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.text('Mois').first);
     await tester.pump(const Duration(milliseconds: 300));
+    await tester.ensureVisible(find.byTooltip('Calque'));
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.byTooltip('Calque'));
     await tester.pumpAndSettle(const Duration(milliseconds: 100));
     await tester.tap(find.text('Calligraphie'));
